@@ -4,6 +4,11 @@ const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// 安全传输回归会调用 keyClear/keySet；强制使用临时用户目录，绝不触碰真实配置和 API Key。
+if (process.argv.includes('--secureaitest')) {
+  try { app.setPath('userData', path.join(app.getPath('temp'), 'ai-tag-toolbox-secureaitest-' + process.pid)); } catch (e) {}
+}
+
 let win = null;
 let ort = null;
 const aiRequests = new Map();
