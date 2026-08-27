@@ -1,0 +1,9 @@
+﻿models/
+node_modules/
+*.exe
+*.7z
+*.zip
+*.png
+release/
+work/
+userdata/

@@ -1,0 +1,9 @@
+AI绘画Tag工具箱 V1.3.38
+
+双击当前目录根部的「AI绘画Tag工具箱V1.3.38.exe」启动。
+
+说明：
+- resources\app.asar 是本次 V1.3.38 的新版本资源。
+- models、locales、Electron DLL 与 app.asar.unpacked 来自原版运行时，用于保证桌面程序可启动。
+- app 目录保存完整源码和架构调整说明，便于查看和后续维护。
+- 本版本采用全新的蓝色 / 石墨视觉系统，标签选中态保留文字对比度。
