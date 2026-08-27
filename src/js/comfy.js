@@ -218,14 +218,19 @@ function comfyAddMsg(kind, text, opts) {
 }
 async function comfyAiTalk(msgs, bubbleBody) {
   let full = '';
+  const startedAt = Date.now();
+  const elapsedTimer = setInterval(() => comfySetStatus('🤖 AI 思考中… · 已用时 ' + aiElapsedLabel(Date.now() - startedAt)), 1000);
   const upd = () => {
     if (bubbleBody) { bubbleBody.textContent = full; autoScroll(comfyConv); }
   };
-  await chatComplete(msgs, {
-    stream: true, signal: comfyAbort ? comfyAbort.signal : undefined,
-    // 只累计正文 content：思考过程(reasoning)不进消息体，避免污染指令解析与后续上下文
-    onDelta: (c) => { if (c) { full += c; upd(); } }
-  });
+  try {
+    await chatComplete(msgs, {
+      stream: true, signal: comfyAbort ? comfyAbort.signal : undefined,
+      // 只累计正文 content：思考过程(reasoning)不进消息体，避免污染指令解析与后续上下文
+      onDelta: (c) => { if (c) { full += c; upd(); } }
+    });
+  } finally { clearInterval(elapsedTimer); }
+  comfySetStatus('🤖 AI 回复完成 · 用时 ' + aiElapsedLabel(Date.now() - startedAt));
   upd();
   return full;
 }

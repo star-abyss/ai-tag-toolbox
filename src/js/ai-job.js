@@ -4,21 +4,35 @@
  */
 'use strict';
 
+function aiElapsedLabel(ms) {
+  var sec = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  if (sec < 60) return sec + 's';
+  var min = Math.floor(sec / 60), rest = sec % 60;
+  return min + 'm ' + String(rest).padStart(2, '0') + 's';
+}
+
 var AIJobController = (function () {
   var jobs = new Map();
   var seq = 0;
-  var DEFAULT_TIMEOUT = 120000;
+  var MIN_TIMEOUT = 300000;
+  var DEFAULT_TIMEOUT = 0;
 
   function makeId() { return 'job_' + Date.now() + '_' + (++seq); }
   function snapshot(job) {
-    return { id: job.id, state: job.state, startedAt: job.startedAt || 0, finishedAt: job.finishedAt || 0, error: job.error || '' };
+    var end = job.finishedAt || (job.startedAt ? Date.now() : 0);
+    return { id: job.id, state: job.state, startedAt: job.startedAt || 0, finishedAt: job.finishedAt || 0, elapsedMs: job.startedAt ? Math.max(0, end - job.startedAt) : 0, timeoutMs: job.timeoutMs || 0, timeoutEnabled: !!job.timeoutMs, error: job.error || '' };
   }
   function setState(job, state, error) {
     job.state = state;
+    if (state !== 'queued' && state !== 'running' && !job.finishedAt) job.finishedAt = Date.now();
     if (error) job.error = String(error && error.message || error);
     if (typeof job.onStatus === 'function') {
       try { job.onStatus(snapshot(job)); } catch (e) {}
     }
+  }
+
+  function cancelRemote(job) {
+    try { if (window.aiTag && window.aiTag.ai && typeof window.aiTag.ai.cancel === 'function') window.aiTag.ai.cancel(job.id); } catch (e) {}
   }
 
   async function complete(messages, options) {
@@ -31,29 +45,42 @@ var AIJobController = (function () {
     var callerSignal = options.signal;
     var onAbort = function () {
       if (!job.controller.signal.aborted) job.controller.abort();
-      try { if (window.aiTag && window.aiTag.ai && typeof window.aiTag.ai.cancel === 'function') window.aiTag.ai.cancel(job.id); } catch (e) {}
+      cancelRemote(job);
     };
     if (callerSignal) {
       if (callerSignal.aborted) onAbort();
       else callerSignal.addEventListener('abort', onAbort, { once: true });
     }
-    var timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_TIMEOUT;
-    job.timeout = setTimeout(function () {
+    var timeoutMs;
+    if (options.timeoutMs === 0 || options.timeoutEnabled === false) timeoutMs = 0;
+    else if (Number(options.timeoutMs) > 0) timeoutMs = options.allowShortTimeout === true ? Number(options.timeoutMs) : Math.max(MIN_TIMEOUT, Number(options.timeoutMs));
+    else {
+      var configured = typeof aiCfg !== 'undefined' ? aiCfg : {};
+      timeoutMs = configured.timeoutEnabled === true ? Math.max(MIN_TIMEOUT, Math.min(3600000, (Number(configured.timeoutSec) || 300) * 1000)) : 0;
+    }
+    job.timeoutMs = timeoutMs;
+    if (timeoutMs > 0) job.timeout = setTimeout(function () {
       if (!job.controller.signal.aborted) {
         job.timedOut = true;
         job.controller.abort();
+        cancelRemote(job);
       }
     }, timeoutMs);
-    setState(job, 'running');
     job.startedAt = Date.now();
+    setState(job, 'running');
+    job.heartbeat = setInterval(function () {
+      if (job.state === 'running' && typeof job.onStatus === 'function') {
+        try { job.onStatus(snapshot(job)); } catch (e) {}
+      }
+    }, 1000);
     try {
       var result = await AIClient.complete(messages, Object.assign({}, options, { jobId: job.id }));
-      if (job.timedOut) throw new Error('AI 请求超时（' + Math.round(timeoutMs / 1000) + ' 秒）');
+      if (job.timedOut) throw new Error('AI 请求超时（' + Math.max(1, Math.ceil(timeoutMs / 1000)) + ' 秒）');
       setState(job, 'succeeded');
       return result;
     } catch (e) {
       if (job.timedOut) {
-        setState(job, 'timeout', 'AI 请求超时（' + Math.round(timeoutMs / 1000) + ' 秒）');
+        setState(job, 'timeout', 'AI 请求超时（' + Math.max(1, Math.ceil(timeoutMs / 1000)) + ' 秒）');
         throw new Error(job.error);
       }
       if (job.controller.signal.aborted || (callerSignal && callerSignal.aborted)) {
@@ -63,7 +90,8 @@ var AIJobController = (function () {
       setState(job, 'failed', e);
       throw e;
     } finally {
-      clearTimeout(job.timeout);
+      if (job.timeout) clearTimeout(job.timeout);
+      if (job.heartbeat) clearInterval(job.heartbeat);
       job.finishedAt = Date.now();
       if (callerSignal) callerSignal.removeEventListener('abort', onAbort);
       // 保留最近完成任务一小段时间，便于诊断；活动任务查询只返回 queued/running。
@@ -73,7 +101,7 @@ var AIJobController = (function () {
 
   function cancel(id) {
     var job = jobs.get(id);
-    if (job && !job.controller.signal.aborted) job.controller.abort();
+    if (job && !job.controller.signal.aborted) { job.controller.abort(); cancelRemote(job); }
     return !!job;
   }
   function active() {
@@ -82,5 +110,5 @@ var AIJobController = (function () {
     return out;
   }
   function get(id) { var job = jobs.get(id); return job ? snapshot(job) : null; }
-  return { complete: complete, cancel: cancel, active: active, get: get, timeoutMs: DEFAULT_TIMEOUT };
+  return { complete: complete, cancel: cancel, active: active, get: get, timeoutMs: DEFAULT_TIMEOUT, minTimeoutMs: MIN_TIMEOUT };
 })();

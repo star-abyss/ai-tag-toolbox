@@ -4,11 +4,11 @@
     "name": "简体中文",
     "nativeName": "简体中文",
     "version": "1.0.0",
-    "baseAppVersion": "1.4.0",
+    "baseAppVersion": "1.4.1",
     "author": "AI Tag Toolbox"
   },
   "ui": {
-    "document": { "title": "AI 绘画 Tag 工具箱 V1.4.0 · Danbooru 标签选择器" },
+    "document": { "title": "AI 绘画 Tag 工具箱 V1.4.1 · Danbooru 标签选择器" },
     "common": {
       "save": "保存",
       "cancel": "取消",
@@ -59,8 +59,8 @@
       "copied": "已复制",
       "copyOnly": "仅复制",
       "remove": "移除",
-      "brandSub": "V1.4.0 · 共 {count} 个标签 · 单击选择 · 一键复制",
-      "brandSubWithModel": "V1.4.0 · 共 {count} 个标签（含识图模型同步 {modelCount} 个）· 单击选择 · 一键复制"
+      "brandSub": "V1.4.1 · 共 {count} 个标签 · 单击选择 · 一键复制",
+      "brandSubWithModel": "V1.4.1 · 共 {count} 个标签（含识图模型同步 {modelCount} 个）· 单击选择 · 一键复制"
     },
     "translation": {
       "title": "🌐 翻译",
@@ -114,6 +114,10 @@
       "workflowCopy": "📋 复制工作流",
       "workflowOpen": "🌐 打开 ComfyUI 页面",
       "workflowSync": "🔄 同步工作流设置"
+      ,"timeoutEnable": "启用 AI 自动超时停止",
+      "timeoutSeconds": "自动停止时间",
+      "timeoutHint": "默认不自动截断 AI 请求；AI 持续思考时会一直等待，直到 AI 返回、你点击“停止”或发生连接错误。启用自动超时后，最短为 300 秒。",
+      "timeoutUnit": "秒"
     },
     "ai": {
       "modeAssist": "💬 对话",

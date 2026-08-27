@@ -29,7 +29,7 @@ function relTime(ts) {
   if (d < 864e5) return Math.floor(d / 36e5) + '时前';
   const dt = new Date(ts); return (dt.getMonth() + 1) + '/' + dt.getDate();
 }
-var talkPendingImgs = [], talkImgMetas = [], talkBusy = false, talkAbort = null;
+var talkPendingImgs = [], talkImgMetas = [], talkBusy = false, talkAbort = null, talkLastElapsedMs = 0;
 var talkMode = 'assist';
 var talkConv = $('#talkConv'), talkStatus = $('#talkStatus'), talkIn = $('#talkIn'),
   talkImgBtn = $('#talkImgBtn'), talkImgFile = $('#talkImgFile'), talkImgRow = $('#talkImgRow'),
@@ -349,7 +349,16 @@ async function talkAiReply(msgs, els) {
     body.textContent = full + (full ? '▌' : '');
     autoScroll(talkConv);
   };
-  await chatComplete(msgs, { stream: true, signal: talkAbort ? talkAbort.signal : undefined, onDelta: (c, rc) => { if (rc) { thinkBuf += rc; if (think) render(); } if (c) { full += c; render(); } } });
+  const startedAt = Date.now();
+  const tick = () => { if (talkStatus) talkSetStatus('🤖 AI 思考中… ' + aiElapsedLabel(Date.now() - startedAt)); };
+  tick();
+  const elapsedTimer = setInterval(tick, 1000);
+  try {
+    await chatComplete(msgs, { stream: true, signal: talkAbort ? talkAbort.signal : undefined, onDelta: (c, rc) => { if (rc) { thinkBuf += rc; if (think) render(); } if (c) { full += c; render(); } } });
+  } finally {
+    clearInterval(elapsedTimer);
+    talkLastElapsedMs = Date.now() - startedAt;
+  }
   body.textContent = full;
   renderMessageText(body, full);   // 富文本：``` 代码块自动包裹（含复制按钮）
   if (think) {
@@ -423,7 +432,7 @@ async function runTalk(txt, imgs, metas, mode, skipUser) {
       const finB = startAiBubble(talkHist.length);
       const full = await talkAiReply([{ role: 'system', content: sys2 }, { role: 'user', content: contentParts(u2, imgs) }], finB);
       talkHist.push({ role: 'assistant', text: full, mode: 'rk', ts: Date.now() });
-      talkSetStatus('✅ 识图并复刻完成');
+      talkSetStatus('✅ 识图并复刻完成 · 用时 ' + aiElapsedLabel(talkLastElapsedMs));
     } else {
       // gen / assist / comfy
       let sys;
@@ -478,7 +487,7 @@ async function runTalk(txt, imgs, metas, mode, skipUser) {
           talkHist.push({ role: 'assistant', text: full2, mode, ts: Date.now() });
         }
       }
-      talkSetStatus('✅ 完成');
+      talkSetStatus('✅ 完成 · 用时 ' + aiElapsedLabel(talkLastElapsedMs));
     }
   } catch (e) {
     if (talkAbort && talkAbort.signal.aborted) { talkAddMsg('sys', '已停止。'); talkSetStatus('已停止'); }
@@ -900,6 +909,10 @@ async function visAiDescribe() {
   const descMsgs = [{ role: 'system', content: effectiveVision() },
     { role: 'user', content: contentParts('请分析这张图片，详细列出其中的所有元素并描述内容。', visPendingImgs) }];
   let full = '';
+  const visStartedAt = Date.now();
+  const visElapsedTimer = setInterval(() => {
+    if (!full) visDesc.textContent = '🤔 正在识图… · 已用时 ' + aiElapsedLabel(Date.now() - visStartedAt);
+  }, 1000);
   try {
     try {
       await chatComplete(descMsgs, { stream: true, signal: visAbort.signal, onDelta: (d, rc) => { if (rc) full += rc; if (d) { if (full.startsWith('🤔')) full = ''; full += d; } visDesc.textContent = full + '▌'; } });
@@ -912,9 +925,10 @@ async function visAiDescribe() {
     visDesc.textContent = full;
     toast('AI 描述完成');
   } catch (e) {
-    if (visAbort.signal.aborted) { visDesc.textContent = (full && !full.startsWith('🤔') ? full : '') + '（已停止）'; toast('已停止'); }
-    else { const msg = aiError(e); visDesc.textContent = '⚠️ ' + msg; toast(msg); }
+    if (visAbort.signal.aborted) { visDesc.textContent = (full && !full.startsWith('🤔') ? full : '') + '（已停止） · 用时 ' + aiElapsedLabel(Date.now() - visStartedAt); toast('已停止'); }
+    else { const msg = aiError(e); visDesc.textContent = '⚠️ ' + msg + '\n⏱ 用时 ' + aiElapsedLabel(Date.now() - visStartedAt); toast(msg); }
   } finally {
+    clearInterval(visElapsedTimer);
     visBusy = false; visTagBtn.disabled = visDescBtn.disabled = false; visStop.style.display = 'none';
     renderVisTags();
   }
@@ -2036,6 +2050,12 @@ function appendAssistantMsg(content, msg, reasonHTML) {
   if (reasonHTML) st.bubbles[0].insertAdjacentHTML('beforebegin', reasonHTML);
   // 原始消息 / 删除按钮只放在“复制提示词”所在气泡上，避免一条消息里重复出现
   const actionB = st.promptBubbles.length ? st.promptBubbles[st.promptBubbles.length - 1] : st.bubbles[st.bubbles.length - 1];
+  if (msg && msg.elapsedMs > 0) {
+    const tm = document.createElement('div');
+    tm.className = 'msg-time';
+    tm.textContent = '⏱ 用时 ' + aiElapsedLabel(msg.elapsedMs);
+    actionB.appendChild(tm);
+  }
   // 「查看原始消息」：点击后本条消息变为白色原文框（隐藏分段气泡与下方标签），下方出现「恢复显示」
   const rawWrap = document.createElement('div');
   rawWrap.className = 'mraw';
@@ -2239,6 +2259,12 @@ async function chatSend(text, imgs) {
   chatBusy = true; chatSendBtn.disabled = true;
   chatAbort = new AbortController();
   let full = '';
+  const chatStartedAt = Date.now();
+  let chatElapsedMs = 0;
+  const chatElapsedTimer = setInterval(() => {
+    chatElapsedMs = Date.now() - chatStartedAt;
+    textEl.textContent = (full || '🤔 思考中…') + '\n\n⏱ 已用时 ' + aiElapsedLabel(chatElapsedMs);
+  }, 1000);
   const msgs = [{ role: 'system', content: composeSystem('chat', { text: txt, strict: aiStrict.checked }) },
     ...chatHist.map(m => ({ role: m.role, content: contentParts(m.content + (m.imgs && m.imgs.length ? '\n\n' + (m.imgRef || imgRefFallback(m.imgs)) : ''), m.imgs) }))];
   const onDelta = (d, rc) => {
@@ -2268,7 +2294,8 @@ async function chatSend(text, imgs) {
       full = await chatComplete(msgs, { stream: false, signal: chatAbort.signal });
     }
     if (!full) throw new Error('模型返回内容为空');
-    chatHist.push({ role: 'assistant', content: full });
+    chatElapsedMs = Date.now() - chatStartedAt;
+    chatHist.push({ role: 'assistant', content: full, elapsedMs: chatElapsedMs });
     persistChat();
     if (reasonBox) reasonBox.open = false;
     const reasonHTML = reasonBox ? reasonBox.outerHTML : '';
@@ -2278,13 +2305,15 @@ async function chatSend(text, imgs) {
     if (!chatAbort.signal.aborted) {
       const err = '⚠️ ' + aiError(e);
       textEl.textContent = (full ? full + '\n\n' : '') + err;
-      chatHist.push({ role: 'assistant', content: err });
+      chatHist.push({ role: 'assistant', content: err, elapsedMs: chatElapsedMs });
     } else {
       textEl.textContent = (full ? full : '（未输出内容）') + '（已停止）';
-      chatHist.push({ role: 'assistant', content: full });
+      chatHist.push({ role: 'assistant', content: full, elapsedMs: chatElapsedMs });
     }
     persistChat();
   } finally {
+    clearInterval(chatElapsedTimer);
+    chatElapsedMs = Date.now() - chatStartedAt;
     chatBusy = false; chatSendBtn.disabled = false;
     bubble.dataset.idx = chatHist.length - 1;
   }

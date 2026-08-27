@@ -3,6 +3,7 @@
 // AI 已从弹窗改为内嵌视图（aiView），保留兼容占位对象供旧引用使用
 var aiModal = { classList: { contains: () => false, add: () => {}, remove: () => {} } }, aiSetEl = $('#aiSet'), aiBase = $('#aiBase'), aiKey = $('#aiKey'), aiKeyClear = $('#aiKeyClear'), aiKeyStatus = $('#aiKeyStatus'),
   aiModel = $('#aiModel'), aiModelCustom = $('#aiModelCustom'), aiPreset = $('#aiPreset'), aiStrict = $('#aiStrict'), aiTestBtn = $('#aiTest'),
+  aiTimeoutEnabled = $('#aiTimeoutEnabled'), aiTimeoutSec = $('#aiTimeoutSec'),
   aiSys = $('#aiSys'), aiSysReset = $('#aiSysReset'), wbList = $('#wbList'), wbAdd = $('#wbAdd'), wbFoldAll = $('#wbFoldAll'),
   wbImport = $('#wbImport'), wbExport = $('#wbExport'), wbBundle = $('#wbBundle'), wbImportFile = $('#wbImportFile'),
   wbModal = $('#wbModal'), wbModalClose = $('#wbModalClose'), wbModalHint = $('#wbModalHint'),
@@ -70,7 +71,7 @@ icBtn(chatImgBtn, 'upload', '上传图片');
 icBtn(chatSendBtn, 'send', '发送');
 icBtn(chatClearBtn, 'trash', '清空对话');
 
-var DEFAULT_CFG = { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', temp: 0.7, strict: true, sysPrompt: '', qualityPrefix: '', visionPrompt: '', wb: [], ver: 0, comfyBase: 'http://127.0.0.1:8188', comfyOn: false, comfyIters: 3, comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, comfyPos: '', comfyNeg: '', comfyWorkflow: '' };
+var DEFAULT_CFG = { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', temp: 0.7, strict: true, sysPrompt: '', qualityPrefix: '', visionPrompt: '', wb: [], ver: 0, timeoutEnabled: false, timeoutSec: 300, comfyBase: 'http://127.0.0.1:8188', comfyOn: false, comfyIters: 3, comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, comfyPos: '', comfyNeg: '', comfyWorkflow: '' };
 var rawAiCfg = loadJSON(LS_AI, {}) || {};
 // 旧版本可能在 localStorage 中留下明文 key；只在内存中保留一次用于迁移，
 // 后续 aiCfg 永不包含 key，避免普通配置保存时再次写回明文。

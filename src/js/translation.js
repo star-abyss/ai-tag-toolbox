@@ -19,6 +19,7 @@ var translateCopyTagsBtn = $('#translateCopyTags');
 var translateTimer = null;
 var translateRequestNo = 0;
 var translationOpen = false;
+var translateAiElapsedTimer = null;
 
 function translationDirectionLabel(direction, kind) {
   if (kind === 'ai') return direction === 'zh-en' ? '中文 → Tag' : 'Tag → 中文';
@@ -276,7 +277,11 @@ async function runAiTranslation() {
   if (translateAiBtn) translateAiBtn.disabled = true;
   const direction = translationDirectionFor(text);
   const refs = buildTranslationReference(text, 60, direction);
-  setTranslationStatus(trText('ui.translation.aiStatus', '正在调用 AI 翻译（已提供 ' + refs.length + ' 个本站 Tag 对照）…', { count: refs.length }));
+  const aiStartedAt = Date.now();
+  const updateAiElapsed = () => setTranslationStatus(trText('ui.translation.aiStatus', '正在调用 AI 翻译（已提供 ' + refs.length + ' 个本站 Tag 对照）…', { count: refs.length }) + ' · 已用时 ' + aiElapsedLabel(Date.now() - aiStartedAt));
+  updateAiElapsed();
+  if (translateAiElapsedTimer) clearInterval(translateAiElapsedTimer);
+  translateAiElapsedTimer = setInterval(updateAiElapsed, 1000);
   try {
     const prompt = buildTranslationPrompt(text, direction);
     const result = await chatComplete([
@@ -289,6 +294,7 @@ async function runAiTranslation() {
   } catch (e) {
     setTranslationStatus(typeof formatAppError === 'function' ? formatAppError(e, 'AI 翻译') : ('AI 翻译失败：' + ((e && e.message) || e)), 'error');
   } finally {
+    if (translateAiElapsedTimer) { clearInterval(translateAiElapsedTimer); translateAiElapsedTimer = null; }
     if (translateAiBtn) translateAiBtn.disabled = !String(translateInput && translateInput.value || '').trim();
   }
 }

@@ -83,6 +83,8 @@ function readCfg() {
   delete aiCfg.key;
   aiCfg.model = modelVal();
   aiCfg.strict = aiStrict.checked;
+  aiCfg.timeoutEnabled = !!(aiTimeoutEnabled && aiTimeoutEnabled.checked);
+  aiCfg.timeoutSec = Math.max(300, Math.min(3600, parseInt(aiTimeoutSec && aiTimeoutSec.value, 10) || 300));
   const sp = aiSys.value.trim();
   aiCfg.sysPrompt = sp === DEFAULT_BASE_PROMPT.trim() ? '' : sp;
   const qp = qpText.value.trim();

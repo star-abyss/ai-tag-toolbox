@@ -185,6 +185,44 @@ async function runI18nTest(deps) {
   }
 }
 
+async function runTimeoutTest(deps) {
+  const { app, BrowserWindow, path } = deps;
+  const w = new BrowserWindow({ show: false, webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true, sandbox: false } });
+  try {
+    await w.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
+    await new Promise(r => setTimeout(r, 700));
+    const result = await w.webContents.executeJavaScript(`(async function(){
+      const old = AIClient.complete;
+      const states = [];
+      const uiDefaults = { enabled: document.getElementById('aiTimeoutEnabled') && document.getElementById('aiTimeoutEnabled').checked, seconds: document.getElementById('aiTimeoutSec') && document.getElementById('aiTimeoutSec').value, disabled: document.getElementById('aiTimeoutSec') && document.getElementById('aiTimeoutSec').disabled };
+      AIClient.complete = () => new Promise(resolve => setTimeout(() => resolve('done'), 120));
+      const started = Date.now();
+      const value = await AIJobController.complete([{ role:'user', content:'timeout-disabled' }], { onStatus: s => states.push(s) });
+      const disabled = { value, elapsedMs: Date.now() - started, status: states[states.length - 1], hasTimer: states.some(s => s.timeoutEnabled) };
+      AIClient.complete = () => new Promise(resolve => setTimeout(() => resolve('late'), 250));
+      const timed = [];
+      let timeoutError = '';
+      try { await AIJobController.complete([{ role:'user', content:'timeout-enabled' }], { timeoutMs:60, allowShortTimeout:true, onStatus: s => timed.push(s) }); } catch (e) { timeoutError = String(e && e.message || e); }
+      const minStates = [];
+      const abort = new AbortController();
+      AIClient.complete = (messages, options) => new Promise((resolve, reject) => { options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }); });
+      const minTask = AIJobController.complete([{ role:'user', content:'timeout-minimum' }], { timeoutMs:1, signal: abort.signal, onStatus: s => minStates.push(s) }).catch(() => null);
+      await new Promise(r => setTimeout(r, 20));
+      abort.abort();
+      await minTask;
+      AIClient.complete = old;
+      return { disabled, timed: timed[timed.length - 1], timeoutError, minimum: minStates.find(s => s.state === 'running'), uiDefaults };
+    })()`);
+    console.log('TIMEOUTTEST result: ' + JSON.stringify(result));
+    const ok = result && result.disabled && result.disabled.value === 'done' && result.disabled.elapsedMs >= 100 && result.disabled.status && result.disabled.status.state === 'succeeded' && result.disabled.hasTimer === false && result.timed && result.timed.state === 'timeout' && /超时/.test(result.timeoutError || '') && result.timed.elapsedMs >= 50 && result.minimum && result.minimum.timeoutMs >= 300000 && result.uiDefaults && result.uiDefaults.enabled === false && String(result.uiDefaults.seconds) === '300' && result.uiDefaults.disabled === true;
+    console.log('TIMEOUTTEST stage: ' + (ok ? 'done' : 'failed'));
+    app.exit(ok ? 0 : 1);
+  } catch (e) {
+    console.log('TIMEOUTTEST FAIL: ' + (e && e.message || e));
+    app.exit(1);
+  }
+}
+
 // 主进程安全 API 请求回归：验证 Key 可写入系统安全存储、不会出现在普通配置，
 // 且实际请求由主进程带上 Authorization 后返回结果。
 async function runSecureAiTest(deps) {
@@ -234,7 +272,7 @@ async function runSecureAiTest(deps) {
       const controlled = await chatComplete([{ role:'user', content:'controller' }], { stream:false });
       let timeoutError = '';
       aiCfg.model = 'slow-model';
-      try { await chatComplete([{ role:'user', content:'slow' }], { stream:false, timeoutMs:80 }); } catch (e) { timeoutError = String(e && e.message || e); }
+      try { await chatComplete([{ role:'user', content:'slow' }], { stream:false, timeoutMs:80, allowShortTimeout:true }); } catch (e) { timeoutError = String(e && e.message || e); }
       const cfg = localStorage.getItem('dbt_ai_v2') || '';
       const cleared = await api.keyClear();
       const finalState = await api.keyStatus();
@@ -566,6 +604,7 @@ function initTestModes(deps) {
   if (idx('--translationprompttest') >= 0) { runTranslationPromptTest(deps); return true; }
   if (idx('--errortest') >= 0) { runErrorMessageTest(deps); return true; }
   if (idx('--i18ntest') >= 0) { runI18nTest(deps); return true; }
+  if (idx('--timeouttest') >= 0) { runTimeoutTest(deps); return true; }
   if (idx('--secureaitest') >= 0) { runSecureAiTest(deps); return true; }
   if (idx('--imagestoragetest') >= 0) { runImageStorageTest(deps); return true; }
   if (idx('--translationui') >= 0) { runTranslationUiTest(deps, after('--translationui')); return true; }

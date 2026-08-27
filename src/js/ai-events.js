@@ -91,8 +91,17 @@ aiPreset.addEventListener('change', () => {
   aiModelCustom.style.display = 'none';
   aiModelCustom.value = '';
 });
+if (aiTimeoutEnabled && aiTimeoutSec) aiTimeoutEnabled.addEventListener('change', () => {
+  aiTimeoutSec.disabled = !aiTimeoutEnabled.checked;
+  readCfg();
+});
+if (aiTimeoutSec) aiTimeoutSec.addEventListener('change', () => {
+  aiTimeoutSec.value = String(Math.max(300, Math.min(3600, parseInt(aiTimeoutSec.value, 10) || 300)));
+  readCfg();
+});
 $('#aiClearCfg').onclick = () => {
   aiCfg.base = DEFAULT_CFG.base; aiCfg.model = DEFAULT_CFG.model; aiCfg.strict = true;
+  aiCfg.timeoutEnabled = DEFAULT_CFG.timeoutEnabled; aiCfg.timeoutSec = DEFAULT_CFG.timeoutSec;
   aiCfg.comfyBase = DEFAULT_CFG.comfyBase; aiCfg.comfyOn = false; aiCfg.comfyIters = 3;
   aiCfg.comfyW = 768; aiCfg.comfyH = 1024; aiCfg.comfySteps = 25; aiCfg.comfyCfg = 7; aiCfg.comfyWorkflow = ''; aiCfg.comfyPos = ''; aiCfg.comfyNeg = '';
   saveJSON(LS_AI, aiCfg);
@@ -101,6 +110,8 @@ $('#aiClearCfg').onclick = () => {
   }
   aiBase.value = DEFAULT_CFG.base; aiKey.value = ''; aiKey.placeholder = '输入后安全保存（不会写入普通配置）'; setModelVal(DEFAULT_CFG.model);
   aiStrict.checked = true;
+  if (aiTimeoutEnabled) aiTimeoutEnabled.checked = DEFAULT_CFG.timeoutEnabled;
+  if (aiTimeoutSec) aiTimeoutSec.value = String(DEFAULT_CFG.timeoutSec);
   comfyBase.value = DEFAULT_CFG.comfyBase; comfyOn.checked = false;
    comfyW.value = 768; comfyH.value = 1024; comfySteps.value = 25; comfyCfg.value = 7;
   comfyPos.value = ''; comfyNeg.value = ''; comfyWf.value = '';

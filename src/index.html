@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';">
-<title>AI 绘画 Tag 工具箱 V1.4.0 · Danbooru 标签选择器</title>
+<title>AI 绘画 Tag 工具箱 V1.4.1 · Danbooru 标签选择器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
 <link rel="stylesheet" href="css/app.css">
 </head>
@@ -234,6 +234,11 @@
         <div class="opts">
           <label class="opt"><input type="checkbox" id="aiStrict" checked> 严格从标签库选取（智能按需发送：识图复刻只发识图得到的 Tag；无图时按你的描述关键词匹配相关标签发给 AI，Token 消耗小）</label>
         </div>
+        <div class="opts timeout-options">
+          <label class="opt"><input type="checkbox" id="aiTimeoutEnabled"><span data-i18n="ui.settings.timeoutEnable"></span></label>
+          <label class="opt"><span data-i18n="ui.settings.timeoutSeconds"></span> <input id="aiTimeoutSec" type="number" min="300" max="3600" step="30" value="300" style="width:78px"> <span data-i18n="ui.settings.timeoutUnit"></span></label>
+        </div>
+        <div class="hint" data-i18n="ui.settings.timeoutHint"></div>
         <div class="row">
           <button class="abtn" id="aiTest" data-i18n="ui.settings.testConnection"></button>
           <button class="abtn ghost" id="aiClearCfg" data-i18n="ui.settings.restoreDefault"></button>

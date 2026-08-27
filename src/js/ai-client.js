@@ -15,6 +15,8 @@ var AIClient = {
     const result = await window.aiTag.ai.complete(messages, {
       base, model: aiCfg.model, stream: !!opt.stream, maxTokens: opt.maxTokens || 0,
       temperature: typeof aiCfg.temp === 'number' ? aiCfg.temp : 0.7,
+      timeoutMs: opt.timeoutMs == null ? undefined : opt.timeoutMs,
+      timeoutEnabled: opt.timeoutEnabled == null ? undefined : opt.timeoutEnabled,
       requestId: opt.jobId || '', onDelta: opt.onDelta
     });
     return result && typeof result === 'object' ? (result.text || '') : String(result || '');
