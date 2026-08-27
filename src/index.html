@@ -26,7 +26,7 @@
   </div>
   <button class="hbtn" id="translateBtn" data-i18n-title="ui.translation.title" data-i18n="ui.header.translation"></button>
   <div class="popwrap">
-    <button class="hbtn" id="themeBtn">🎨 样式</button>
+  <button class="hbtn" id="themeBtn" data-i18n="ui.header.style" data-i18n-title="ui.header.styleTitle"></button>
     <div class="pop" id="themePop" hidden>
     <button class="popitem" data-theme="light"><span class="ck">✓</span><span data-i18n="ui.header.light"></span></button>
       <button class="popitem" data-theme="dark"><span class="ck"></span><span data-i18n="ui.header.dark"></span></button>
@@ -46,7 +46,7 @@
     <div class="slist" id="catList"></div>
     <button class="addbtn" id="addTagBtn" data-i18n="ui.custom.title"></button>
     <div id="sideAi" style="display:none">
-      <button id="talkNew" class="tnew">＋ 新对话</button>
+      <button id="talkNew" class="tnew" data-i18n="ui.ai.newChat"></button>
       <div class="tsidehead" style="padding:8px 8px 2px">📚 对话记录</div>
       <div id="talkSessionList" class="tlist" style="flex:1"></div>
     </div>
@@ -299,32 +299,32 @@
           <div class="imgsrow talkimgs" id="talkImgRow" style="display:none"></div>
           <div class="tkmodebar">
             <div class="tkthumb" id="tkThumb"></div>
-            <div class="tkmode on" data-mode="assist">💬 对话</div>
-            <div class="tkmode" data-mode="gen">✨ 生成Tag</div>
-            <div class="tkmode" data-mode="rk">🎯 复刻</div>
-            <div class="tkmode" data-mode="comfy">🎨 迭代
+            <div class="tkmode on" data-mode="assist"><span data-i18n="ui.ai.modeAssist"></span></div>
+            <div class="tkmode" data-mode="gen"><span data-i18n="ui.ai.modeGen"></span></div>
+            <div class="tkmode" data-mode="rk"><span data-i18n="ui.ai.modeRk"></span></div>
+            <div class="tkmode" data-mode="comfy"><span data-i18n="ui.ai.modeComfy"></span>
               <select id="talkIters" class="tkmode-sel" title="ComfyUI 迭代次数（最多几轮）"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select>
             </div>
           </div>
           <div class="comfyin talkin">
             <textarea id="talkIn" rows="2" placeholder="描述你的需求…（Enter 发送，Shift+Enter 换行；可直接粘贴 / 拖入图片）"></textarea>
             <div class="talkbar">
-              <button class="abtn" id="talkImgBtn">🖼 上传图片</button>
+              <button class="abtn" id="talkImgBtn" data-i18n="ui.ai.uploadImage"></button>
               <span class="tgrow"></span>
-              <button class="abtn pri" id="talkSendBtn">📤 发送</button>
-              <button class="abtn danger" id="talkClearBtn">🗑 清空对话</button>
+              <button class="abtn pri" id="talkSendBtn" data-i18n="ui.ai.send"></button>
+              <button class="abtn danger" id="talkClearBtn" data-i18n="ui.ai.clearChat"></button>
             </div>
             <input type="file" id="talkImgFile" accept="image/*" multiple hidden>
             <div class="hint">· 🔍 本地识图：只识别 Tag，显示在右侧面板（不进入对话）。<br>· 🎨 ComfyUI迭代 需先在「⚙️ API 设置 → ComfyUI」勾选启用并上传工作流。</div>
           </div>
         </section>
         <aside class="tkpane" id="tagPane">
-          <div class="tphead">当前图片</div>
-          <div id="tpImg" class="tp-img"><div class="tp-empty">未上传图片</div></div>
-          <button class="tp-act pri" id="tpIdentify">本地识图</button>
-          <button class="tp-act" id="tpClearImg">清除图片</button>
+          <div class="tphead" data-i18n="ui.ai.currentImage"></div>
+          <div id="tpImg" class="tp-img"><div class="tp-empty" data-i18n="ui.ai.notUploaded"></div></div>
+          <button class="tp-act pri" id="tpIdentify" data-i18n="ui.ai.identify"></button>
+          <button class="tp-act" id="tpClearImg" data-i18n="ui.ai.clearImage"></button>
           <div id="tpModes" class="tp-mods"></div>
-          <div class="tp-empty" id="tpPlaceholder" style="display:none">上传图片后自动读取内置 Tag；点「本地识图」提取模型 Tag。</div>
+          <div class="tp-empty" id="tpPlaceholder" style="display:none" data-i18n="ui.ai.imageHint"></div>
         </aside>
       </div>
     </div>
@@ -402,78 +402,78 @@
     </div>
     <div id="tabPrompt" style="display:none">
       <div class="aitop slim2">
-        <button class="abtn ghost backbtn" id="promptBack">← 返回 AI 对话</button>
-        <span style="font-weight:700;font-size:14px">提示词（拓展提示词）</span>
+        <button class="abtn ghost backbtn" id="promptBack" data-i18n="ui.prompt.back"></button>
+        <span style="font-weight:700;font-size:14px" data-i18n="ui.prompt.title"></span>
       </div>
       <details id="mainPrompt" open class="promptcard">
-        <summary title="点击折叠 / 展开">📝 主提示词 <span class="pcsub">文生图 / 生成Tag指令 · 画师 · 识图 · 系统 · 可按预设多版本切换/导入导出</span></summary>
+          <summary data-i18n-title="ui.promptExtra.toggleTitle"><span data-i18n="ui.prompt.main"></span> <span class="pcsub" data-i18n="ui.prompt.mainSub"></span></summary>
         <div class="pcbody">
           <div class="presetbar">
-            <span style="font-size:13px;color:var(--muted)">当前预设</span>
+            <span style="font-size:13px;color:var(--muted)" data-i18n="ui.prompt.preset"></span>
             <select id="presetSel" class="wbselect"></select>
-            <button class="abtn ghost" id="presetSave">＋ 存为预设</button>
-            <button class="abtn ghost" id="presetImport">📥 导入</button>
-            <button class="abtn ghost" id="presetExport">📤 导出</button>
-            <button class="abtn ghost danger" id="presetDelete">🗑 删除</button>
+            <button class="abtn ghost" id="presetSave" data-i18n="ui.prompt.savePreset"></button>
+            <button class="abtn ghost" id="presetImport" data-i18n="ui.prompt.import"></button>
+            <button class="abtn ghost" id="presetExport" data-i18n="ui.prompt.export"></button>
+            <button class="abtn ghost danger" id="presetDelete" data-i18n="ui.prompt.delete"></button>
           </div>
           <div class="row" style="margin-top:6px">
-            <button class="abtn" id="pcolExport">📦 导出集合（主 + 拓展）</button>
-            <button class="abtn ghost" id="pcolImport">📥 导入集合</button>
+            <button class="abtn" id="pcolExport" data-i18n="ui.prompt.exportCollection"></button>
+            <button class="abtn ghost" id="pcolImport" data-i18n="ui.prompt.importCollection"></button>
             <input type="file" id="pcolFile" accept=".json,application/json" hidden>
-            <button class="abtn ghost" id="promptModReset">↺ 恢复默认启用对象</button>
+            <button class="abtn ghost" id="promptModReset" data-i18n="ui.prompt.resetModules"></button>
           </div>
-          <div class="hint" style="margin:4px 0 10px">每条主提示词可勾选「启用对象」（注入哪些模块）；助手默认不注入任何提示词；识图复刻会先注入「识图提示词」再注入「文生图+画师」，识图提示词在生成阶段自动撤下。</div>
+          <div class="hint" style="margin:4px 0 10px" data-i18n="ui.prompt.modulesHint"></div>
           <details class="pmod-lead" data-special="base">
-            <summary>🧭 文生图主提示词 <span class="pcsub">Anima 编译器规范（基础提示词）</span><span style="flex:1"></span><button class="abtn" id="aiSysReset">↺ 重置为默认</button></summary>
+            <summary><span data-i18n="ui.prompt.base"></span> <span class="pcsub" data-i18n="ui.prompt.baseSub"></span><span style="flex:1"></span><button class="abtn" id="aiSysReset" data-i18n="ui.promptExtra.resetDefault"></button></summary>
             <div class="pmod-mods"></div>
             <div class="form"><textarea id="aiSys" rows="12"></textarea></div>
           </details>
           <details class="pmod-lead" data-special="genTask">
-            <summary>⚙️ 生成Tag指令 <span class="pcsub">把描述/图片转为 Tag 的核心指令</span><span style="flex:1"></span><button class="abtn" id="genTaskReset">↺ 重置为默认</button></summary>
+            <summary><span data-i18n="ui.prompt.genTask"></span> <span class="pcsub" data-i18n="ui.prompt.genTaskSub"></span><span style="flex:1"></span><button class="abtn" id="genTaskReset" data-i18n="ui.promptExtra.resetDefault"></button></summary>
             <div class="pmod-mods"></div>
             <div class="form"><textarea id="genTask" rows="9"></textarea></div>
           </details>
           <details class="pmod-lead" data-special="quality">
-            <summary>🎨 画师主提示词 <span class="pcsub">默认前缀，注入系统提示词</span><span style="flex:1"></span><button class="abtn" id="qpReset">↺ 重置</button></summary>
+            <summary><span data-i18n="ui.prompt.quality"></span> <span class="pcsub" data-i18n="ui.prompt.qualitySub"></span><span style="flex:1"></span><button class="abtn" id="qpReset" data-i18n="ui.promptExtra.reset"></button></summary>
             <div class="pmod-mods"></div>
             <div class="qprefix"><textarea id="qpText" rows="4"></textarea></div>
           </details>
           <details class="pmod-lead" data-special="vision">
-            <summary>🖼 识图提示词 <span class="pcsub">「🎯 识图并复刻」时调用</span><span style="flex:1"></span><button class="abtn" id="aiVisionReset">↺ 重置为默认识图提示词</button></summary>
+            <summary><span data-i18n="ui.prompt.vision"></span> <span class="pcsub" data-i18n="ui.prompt.visionSub"></span><span style="flex:1"></span><button class="abtn" id="aiVisionReset" data-i18n="ui.promptExtra.resetDefault"></button></summary>
             <div class="pmod-mods"></div>
             <div class="qprefix" style="border-left-color:var(--cp)"><textarea id="aiVision" rows="6"></textarea></div>
           </details>
           <details class="pmod-lead" data-special="system">
-            <summary>🤖 系统提示词 <span class="pcsub">ComfyUI 调用与迭代（自动生成，不可编辑）</span><span style="flex:1"></span></summary>
+            <summary><span data-i18n="ui.prompt.system"></span> <span class="pcsub" data-i18n="ui.prompt.systemSub"></span><span style="flex:1"></span></summary>
             <div class="pmod-mods"></div>
-            <div class="hint">系统提示词 = ComfyUI 调用方式与迭代指令（RENDER 协议等），由「⚙️ API 与 ComfyUI」配置生成；此处仅选择注入哪些模块。</div>
+            <div class="hint" data-i18n="ui.prompt.systemHint"></div>
           </details>
-          <div class="hint">主提示词 = 文生图主提示词（基础提示词 + 生成Tag指令）+ 画师主提示词 + 识图提示词 + 内容政策 + 标签库匹配。可按「预设」多版本保存/切换/导入导出；与拓展提示词是两套独立体系。注入哪些模块在顶部「模块注入」勾选。</div>
+          <div class="hint" data-i18n="ui.prompt.mainHint"></div>
         </div>
       </details>
 
       <details id="worldBookCard" open class="promptcard">
-        <summary title="点击折叠 / 展开">📚 拓展提示词（扩展能力） <span class="pcsub">选择一本·整体调用 / 停用；默认「附录」</span></summary>
+      <summary data-i18n-title="ui.promptExtra.toggleTitle"><span data-i18n="ui.prompt.world"></span> <span class="pcsub" data-i18n="ui.prompt.worldSub"></span></summary>
         <div class="pcbody">
           <div class="wbrow">
-            当前拓展提示词
+            <span data-i18n="ui.prompt.worldCurrent"></span>
             <select id="worldSel" class="wbselect"></select>
-            <label class="opt"><input type="checkbox" id="worldEnabled" checked> 启用整本</label>
-            <button class="abtn" id="worldAdd">＋ 新建拓展提示词</button>
-            <button class="abtn" id="wbImport">📥 导入</button>
-            <button class="abtn" id="wbExport">📤 导出这本</button>
-            <button class="abtn" id="wbBundle">📦 打包全部拓展提示词</button>
+            <label class="opt"><input type="checkbox" id="worldEnabled" checked> <span data-i18n="ui.prompt.worldEnabled"></span></label>
+            <button class="abtn" id="worldAdd" data-i18n="ui.prompt.newWorld"></button>
+            <button class="abtn" id="wbImport" data-i18n="ui.prompt.import"></button>
+            <button class="abtn" id="wbExport" data-i18n="ui.prompt.exportWorld"></button>
+            <button class="abtn" id="wbBundle" data-i18n="ui.prompt.bundleWorld"></button>
           </div>
           <div class="row" style="margin-top:4px;align-items:center">
-            <span style="font-size:13px;color:var(--muted)">整本启用对象</span>
+            <span style="font-size:13px;color:var(--muted)" data-i18n="ui.prompt.enabledObjects"></span>
             <span id="wbCallMods" style="display:inline-flex;gap:6px"></span>
           </div>
           <div id="worldCards"></div>
           <input type="file" id="wbImportFile" accept=".json,application/json" hidden>
-          <div class="clhead wbheadline" style="margin-top:12px"><span id="wbListTitle">📖 拓展提示词条目</span><span style="flex:1"></span><button class="abtn" id="wbFoldAll">全部折叠</button><button class="abtn" id="wbAdd">＋ 新建条目</button></div>
+          <div class="clhead wbheadline" style="margin-top:12px"><span id="wbListTitle" data-i18n="ui.prompt.entryTitle"></span><span style="flex:1"></span><button class="abtn" id="wbFoldAll" data-i18n="ui.prompt.allCollapse"></button><button class="abtn" id="wbAdd" data-i18n="ui.prompt.newEntry"></button></div>
           <div class="wblist" id="wbList"></div>
-          <div class="row"><button class="abtn" id="previewWorld">👁 预览拓展提示词</button></div>
-          <div class="hint">· <b>整本启用/停用</b>：勾选后该本拓展提示词的所有条目才会注入。<br>· 条目可设<b>触发关键词</b>（命中自动注入）、<b>常驻</b>（始终注入）、启用、排序、折叠；条目优先级高于主提示词中冲突的部分。<br>· 条目可在「模块注入」勾选要注入哪些模块（未勾 = 全模块）。<br>· <b>📥 导入</b>：支持本工具与 SillyTavern 世界书 JSON，作为一本新拓展提示词导入。<b>📤 导出这本</b>：导出为 SillyTavern 兼容格式。<b>📦 打包全部</b>：把所有拓展提示词（含主提示词）打包备份/分享。</div>
+          <div class="row"><button class="abtn" id="previewWorld" data-i18n="ui.prompt.previewWorld"></button></div>
+          <div class="hint" data-i18n="ui.promptExtra.worldHint"></div>
         </div>
       </details>
     </div>
@@ -509,16 +509,16 @@
 <div class="modal" id="wbModal">
   <div class="box">
     <button class="hbtn close" id="wbModalClose">✕</button>
-    <h3>📥 导入世界书：勾选要导入的条目</h3>
+    <h3 data-i18n="ui.promptExtra.importModalTitle"></h3>
     <div class="hint" id="wbModalHint"></div>
     <div class="form-acts">
-      <button class="abtn" id="wbSelAll">全选</button>
-      <button class="abtn" id="wbSelNone">全不选</button>
+      <button class="abtn" id="wbSelAll" data-i18n="ui.promptExtra.selectAll"></button>
+      <button class="abtn" id="wbSelNone" data-i18n="ui.promptExtra.selectNone"></button>
     </div>
     <div class="wbimport" id="wbImportList"></div>
     <div class="form-acts">
-      <button class="abtn pri" id="wbImportGo">导入所选</button>
-      <button class="abtn" id="wbImportCancel">取消</button>
+      <button class="abtn pri" id="wbImportGo" data-i18n="ui.promptExtra.importSelected"></button>
+      <button class="abtn" id="wbImportCancel" data-i18n="ui.common.cancel"></button>
     </div>
   </div>
 </div>

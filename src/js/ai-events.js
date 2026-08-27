@@ -327,14 +327,14 @@ chatClearBtn.onclick = () => { chatReset(); toast('对话已清空'); };
 genDesc.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); genGoBtn.click(); } });
 genDesc.addEventListener('input', renderWbMatch);
 wbAdd.onclick = () => {
-  getActiveEntries().push({ id: 'wb_' + Date.now(), name: '新条目', keys: '', content: '', constant: false, enabled: true });
+  getActiveEntries().push({ id: 'wb_' + Date.now(), name: typeof ptxt === 'function' ? ptxt('newEntry') : t('ui.prompt.newEntry'), keys: '', content: '', constant: false, enabled: true });
   saveWb(); renderWb();
-  toast('已新建规则条目');
+  toast(typeof ptxt === 'function' ? ptxt('newEntry') : t('ui.prompt.newEntry'));
 };
 wbFoldAll.onclick = () => {
   const entries = getActiveEntries();
   const anyOpen = entries.some(e => !e.collapsed);
   entries.forEach(e => { e.collapsed = anyOpen; });
   saveWb(); renderWb();
-  wbFoldAll.textContent = anyOpen ? '全部展开' : '全部折叠';
+  wbFoldAll.textContent = anyOpen ? t('ui.prompt.allExpand') : t('ui.prompt.allCollapse');
 };

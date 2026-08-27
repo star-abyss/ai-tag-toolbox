@@ -116,6 +116,10 @@ window.addEventListener('localechange', function () {
   try { if (typeof renderWorldSelector === 'function') renderWorldSelector(); } catch (e) {}
   try { if (typeof renderWorldCards === 'function') renderWorldCards(); } catch (e) {}
   try { if (typeof renderWbTitle === 'function') renderWbTitle(); } catch (e) {}
+  try { if (typeof renderWb === 'function') renderWb(); } catch (e) {}
+  try { if (typeof renderPresetBar === 'function') renderPresetBar(); } catch (e) {}
+  try { if (typeof renderPromptMods === 'function') renderPromptMods(); } catch (e) {}
+  try { if (typeof renderWbCallMods === 'function') renderWbCallMods(); } catch (e) {}
   try { if (typeof renderTranslationTags === 'function' && translateInput && translateInput.value) renderTranslationTags(translateInput.value); } catch (e) {}
   try { if (typeof applyTheme === 'function') applyTheme(); } catch (e) {}
 });

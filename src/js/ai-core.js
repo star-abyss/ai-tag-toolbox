@@ -54,22 +54,29 @@ var SVG_ICONS = {
   send: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>'
 };
 function icBtn(el, name, label) {
-  if (el && SVG_ICONS[name]) el.innerHTML = ICONS[name] + ' ' + label;
+  if (el && SVG_ICONS[name]) el.innerHTML = SVG_ICONS[name] + '<span>' + label + '</span>';
 }
-icBtn(genImgBtn, 'upload', '上传图片');
-icBtn(genGoBtn, 'sparkles', '生成');
-icBtn(genRkGo, 'target', '识图并复刻');
-icBtn(genRedo, 'refresh', '重新生成');
-icBtn(genStopBtn, 'stop', '停止');
-icBtn(genNewBtn, 'plus', '新对话');
-icBtn(visImgBtn, 'upload', '上传图片');
-icBtn(visTagBtn, 'scan', '本地识图Tag');
-icBtn(visDescBtn, 'bot', 'AI 描述');
-icBtn(visStop, 'stop', '停止');
-icBtn(visClearBtn, 'trash', '清理');
-icBtn(chatImgBtn, 'upload', '上传图片');
-icBtn(chatSendBtn, 'send', '发送');
-icBtn(chatClearBtn, 'trash', '清空对话');
+function refreshAiButtonLabels() {
+  icBtn(genImgBtn, 'upload', t('ui.ai.uploadImage'));
+  icBtn(genGoBtn, 'sparkles', t('ui.ai.generate'));
+  icBtn(genRkGo, 'target', t('ui.ai.identifyRecreate'));
+  icBtn(genRedo, 'refresh', t('ui.ai.redo'));
+  icBtn(genStopBtn, 'stop', t('ui.ai.stop'));
+  icBtn(genNewBtn, 'plus', t('ui.ai.newChat'));
+  icBtn(visImgBtn, 'upload', t('ui.ai.uploadImage'));
+  icBtn(visTagBtn, 'scan', t('ui.ai.identify'));
+  icBtn(visDescBtn, 'bot', t('ui.ai.identify'));
+  icBtn(visStop, 'stop', t('ui.ai.stop'));
+  icBtn(visClearBtn, 'trash', t('ui.common.clear'));
+  icBtn(chatImgBtn, 'upload', t('ui.ai.uploadImage'));
+  icBtn(chatSendBtn, 'send', t('ui.ai.send'));
+  icBtn(chatClearBtn, 'trash', t('ui.ai.clearChat'));
+  icBtn(document.getElementById('talkImgBtn'), 'upload', t('ui.ai.uploadImage'));
+  icBtn(document.getElementById('talkSendBtn'), 'send', t('ui.ai.send'));
+  icBtn(document.getElementById('talkClearBtn'), 'trash', t('ui.ai.clearChat'));
+}
+refreshAiButtonLabels();
+window.addEventListener('localechange', refreshAiButtonLabels);
 
 var DEFAULT_CFG = { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', temp: 0.7, strict: true, sysPrompt: '', qualityPrefix: '', visionPrompt: '', wb: [], ver: 0, timeoutEnabled: false, timeoutSec: 300, comfyBase: 'http://127.0.0.1:8188', comfyOn: false, comfyIters: 3, comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, comfyPos: '', comfyNeg: '', comfyWorkflow: '' };
 var rawAiCfg = loadJSON(LS_AI, {}) || {};

@@ -124,15 +124,15 @@ var PromptCompiler = {
 };
 function composeSystem(mode, ctx) { return PromptCompiler.compile(mode, ctx); }
 // 主提示词条目级「启用对象」：勾选 = 该条提示词注入对应模块（渲染在每条 pmod-lead 内）
-var PMOD_MODULES = [['talk', '助手'], ['gen', '生成Tag'], ['rk', '复刻'], ['comfy', '迭代']];
+var PMOD_MODULES = [['talk', 'ui.ai.talk'], ['gen', 'ui.ai.gen'], ['rk', 'ui.ai.rk'], ['comfy', 'ui.ai.comfy']];
 function renderPromptMods() {
   document.querySelectorAll('.pmod-mods').forEach(function (el) {
     const special = el.parentElement.getAttribute('data-special') || '';
     const slot = special === 'base' || special === 'genTask' ? 'text2img' : special;
     el.replaceChildren();
-    el.appendChild(UI.el('span', 'pmod-mods-label', '启用对象：'));
+    el.appendChild(UI.el('span', 'pmod-mods-label', t('ui.prompt.enabledObjects') + '：'));
     PMOD_MODULES.forEach(function (mm) {
-      const mod = mm[0], name = mm[1];
+      const mod = mm[0], name = t(mm[1]);
       const ck = UI.el('label', 'pmod-chk');
       const input = document.createElement('input');
       input.type = 'checkbox';
@@ -150,6 +150,6 @@ function renderPromptMods() {
 }
 (function () {
   const resetBtn = document.getElementById('promptModReset');
-  if (resetBtn) resetBtn.onclick = function () { resetPromptMods(); renderPromptMods(); toast('已恢复默认启用对象'); };
+  if (resetBtn) resetBtn.onclick = function () { resetPromptMods(); renderPromptMods(); toast(t('ui.prompt.resetModules')); };
   renderPromptMods();
 })();

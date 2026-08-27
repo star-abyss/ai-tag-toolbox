@@ -166,7 +166,10 @@ async function runI18nTest(deps) {
       const available = __i18nAvailable();
       const toEn = await __i18nSetLocale('en-US', 'manual');
       await new Promise(r => setTimeout(r, 80));
-      const en = { lang: document.documentElement.lang, translate: document.getElementById('translateAi').textContent.trim(), direction: document.querySelector('#translateDirection option[value="zh-en"]').textContent.trim(), category: document.querySelector('#catList .cat:nth-child(2) span:nth-child(2)') && document.querySelector('#catList .cat:nth-child(2) span:nth-child(2)').textContent.trim(), error: formatAppError(new Error('HTTP 401: Authentication Fails (governor)'), 'AI') };
+      document.getElementById('aiBtn').click();
+      document.getElementById('aiModulePrompt').click();
+      const themeBtn = document.getElementById('themeBtn'); themeBtn.click();
+      const en = { lang: document.documentElement.lang, translate: document.getElementById('translateAi').textContent.trim(), direction: document.querySelector('#translateDirection option[value="zh-en"]').textContent.trim(), category: document.querySelector('#catList .cat:nth-child(2) span:nth-child(2)') && document.querySelector('#catList .cat:nth-child(2) span:nth-child(2)').textContent.trim(), error: formatAppError(new Error('HTTP 401: Authentication Fails (governor)'), 'AI'), prompt: document.getElementById('promptBack').textContent.trim() + '|' + document.getElementById('presetSave').textContent.trim() + '|' + document.getElementById('aiSysReset').textContent.trim() + '|' + document.getElementById('worldAdd').textContent.trim() + '|' + document.getElementById('wbFoldAll').textContent.trim() + '|' + document.getElementById('wbAdd').textContent.trim() + '|' + document.getElementById('previewWorld').textContent.trim() + '|' + document.getElementById('wbListTitle').textContent.trim(), theme: Array.from(document.querySelectorAll('#themePop .popitem')).map(x => x.textContent.trim()).join('|'), modes: Array.from(document.querySelectorAll('.pmod-mods label')).map(x => x.textContent.trim()).join('|'), promptBody: document.getElementById('aiSys').value.length > 300 };
       const toZh = await __i18nSetLocale('zh-CN', 'manual');
       await new Promise(r => setTimeout(r, 80));
       const zh = { lang: document.documentElement.lang, translate: document.getElementById('translateAi').textContent.trim(), direction: document.querySelector('#translateDirection option[value="en-zh"]').textContent.trim() };
@@ -176,7 +179,7 @@ async function runI18nTest(deps) {
     })()`);
     console.log('I18NTEST result: ' + JSON.stringify(result));
     const ids = (result && result.available || []).map(x => x.id);
-    const ok = result && result.toEn && result.toZh && ids.includes('zh-CN') && ids.includes('en-US') && result.en.lang === 'en-US' && /AI Translate/.test(result.en.translate) && /Chinese/.test(result.en.direction) && /AI authentication failed/i.test(result.en.error) && result.zh.lang === 'zh-CN' && /AI 翻译/.test(result.zh.translate) && /Tag/.test(result.zh.direction) && result.invalid && result.invalid.ok === false && result.invalid.code === 'LOCALE_INVALID_JSON';
+    const ok = result && result.toEn && result.toZh && ids.includes('zh-CN') && ids.includes('en-US') && result.en.lang === 'en-US' && /AI Translate/.test(result.en.translate) && /Chinese/.test(result.en.direction) && /AI authentication failed/i.test(result.en.error) && /Back to AI chat/.test(result.en.prompt) && /Save as preset/.test(result.en.prompt) && /New world book/.test(result.en.prompt) && /Collapse all/.test(result.en.prompt) && /Preview World Info/.test(result.en.prompt) && /Light mode/.test(result.en.theme) && /Dark mode/.test(result.en.theme) && /Follow system/.test(result.en.theme) && /Chat/.test(result.en.modes) && result.en.promptBody && result.zh.lang === 'zh-CN' && /AI 翻译/.test(result.zh.translate) && /Tag/.test(result.zh.direction) && result.invalid && result.invalid.ok === false && result.invalid.code === 'LOCALE_INVALID_JSON';
     console.log('I18NTEST stage: ' + (ok ? 'done' : 'failed'));
     app.exit(ok ? 0 : 1);
   } catch (e) {

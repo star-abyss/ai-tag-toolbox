@@ -539,8 +539,8 @@ tkModes.forEach(m => m.addEventListener('click', () => {
 // 发送 / 停止：AI 思考中按钮变「停止」
 function setSendBusy(b) {
   if (!talkSendBtn) return;
-  if (b) { talkSendBtn.textContent = '■ 停止'; talkSendBtn.classList.add('danger'); }
-  else { talkSendBtn.textContent = '📤 发送'; talkSendBtn.classList.remove('danger'); }
+  if (b) { icBtn(talkSendBtn, 'stop', t('ui.ai.stop')); talkSendBtn.classList.add('danger'); }
+  else { icBtn(talkSendBtn, 'send', t('ui.ai.send')); talkSendBtn.classList.remove('danger'); }
 }
 // 有样式的确认弹窗
 var cfmModal = $('#cfmModal'), cfmText = $('#cfmText'), cfmYes = $('#cfmYes'), cfmNo = $('#cfmNo');
@@ -1365,9 +1365,24 @@ async function aiTest() {
 }
 
 /* ---------- 世界书（World Info） ---------- */
+function ptxt(key, params) {
+  const primary = t('ui.prompt.' + key, params);
+  return primary === 'ui.prompt.' + key ? t('ui.promptExtra.' + key, params) : primary;
+}
+function unnamedText() { return t('ui.common.unnamed'); }
+function displayWorldName(w) {
+  if (!w) return ptxt('unnamedWorld');
+  if (w.id === 'world_default' || w.name === '默认世界书（附录）') return t('ui.names.defaultWorld');
+  return w.name || ptxt('unnamedWorld');
+}
+function displayEntryName(e) {
+  if (!e) return unnamedText();
+  const map = { wb_app1: 'appendix1', wb_app2: 'appendix2', wb_app3: 'appendix3' };
+  return map[e.id] ? t('ui.names.' + map[e.id]) : (e.name || unnamedText());
+}
 function matchedNames(text) {
   const wb = wbEntriesFor(text);
-  return wb.length ? '📖 将注入条目：' + wb.map(e => e.name || '未命名').join('、') : '';
+  return wb.length ? '📖 ' + ptxt('worldMatched') + ' ' + wb.map(displayEntryName).join('、') : '';
 }
 function renderWbMatch() {
   genWbMatch.textContent = genDesc.value.trim() ? matchedNames(genDesc.value) : '';
@@ -1387,7 +1402,7 @@ function renderWb() {
   wbList.replaceChildren();
   const entries = getActiveEntries();
   if (!entries.length) {
-    wbList.innerHTML = '<div class="empty" style="padding:16px 0">还没有条目，点“＋ 新建条目”创建一个。<br><span style="font-size:12px">例如：关键词“泳池 beach” → 自动注入“此类场景使用 swimsuit、pool 等标签”。</span></div>';
+    wbList.innerHTML = '<div class="empty" style="padding:16px 0">' + esc(ptxt('noEntries')) + '<br><span style="font-size:12px">' + esc(ptxt('noEntriesExample')) + '</span></div>';
     return;
   }
   entries.forEach((e, i) => {
@@ -1395,16 +1410,16 @@ function renderWb() {
     d.className = 'wbitem' + (e.enabled ? '' : ' off') + (e.collapsed ? ' collapsed' : '');
     d.innerHTML =
       '<div class="wbhead">' +
-        '<button class="wbmv wbfold" title="折叠 / 展开">' + (e.collapsed ? '▸' : '▾') + '</button>' +
-        '<input class="wbname" placeholder="条目名称" value="' + esc(e.name || '') + '">' +
-        '<label class="opt"><input type="checkbox" class="wbconst"' + (e.constant ? ' checked' : '') + '> 常驻</label>' +
-        '<label class="opt"><input type="checkbox" class="wben"' + (e.enabled ? ' checked' : '') + '> 启用</label>' +
+        '<button class="wbmv wbfold" title="' + esc(ptxt(e.collapsed ? 'expand' : 'collapse')) + '">' + (e.collapsed ? '▸' : '▾') + '</button>' +
+        '<input class="wbname" placeholder="' + esc(ptxt('entryNamePlaceholder')) + '" value="' + esc(e.name ? displayEntryName(e) : '') + '">' +
+        '<label class="opt"><input type="checkbox" class="wbconst"' + (e.constant ? ' checked' : '') + '> ' + esc(ptxt('constant')) + '</label>' +
+        '<label class="opt"><input type="checkbox" class="wben"' + (e.enabled ? ' checked' : '') + '> ' + esc(ptxt('entryEnabled')) + '</label>' +
         '<span style="flex:1"></span>' +
-        '<button class="wbmv" title="上移">↑</button><button class="wbmv" title="下移">↓</button>' +
-        '<button class="wbdel" title="删除条目">✕</button>' +
+        '<button class="wbmv" title="' + esc(ptxt('moveUp')) + '">↑</button><button class="wbmv" title="' + esc(ptxt('moveDown')) + '">↓</button>' +
+        '<button class="wbdel" title="' + esc(ptxt('deleteEntry')) + '">✕</button>' +
       '</div>' +
-      '<input class="wbkeys" placeholder="触发关键词（空格/逗号分隔，如：泳池 beach 夏天；常驻条目可留空）" value="' + esc(e.keys || '') + '">' +
-      '<textarea class="wbcontent" rows="3" placeholder="条目内容（注入提示词的正文，如：此类场景使用 swimsuit、pool、wet skin 等标签）">' + esc(e.content || '') + '</textarea>';
+      '<input class="wbkeys" placeholder="' + esc(ptxt('keysPlaceholder')) + '" value="' + esc(e.keys || '') + '">' +
+      '<textarea class="wbcontent" rows="3" placeholder="' + esc(ptxt('contentPlaceholder')) + '">' + esc(e.content || '') + '</textarea>';
     const nameEl = d.querySelector('.wbname'), keysEl = d.querySelector('.wbkeys'), contentEl = d.querySelector('.wbcontent'),
       constEl = d.querySelector('.wbconst'), enEl = d.querySelector('.wben');
     const upd = () => {
@@ -1437,7 +1452,7 @@ function renderWb() {
       saveWb(); renderWb();
     };
     d.querySelector('.wbdel').onclick = () => {
-      if (confirm('删除条目「' + (e.name || '未命名') + '」？')) {
+      if (confirm(ptxt('confirmDeleteEntry', { name: displayEntryName(e) }))) {
         getActiveEntries().splice(i, 1);
         saveWb(); renderWb();
       }
@@ -1460,7 +1475,7 @@ function renderWorldSelector() {
   for (const w of worldList()) {
     const o = document.createElement('option');
     o.value = w.id;
-    o.textContent = (w.enabled === false ? '（停用）' : '') + (w.name || '未命名');
+    o.textContent = (w.enabled === false ? ptxt('worldDisabledSuffix') : '') + displayWorldName(w);
     worldSel.appendChild(o);
   }
   const cur = activeWorld();
@@ -1474,15 +1489,15 @@ function renderWorldCards() {
     const isCur = cur && w.id === cur.id;
     const d = document.createElement('div');
     d.className = 'wbcard' + (isCur ? ' active' : '');
-    const name = document.createElement('span'); name.className = 'wc-name'; name.textContent = w.name || '未命名';
+    const name = document.createElement('span'); name.className = 'wc-name'; name.textContent = displayWorldName(w);
     d.appendChild(name);
-    if (isCur) { const b = document.createElement('span'); b.className = 'wc-badge'; b.textContent = '当前'; d.appendChild(b); }
-    const cnt = document.createElement('span'); cnt.className = 'wc-count'; cnt.textContent = ((w.entries || []).length) + ' 条'; d.appendChild(cnt);
+    if (isCur) { const b = document.createElement('span'); b.className = 'wc-badge'; b.textContent = t('ui.common.current'); d.appendChild(b); }
+    const cnt = document.createElement('span'); cnt.className = 'wc-count'; cnt.textContent = ptxt('worldCount', { count: (w.entries || []).length }); d.appendChild(cnt);
     const toggle = document.createElement('label'); toggle.className = 'opt';
     const ck = document.createElement('input'); ck.type = 'checkbox'; ck.checked = w.enabled !== false;
     ck.onchange = () => { w.enabled = ck.checked; persistAI(); renderWorldSelector(); renderWorldCards(); renderWbTitle(); renderWbMatch(); };
-    toggle.append(ck, ' 启用'); d.appendChild(toggle);
-    const del = document.createElement('button'); del.className = 'wbmv'; del.textContent = '删除';
+    toggle.append(ck, ' ' + ptxt('entryEnabled')); d.appendChild(toggle);
+    const del = document.createElement('button'); del.className = 'wbmv'; del.textContent = t('ui.common.delete');
     del.onclick = () => deleteWorld(w.id);
     d.appendChild(del);
     worldCards.appendChild(d);
@@ -1491,7 +1506,7 @@ function renderWorldCards() {
 }
 function renderWbTitle() {
   const cur = activeWorld();
-  if (wbListTitle) wbListTitle.textContent = '📖 「' + (cur ? cur.name : '') + '」的条目' + (cur && cur.enabled === false ? '（已停用）' : '');
+  if (wbListTitle) wbListTitle.textContent = cur ? ptxt('currentWorldTitle', { name: displayWorldName(cur) }) + (cur.enabled === false ? ptxt('worldDisabledSuffix') : '') : t('ui.prompt.entryTitle');
 }
 function setActiveWorld(id) {
   const src = worldList().find(x => x.id === id);
@@ -1506,23 +1521,23 @@ function setActiveWorld(id) {
   renderWb(); renderWbMatch();
 }
 function addWorld() {
-  const name = prompt('拓展提示词名称', '新拓展提示词');
+  const name = prompt(ptxt('worldName'), ptxt('newWorldDefault'));
   if (!name) return;
   const w = { id: 'world_' + Date.now(), name, enabled: true, constant: false, entries: [] };
   aiCfg.worlds.push(w);
   setActiveWorld(w.id);
-  toast('已新建世界书「' + name + '」（在下方“＋ 新建条目”添加内容）');
+  toast(ptxt('newWorldCreated', { name: name }));
 }
 function deleteWorld(id) {
   const ws = worldList();
-  if (ws.length <= 1) { toast('至少保留一本世界书'); return; }
+  if (ws.length <= 1) { toast(ptxt('minWorld')); return; }
   const w = ws.find(x => x.id === id);
   if (!w) return;
-  if (!confirm('删除世界书「' + (w.name || '') + '」及其全部条目？')) return;
+  if (!confirm(ptxt('confirmDeleteWorld', { name: w.name || ptxt('unnamedWorld') }))) return;
   ws.splice(ws.indexOf(w), 1);
   if (aiCfg.worldSel === id) setActiveWorld(ws[0].id);
   else { persistAI(); renderWorldSelector(); renderWorldCards(); renderWbTitle(); }
-  toast('已删除世界书');
+  toast(ptxt('worldDeleted'));
 }
 function wbImportWorld(entries, name) {
   const w = { id: 'world_' + Date.now(), name: name || '导入的世界书', enabled: true, constant: false, entries: entries.map(worldEntry) };
@@ -1541,16 +1556,16 @@ function mainPromptPreview() {
 }
 function worldBookPreview(input) {
   const w = activeWorld();
-  if (!w || w.enabled === false) return '（当前世界书已停用，不注入）';
+  if (!w || w.enabled === false) return ptxt('worldNoInject');
   const cnst = (w.entries || []).filter(e => e && e.enabled !== false && e.constant);
   const kw = (w.entries || []).filter(e => e && e.enabled !== false && !e.constant && String(e.keys || '').trim());
   let s = '【世界书：' + (w.name || '') + '】\n';
-  s += cnst.length ? '\n常驻（始终注入）：\n' + wbBlock(cnst) : '\n（无常驻条目）';
+  s += cnst.length ? '\n' + ptxt('constant') + ':\n' + wbBlock(cnst) : '\n' + ptxt('worldNoConstant');
   if (input) {
     const hit = wbEntriesFor(input).filter(e => !e.constant);
-    s += hit.length ? '\n\n当前输入命中的关键词条目：\n' + wbBlock(hit) : '';
+    s += hit.length ? '\n\n' + ptxt('worldMatched') + '\n' + wbBlock(hit) : '';
   }
-  s += '\n\n关键词条目（' + kw.length + ' 个，按输入命中注入）：' + (kw.length ? kw.map(e => e.name || '未命名').join('、') : '无');
+  s += '\n\n' + ptxt('worldKeywords', { count: kw.length }) + (kw.length ? kw.map(displayEntryName).join('、') : ptxt('worldNone'));
   return s;
 }
 
@@ -1561,7 +1576,7 @@ function renderPresetBar() {
   for (const p of presetList()) {
     const o = document.createElement('option');
     o.value = p.id;
-    o.textContent = p.name || '未命名预设';
+    o.textContent = (p.id === 'preset_default' || p.name === '默认主提示词') ? t('ui.names.defaultPreset') : (p.name || ptxt('unnamedPreset'));
     presetSel.appendChild(o);
   }
   const cur = activePreset();
@@ -1581,10 +1596,10 @@ function applyPreset(id) {
   aiVision.value = effectiveVision();
   qpText.value = effectiveQp();
   renderPresetBar();
-  toast('已应用预设「' + (p.name || '') + '」');
+  toast(ptxt('presetApplied', { name: p.name || ptxt('unnamedPreset') }));
 }
 function saveAsPreset() {
-  const name = prompt('预设名称', '我的主提示词');
+  const name = prompt(ptxt('promptName'), ptxt('myPromptDefault'));
   if (!name) return;
   const p = { id: 'preset_' + Date.now(), name,
     sysPrompt: aiSys.value.trim() === DEFAULT_BASE_PROMPT.trim() ? '' : aiSys.value.trim(),
@@ -1595,19 +1610,19 @@ function saveAsPreset() {
   aiCfg.presetSel = p.id;
   persistAI();
   renderPresetBar();
-  toast('已存为预设「' + name + '」');
+  toast(ptxt('presetSaved', { name: name }));
 }
 function deletePreset() {
   const ps = presetList();
-  if (ps.length <= 1) { toast('至少保留一个主提示词预设'); return; }
+  if (ps.length <= 1) { toast(ptxt('minPreset')); return; }
   const p = activePreset();
   if (!p) return;
-  if (!confirm('删除预设「' + (p.name || '') + '」？')) return;
+  if (!confirm(ptxt('confirmDeletePreset', { name: p.name || ptxt('unnamedPreset') }))) return;
   ps.splice(ps.indexOf(p), 1);
   aiCfg.presetSel = ps[0].id;
   persistAI();
   renderPresetBar();
-  toast('已删除预设');
+  toast(ptxt('presetDeleted'));
 }
 function presetExportData() {
   const cur = activePreset();
@@ -1717,7 +1732,7 @@ function wbParseEntries(text) {
 var wbImportPending = [];
 function wbOpenImportModal(parsed, fname) {
   wbImportPending = parsed;
-  wbModalHint.textContent = '文件：' + fname + ' · ' + parsed.length + ' 个条目。勾选后将以一本新世界书导入（不会覆盖现有世界书）。';
+  wbModalHint.textContent = ptxt('fileHint', { name: fname, count: parsed.length });
   wbImportList.replaceChildren();
   parsed.forEach(e => {
     const lab = document.createElement('label');
@@ -1728,17 +1743,17 @@ function wbOpenImportModal(parsed, fname) {
     nameEl.className = 'wi-name';
     nameEl.textContent = e.name;
     if (e.constant) {
-      const t = document.createElement('span'); t.className = 'wi-tag const'; t.textContent = '常驻'; nameEl.appendChild(t);
+      const t = document.createElement('span'); t.className = 'wi-tag const'; t.textContent = ptxt('constant'); nameEl.appendChild(t);
     }
     if (!e.enabled) {
-      const t = document.createElement('span'); t.className = 'wi-tag'; t.textContent = '原文件已禁用'; nameEl.appendChild(t);
+      const t = document.createElement('span'); t.className = 'wi-tag'; t.textContent = ptxt('disabledTag'); nameEl.appendChild(t);
     }
     const prev = document.createElement('div');
     prev.className = 'wi-prev';
     prev.textContent = e.content.slice(0, 140);
     const keys = document.createElement('div');
     keys.className = 'wi-keys';
-    keys.textContent = e.keys.length ? '关键词：' + e.keys.join('、') : '无触发关键词（仅常驻时生效）';
+    keys.textContent = e.keys.length ? ptxt('keywordsLabel') + e.keys.join('、') : ptxt('noTrigger');
     body.append(nameEl, prev, keys);
     const ck = document.createElement('input');
     ck.type = 'checkbox';
@@ -1758,10 +1773,10 @@ function wbDoImport() {
   const chosen = [];
   checks.forEach((ck, i) => { if (ck.checked) chosen.push(wbImportPending[i]); });
   wbCloseImportModal();
-  if (!chosen.length) { toast('未勾选任何条目'); return; }
+  if (!chosen.length) { toast(ptxt('nothingSelected')); return; }
   wbImportWorld(chosen, wbImportName || '导入的世界书');
   renderWorldSelector(); renderWorldCards(); renderWbTitle();
-  toast('已导入拓展提示词（' + chosen.length + ' 条），并设为当前');
+  toast(ptxt('importedEntries', { count: chosen.length }));
 }
 var wbImportName = '导入的世界书';
 function parseWorldFile(text) {

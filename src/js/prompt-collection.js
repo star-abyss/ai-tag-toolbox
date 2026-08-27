@@ -3,7 +3,7 @@
    唯一差异：主模块=每条目选启用对象(mods)；拓展模块=整本选启用对象(call.mods)。 */
 'use strict';
 var PC_FORMAT = 'dbt-prompt-collections', PC_VERSION = 1;
-var PC_MODULES = [['talk', '助手'], ['gen', '生成Tag'], ['rk', '复刻'], ['comfy', '迭代']];
+var PC_MODULES = [['talk', 'ui.ai.talk'], ['gen', 'ui.ai.gen'], ['rk', 'ui.ai.rk'], ['comfy', 'ui.ai.comfy']];
 
 // —— 构建：从当前状态生成 主集合 / 拓展集合（只读映射，不影响现有 UI 编辑）——
 function buildMainCollection() {
@@ -37,7 +37,7 @@ function renderWbCallMods() {
   if (!el) return;
   const w = activeWorld();
   el.replaceChildren();
-  if (!w) { el.textContent = '（暂无启用）'; return; }
+  if (!w) { el.textContent = '（' + t('ui.common.none') + '）'; return; }
   const mods = Array.isArray(w.mods) && w.mods.length ? w.mods : PC_MODULES.map(x => x[0]);
   PC_MODULES.forEach(function (mm) {
     const ck = UI.el('label', 'pmod-chk');
@@ -51,7 +51,7 @@ function renderWbCallMods() {
       saveJSON(LS_AI, aiCfg);
     });
     ck.appendChild(input);
-    ck.appendChild(UI.el('span', null, mm[1]));
+    ck.appendChild(UI.el('span', null, t(mm[1])));
     el.appendChild(ck);
   });
 }
@@ -59,7 +59,7 @@ function renderWbCallMods() {
   const ws = document.getElementById('worldSel'), we = document.getElementById('worldEnabled');
   if (ws) ws.addEventListener('change', renderWbCallMods);
   if (we) we.addEventListener('change', renderWbCallMods);
-  renderWbCallMods();
+  if (typeof activeWorld === 'function') renderWbCallMods();
 })();
 // 导入后刷新相关 UI（无则跳过）
 function refreshPromptUI() {
