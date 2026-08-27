@@ -14,9 +14,41 @@ var I18n = (function () {
   }
   function t(key, params) {
     var value = flatLookup(packs[current] || {}, key);
+    // 兼容语言包将扩展文案放在 ui.uiExtra 或根级 uiExtra 的两种布局。
+    if (value == null && String(key).indexOf('uiExtra.') === 0) value = flatLookup(packs[current] || {}, 'ui.' + key);
     if (value == null && current !== 'en-US') value = flatLookup(packs['en-US'] || {}, key);
+    if (value == null && current !== 'en-US' && String(key).indexOf('uiExtra.') === 0) value = flatLookup(packs['en-US'] || {}, 'ui.' + key);
     if (value == null && current !== 'zh-CN') value = flatLookup(packs['zh-CN'] || {}, key);
+    if (value == null && current !== 'zh-CN' && String(key).indexOf('uiExtra.') === 0) value = flatLookup(packs['zh-CN'] || {}, 'ui.' + key);
     if (value == null) value = FALLBACK[key];
+    // “扩展提示库”是本应用的专有名称，避免与酒馆 World Info 重名。
+    if (current === 'en-US') {
+      var libraryNames = {
+        'ui.prompt.title': 'Prompts (Extension Library)',
+        'ui.prompt.world': '📚 Extension Prompt Library',
+        'ui.prompt.worldSub': 'Select a library · enable or disable it as a whole (similar to SillyTavern World Info, but independent)',
+        'ui.prompt.worldCurrent': 'Current extension prompt library',
+        'ui.prompt.worldEnabled': 'Enable this library',
+        'ui.prompt.newWorld': '＋ New extension library',
+        'ui.prompt.exportWorld': '📤 Export this library',
+        'ui.prompt.bundleWorld': '📦 Export all extension libraries',
+        'ui.prompt.previewWorld': '👁 Preview extension library',
+        'ui.prompt.enabledObjects': 'Enabled library modules',
+        'ui.prompt.entryTitle': '📖 Extension library entries',
+        'ui.prompt.unnamedWorld': 'Unnamed extension library',
+        'ui.prompt.importedWorld': 'Imported extension library',
+        'ui.prompt.newWorldDefault': 'New extension library',
+        'ui.prompt.worldName': 'Extension library name',
+        'ui.prompt.confirmDeleteWorld': 'Delete extension library "{name}" and all entries?',
+        'ui.prompt.minWorld': 'At least one extension library must remain',
+        'ui.prompt.worldDeleted': 'Extension library deleted',
+        'ui.prompt.worldNoInject': '(This extension library is disabled and will not be injected)',
+        'ui.prompt.worldNoConstant': '(No constant entries)',
+        'ui.prompt.worldHint': 'This extension prompt library injects rules by keywords or constant entries. It is similar in purpose to SillyTavern World Info, but has a different name, format, and independent data.'
+      };
+      if (Object.prototype.hasOwnProperty.call(libraryNames, key)) value = libraryNames[key];
+      if (key === 'ui.names.defaultWorld') value = 'Default extension prompt library (Appendices)';
+    }
     return interpolate(value == null ? key : value, params);
   }
   function localeId() { return current; }

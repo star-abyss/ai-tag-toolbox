@@ -129,8 +129,9 @@
 <div class="modal" id="helpModal">
   <div class="box">
     <button class="hbtn close" id="helpClose">✕</button>
-    <h3>❓ 使用说明</h3>
-    <ul>
+    <h3 id="helpTitle" data-i18n="uiExtra.help.title"></h3>
+    <div id="helpBody" class="helpbody" style="white-space:pre-line" data-i18n="uiExtra.help.body"></div>
+    <!--
       <li>左侧<b>分类栏</b>切换分类，右侧标签区按<b>子分类分块</b>展示；顶部“🎨 样式”可切换<b>浅色 / 深色 / 跟随系统</b>。</li>
       <li><b>单击标签</b>＝选中 / 取消选中；悬停标签右下角 <b>📋</b>＝立即复制单个标签。</li>
       <li>底部栏 <b>📋 复制 Prompt</b>＝把已选标签按英文逗号拼接复制，可直接粘贴到 NovelAI / Stable Diffusion / Midjourney 提示词框。</li>
@@ -142,7 +143,7 @@
       <li><b>成人标签</b>默认隐藏，点击顶部“成人标签”按钮开启后才显示。</li>
       <li>已选内容、收藏、自定义标签、样式设置均保存在浏览器本地（localStorage），换浏览器或清理数据会丢失。</li>
       <li>想扩充内置数据？用文本编辑器打开本文件，在脚本的 <code>TAGS</code> 数组里按 <code>["英文","中文","别名","分类","子分类",0]</code> 格式加一行即可。</li>
-    </ul>
+    -->
   </div>
 </div>
 

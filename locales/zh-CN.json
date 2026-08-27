@@ -152,11 +152,23 @@
       "comfy": "迭代",
       "currentImage": "当前图片",
       "notUploaded": "未上传图片",
-      "imageHint": "上传图片后自动读取内置 Tag；点击“本地识图”提取模型 Tag。"
-      ,"describe": "🖼 AI 描述"
+      "imageHint": "上传图片后自动读取内置 Tag；点击“本地识图”提取模型 Tag。",
+      "describe": "🖼 AI 描述",
+      "talkIntro": "上传 / 粘贴 / 拖入图片（自动编号 + 本地识图 Tag），然后选下方模式：✨ 生成Tag · 🔍 本地识图 · 🎯 识图并复刻 · 🎨 ComfyUI迭代 · 🤖 助手对话。",
+      "statusModel": "AI 模型：{model}",
+      "statusNoModel": "未配置 AI 模型",
+      "statusPreset": "预设：{name}",
+      "statusWorld": "扩展提示库：{name}",
+      "statusComfy": "ComfyUI：{state}",
+      "workflowReady": "工作流已就绪",
+      "workflowMissing": "未上传工作流",
+      "connected": "已连接",
+      "connectionFailed": "连接失败",
+      "comfyDisabled": "ComfyUI 未启用"
+      ,"worldPreviewHeader": "【扩展提示库：{name}】"
     },
     "custom": { "title": "＋ 添加自定义标签", "english": "英文标签（必填）", "chinese": "中文翻译", "alias": "搜索别名（空格分隔，选填）", "subcategory": "子分类（留空则为“自定义”）", "category": "分类", "save": "保存", "cancel": "取消", "list": "我的自定义标签" },
-    "prompt": { "back": "← 返回 AI 对话", "title": "提示词（拓展提示词）", "main": "📝 主提示词", "mainSub": "文生图 / 生成Tag指令 · 画师 · 识图 · 系统 · 可按预设多版本切换/导入导出", "preset": "当前预设", "savePreset": "＋ 存为预设", "import": "📥 导入", "export": "📤 导出", "delete": "🗑 删除", "exportCollection": "📦 导出集合（主 + 拓展）", "importCollection": "📥 导入集合", "resetModules": "↺ 恢复默认启用对象", "modulesHint": "每条主提示词都可以选择注入的模块。助手默认不注入预设；复刻会先使用识图提示词，再使用文生图和画师提示词。", "base": "🧭 文生图主提示词", "baseSub": "Anima 编译器规范（基础提示词）", "genTask": "⚙️ 生成Tag指令", "genTaskSub": "把描述或图片转换为 Tag 的核心指令", "quality": "🎨 画师主提示词", "qualitySub": "注入系统提示词的默认前缀", "vision": "🖼 识图提示词", "visionSub": "“识图并复刻”时调用", "system": "🤖 系统提示词", "systemSub": "ComfyUI 调用与迭代（自动生成）", "systemHint": "系统提示词包含 ComfyUI 调用和迭代协议，由“API 与 ComfyUI”设置自动生成；此处仅选择注入模块。", "mainHint": "主提示词由编译器规范、Tag 生成、画师、识图、内容政策和匹配到的标签参考组成。可保存多个预设，并与拓展提示词独立导入导出。", "world": "📚 拓展提示词（扩展能力）", "worldSub": "选择一本 · 整体启用或停用", "worldCurrent": "当前拓展提示词", "worldEnabled": "启用整本", "newWorld": "＋ 新建拓展提示词", "exportWorld": "📤 导出这本", "bundleWorld": "📦 打包全部拓展提示词", "allCollapse": "全部折叠", "allExpand": "全部展开", "newEntry": "＋ 新建条目", "previewWorld": "👁 预览拓展提示词", "enabledObjects": "整本启用对象", "entryTitle": "📖 拓展提示词条目", "entryNamePlaceholder": "条目名称", "keysPlaceholder": "触发关键词（空格/逗号分隔；常驻条目可留空）", "contentPlaceholder": "条目内容（注入提示词的规则正文）", "constant": "常驻", "entryEnabled": "启用", "moveUp": "上移", "moveDown": "下移", "deleteEntry": "删除条目", "noEntries": "还没有条目，点击“新建条目”创建。", "noEntriesExample": "例如：关键词“泳池 beach 夏天”→ 自动注入 swimsuit、pool、wet skin 等规则。", "currentWorldTitle": "📖「{name}」的条目", "worldDisabledSuffix": "（已停用）", "worldCount": "{count} 条", "unnamedPreset": "未命名预设", "unnamedWorld": "未命名世界书", "importedWorld": "导入的世界书", "newWorldDefault": "新拓展提示词", "myPromptDefault": "我的主提示词", "promptName": "预设名称", "worldName": "拓展提示词名称", "confirmDeleteEntry": "删除条目「{name}」？", "confirmDeleteWorld": "删除世界书「{name}」及其全部条目？", "confirmDeletePreset": "删除预设「{name}」？", "minWorld": "至少保留一本世界书", "minPreset": "至少保留一个主提示词预设", "importedEntries": "已导入 {count} 条拓展提示词，并设为当前", "importedPresets": "已导入 {count} 个预设", "noImportPresets": "文件中没有可导入的预设", "worldEnabledToast": "拓展提示词已启用", "worldDisabledToast": "拓展提示词已停用（不再注入提示词）", "worldDeleted": "已删除世界书", "presetApplied": "已应用预设「{name}」", "presetSaved": "已存为预设「{name}」", "presetDeleted": "已删除预设", "previewCopied": "已复制拓展提示词", "worldNoInject": "（当前世界书已停用，不注入）", "worldNoConstant": "（无常驻条目）", "worldMatched": "当前输入命中的关键词条目：", "worldKeywords": "关键词条目（{count} 个，按输入命中注入）：", "worldNone": "无" },
+    "prompt": { "back": "← 返回 AI 对话", "title": "提示词（扩展提示库）", "main": "📝 主提示词", "mainSub": "文生图 / 生成Tag指令 · 画师 · 识图 · 系统 · 可按预设多版本切换/导入导出", "preset": "当前预设", "savePreset": "＋ 存为预设", "import": "📥 导入", "export": "📤 导出", "delete": "🗑 删除", "exportCollection": "📦 导出集合（主 + 扩展）", "importCollection": "📥 导入集合", "resetModules": "↺ 恢复默认启用对象", "modulesHint": "每条主提示词都可以选择注入的模块。助手默认不注入预设；复刻会先使用识图提示词，再使用文生图和画师提示词。", "base": "🧭 文生图主提示词", "baseSub": "Anima 编译器规范（基础提示词）", "genTask": "⚙️ 生成Tag指令", "genTaskSub": "把描述或图片转换为 Tag 的核心指令", "quality": "🎨 画师主提示词", "qualitySub": "注入系统提示词的默认前缀", "vision": "🖼 识图提示词", "visionSub": "“识图并复刻”时调用", "system": "🤖 系统提示词", "systemSub": "ComfyUI 调用与迭代（自动生成）", "systemHint": "系统提示词包含 ComfyUI 调用和迭代协议，由“API 与 ComfyUI”设置自动生成；此处仅选择注入模块。", "mainHint": "主提示词由编译器规范、Tag 生成、画师、识图、内容政策和匹配到的标签参考组成。可保存多个预设，并与扩展提示库独立导入导出。", "world": "📚 扩展提示库（规则扩展）", "worldSub": "选择一个库 · 整体启用或停用（功能类似酒馆 World Info，但名称和数据彼此独立）", "worldCurrent": "当前扩展提示库", "worldEnabled": "启用整个库", "newWorld": "＋ 新建扩展提示库", "exportWorld": "📤 导出此库", "bundleWorld": "📦 打包全部扩展提示库", "allCollapse": "全部折叠", "allExpand": "全部展开", "newEntry": "＋ 新建条目", "previewWorld": "👁 预览扩展提示库", "enabledObjects": "整库启用对象", "entryTitle": "📖 扩展提示库条目", "entryNamePlaceholder": "条目名称", "keysPlaceholder": "触发关键词（空格/逗号分隔；常驻条目可留空）", "contentPlaceholder": "条目内容（注入提示词的规则正文）", "constant": "常驻", "entryEnabled": "启用", "moveUp": "上移", "moveDown": "下移", "deleteEntry": "删除条目", "noEntries": "还没有条目，点击“新建条目”创建。", "noEntriesExample": "例如：关键词“泳池 beach 夏天”→ 自动注入 swimsuit、pool、wet skin 等规则。", "currentWorldTitle": "📖「{name}」的条目", "worldDisabledSuffix": "（已停用）", "worldCount": "{count} 条", "unnamedPreset": "未命名预设", "unnamedWorld": "未命名扩展提示库", "importedWorld": "导入的扩展提示库", "newWorldDefault": "新扩展提示库", "myPromptDefault": "我的主提示词", "promptName": "预设名称", "worldName": "扩展提示库名称", "confirmDeleteEntry": "删除条目「{name}」？", "confirmDeleteWorld": "删除扩展提示库「{name}」及其全部条目？", "confirmDeletePreset": "删除预设「{name}」？", "minWorld": "至少保留一个扩展提示库", "minPreset": "至少保留一个主提示词预设", "importedEntries": "已导入 {count} 条扩展提示词，并设为当前", "importedPresets": "已导入 {count} 个预设", "noImportPresets": "文件中没有可导入的预设", "worldEnabledToast": "扩展提示库已启用", "worldDisabledToast": "扩展提示库已停用（不再注入提示词）", "worldDeleted": "已删除扩展提示库", "presetApplied": "已应用预设「{name}」", "presetSaved": "已存为预设「{name}」", "presetDeleted": "已删除预设", "previewCopied": "已复制扩展提示库", "worldNoInject": "（当前扩展提示库已停用，不注入）", "worldNoConstant": "（无常驻条目）", "worldMatched": "当前输入命中的关键词条目：", "worldKeywords": "关键词条目（{count} 个，按输入命中注入）：", "worldNone": "无" },
     "promptExtra": {
       "modulesHint": "每条主提示词都可以选择注入的模块。助手默认不注入预设；复刻会先使用识图提示词，再使用文生图和画师提示词。",
       "baseSub": "Anima 编译器规范（基础提示词）",
@@ -209,22 +221,25 @@
       "worldMatched": "当前输入命中的关键词条目：",
       "worldKeywords": "关键词条目（{count} 个，按输入命中注入）：",
       "worldNone": "无",
-      "worldHint": "整本启用后才会注入其中的条目。条目可设置触发关键词、常驻、排序、折叠和模块过滤。支持导入本工具或 SillyTavern 世界书 JSON，也可以导出单本或打包全部世界书。",
-      "newWorldCreated": "已新建世界书「{name}」",
+      "worldHint": "启用整个扩展提示库后才会注入其中的条目。条目可设置触发关键词、常驻、排序、折叠和模块过滤。功能类似酒馆 World Info，但名称、格式和数据独立；兼容导入 SillyTavern 世界书 JSON。",
+      "newWorldCreated": "已新建扩展提示库「{name}」",
       "disabledTag": "原文件已禁用",
       "keywordsLabel": "关键词：",
       "noTrigger": "无触发关键词（仅常驻时生效）",
       "nothingSelected": "未勾选任何条目",
-      "fileHint": "文件：{name} · {count} 个条目。勾选后将以一本新世界书导入（不会覆盖现有世界书）。"
-      ,"importModalTitle": "📥 导入世界书：勾选要导入的条目",
+      "fileHint": "文件：{name} · {count} 个条目。勾选后将作为一个新的扩展提示库导入（不会覆盖现有数据）。",
+      "importModalTitle": "📥 导入扩展提示库：勾选要导入的条目",
       "selectAll": "全选",
       "selectNone": "全不选",
       "importSelected": "导入所选",
+      "importedWorlds": "已导入 {count} 个扩展提示库",
       "toggleTitle": "点击折叠 / 展开"
       ,"resetDefault": "↺ 重置为默认",
       "reset": "↺ 重置"
     },
-    "names": { "defaultWorld": "默认世界书（附录）", "defaultPreset": "默认主提示词", "appendix1": "附录1：强透视与动态构图", "appendix2": "附录2：第一人称视角", "appendix3": "附录3：分镜" },
+    "names": { "defaultWorld": "默认扩展提示库（附录）", "defaultPreset": "默认主提示词", "appendix1": "附录1：强透视与动态构图", "appendix2": "附录2：第一人称视角", "appendix3": "附录3：分镜" },
+    "uiExtra": { "help": { "title": "❓ 使用说明", "body": "标签库\n• 使用左侧分类栏切换分类；顶部“样式”可切换浅色、深色或跟随系统。\n• 单击标签即可选中或取消选中；使用标签上的复制操作可复制单个标签。\n• “复制 Prompt”会将已选标签用英文逗号拼接，方便粘贴到 NovelAI、Stable Diffusion 或 Midjourney。\n• 搜索支持英文标签、中文翻译和别名。按 / 或 Ctrl+K 可快速聚焦搜索。\n\nAI 助手\n• 在 API 设置中填写兼容 OpenAI 格式的地址、Key 和模型，即可生成 Tag、识图、复刻、ComfyUI 迭代或自由对话。\n• 上传、粘贴或拖入的图片会自动编号，并可附带本地识图 Tag。\n• 扩展提示库按关键词或常驻条目注入规则，功能类似酒馆的 World Info，但名称、格式和数据相互独立。\n• AI 回复会实时显示思考过程和最终结果；对话保存在本机。\n\n其他\n• 成人标签默认隐藏。收藏、自定义标签和样式设置保存在本地。" } },
+    "help": { "title": "❓ 使用说明", "body": "标签库\n• 左侧分类栏切换分类，右侧标签区按子分类分块展示；顶部“样式”可切换浅色、深色或跟随系统。\n• 单击标签即可选中或取消选中；悬停标签右下角的复制按钮可复制单个标签。\n• 底部“复制 Prompt”会把已选标签按英文逗号拼接，方便粘贴到 NovelAI、Stable Diffusion 或 Midjourney。\n• 搜索支持英文标签、中文翻译和别名，多词用空格分隔。按 / 或 Ctrl+K 可快速聚焦搜索框。\n\nAI 助手\n• 在 API 设置中填写兼容 OpenAI 格式的地址、Key 和模型，即可生成 Tag、识图、复刻或进行自由对话。\n• 上传、粘贴或拖入图片后会自动编号，并附带本地识图 Tag；系统提示词和扩展提示库可在对应页面编辑。\n• 扩展提示库按关键词或常驻规则自动注入提示词，功能类似酒馆的 World Info，但名称、格式和数据相互独立，不会与酒馆数据混用。\n• 生成过程会实时显示思考过程和最终结果，对话历史保存在本机。\n\n其他\n• 成人标签默认隐藏，可通过顶部开关显示。收藏、自定义标签和样式设置保存在浏览器本地。" },
     "status": {
       "ready": "就绪",
       "success": "完成",

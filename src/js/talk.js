@@ -3,7 +3,7 @@
 var LS_TALK = 'dbt_talk_v2';
 var TALK_ASSIST_SYS = `你是 AI 绘画 Tag 工具箱的助手（助手模式）。本模式不注入任何预设提示词与规则：请根据用户消息直接对话，保持简洁专业。
 【附图引用约定】用户附图消息会附带"【附图组】"标注（图片1=第1张、图片2=第2张……含每张图的本地识图 Tag）。用户说"图片X/这张图"指最近一条附图消息里的第X张；"上一组/之前的图"指更早消息的附图组。涉及图片修改时先明确引用编号。`;
-var TALK_INTRO = '上传 / 粘贴 / 拖入图片（自动编号 + 本地识图 Tag），然后选下方模式：✨ 生成Tag · 🔍 本地识图 · 🎯 识图并复刻 · 🎨 ComfyUI迭代 · 🤖 助手对话。';
+function talkIntroText() { return t('ui.ai.talkIntro'); }
 var LS_TALK_SESS = 'dbt_talk_sessions_v1';
 // 多会话（主流 AI 式）：每个会话含标题/时间/消息列表；talkHist = 当前会话的消息引用
 var talkSessions = loadJSON(LS_TALK_SESS, null);
@@ -184,7 +184,7 @@ function talkRender() {
   talkBubbles = [];
   talkConv.replaceChildren();
   const d = document.createElement('div'); d.className = 'cmsg sys';
-  const b = document.createElement('div'); b.className = 'body'; b.textContent = TALK_INTRO;
+  const b = document.createElement('div'); b.className = 'body'; b.textContent = talkIntroText();
   d.appendChild(b); talkConv.appendChild(d);
   for (const m of talkHist) {
     const opts = { imgs: m.imgs, imgRef: m.imgRef, wdTags: m.wdTags, mIdx: talkHist.indexOf(m) };
@@ -316,13 +316,13 @@ function talkDel(id) {
 async function talkProbe() {
   readCfg();
   const parts = [];
-  parts.push(aiCfg.model ? ('AI 模型：' + aiCfg.model) : '未配置 AI 模型');
-  const ap = activePreset(); if (ap) parts.push('预设：' + (ap.name || '未命名'));
-  const aw = activeWorld(); if (aw) parts.push('拓展提示词：' + (aw.name || '未命名'));
+  parts.push(aiCfg.model ? t('ui.ai.statusModel', { model: aiCfg.model }) : t('ui.ai.statusNoModel'));
+  const ap = activePreset(); if (ap) parts.push(t('ui.ai.statusPreset', { name: displayPresetName(ap) }));
+  const aw = activeWorld(); if (aw) parts.push(t('ui.ai.statusWorld', { name: displayWorldName(aw) }));
   if (aiCfg.comfyOn) {
-    parts.push('ComfyUI：' + (aiCfg.comfyWorkflow ? '工作流已就绪' : '未上传工作流'));
-    try { parts.push((await COMFY.check()) ? '已连接' : '连接失败'); } catch (e) { parts.push('连接失败'); }
-  } else parts.push('ComfyUI 未启用');
+    parts.push(t('ui.ai.statusComfy', { state: aiCfg.comfyWorkflow ? t('ui.ai.workflowReady') : t('ui.ai.workflowMissing') }));
+    try { parts.push((await COMFY.check()) ? t('ui.ai.connected') : t('ui.ai.connectionFailed')); } catch (e) { parts.push(t('ui.ai.connectionFailed')); }
+  } else parts.push(t('ui.ai.comfyDisabled'));
   talkSetStatus(parts.join(' · '));
 }
 function talkHistMsgs(sysText) {
@@ -1372,8 +1372,13 @@ function ptxt(key, params) {
 function unnamedText() { return t('ui.common.unnamed'); }
 function displayWorldName(w) {
   if (!w) return ptxt('unnamedWorld');
-  if (w.id === 'world_default' || w.name === '默认世界书（附录）') return t('ui.names.defaultWorld');
+  if (w.id === 'world_default' || w.name === '默认世界书（附录）' || w.name === '默认扩展提示库（附录）') return t('ui.names.defaultWorld');
   return w.name || ptxt('unnamedWorld');
+}
+function displayPresetName(p) {
+  if (!p) return ptxt('unnamedPreset');
+  if (p.id === 'preset_default' || p.name === '默认主提示词') return t('ui.names.defaultPreset');
+  return p.name || ptxt('unnamedPreset');
 }
 function displayEntryName(e) {
   if (!e) return unnamedText();
@@ -1540,7 +1545,7 @@ function deleteWorld(id) {
   toast(ptxt('worldDeleted'));
 }
 function wbImportWorld(entries, name) {
-  const w = { id: 'world_' + Date.now(), name: name || '导入的世界书', enabled: true, constant: false, entries: entries.map(worldEntry) };
+  const w = { id: 'world_' + Date.now(), name: name || ptxt('importedWorld'), enabled: true, constant: false, entries: entries.map(worldEntry) };
   aiCfg.worlds.push(w);
   setActiveWorld(w.id);
 }
@@ -1559,7 +1564,7 @@ function worldBookPreview(input) {
   if (!w || w.enabled === false) return ptxt('worldNoInject');
   const cnst = (w.entries || []).filter(e => e && e.enabled !== false && e.constant);
   const kw = (w.entries || []).filter(e => e && e.enabled !== false && !e.constant && String(e.keys || '').trim());
-  let s = '【世界书：' + (w.name || '') + '】\n';
+  let s = I18n.localeId() === 'en-US' ? '[Extension Prompt Library: ' + displayWorldName(w) + ']\n' : '【扩展提示库：' + displayWorldName(w) + '】\n';
   s += cnst.length ? '\n' + ptxt('constant') + ':\n' + wbBlock(cnst) : '\n' + ptxt('worldNoConstant');
   if (input) {
     const hit = wbEntriesFor(input).filter(e => !e.constant);
@@ -1576,7 +1581,7 @@ function renderPresetBar() {
   for (const p of presetList()) {
     const o = document.createElement('option');
     o.value = p.id;
-    o.textContent = (p.id === 'preset_default' || p.name === '默认主提示词') ? t('ui.names.defaultPreset') : (p.name || ptxt('unnamedPreset'));
+    o.textContent = displayPresetName(p);
     presetSel.appendChild(o);
   }
   const cur = activePreset();
@@ -1774,11 +1779,11 @@ function wbDoImport() {
   checks.forEach((ck, i) => { if (ck.checked) chosen.push(wbImportPending[i]); });
   wbCloseImportModal();
   if (!chosen.length) { toast(ptxt('nothingSelected')); return; }
-  wbImportWorld(chosen, wbImportName || '导入的世界书');
+  wbImportWorld(chosen, wbImportName || ptxt('importedWorld'));
   renderWorldSelector(); renderWorldCards(); renderWbTitle();
   toast(ptxt('importedEntries', { count: chosen.length }));
 }
-var wbImportName = '导入的世界书';
+var wbImportName = '';
 function parseWorldFile(text) {
   let d;
   try { d = JSON.parse(text); } catch (e) { return null; }
@@ -1786,13 +1791,13 @@ function parseWorldFile(text) {
     const worlds = [];
     for (const w of d.worlds) {
       const entries = wbParseEntries(JSON.stringify(w));
-      if (entries) worlds.push({ name: String(w.name || '拓展提示词'), entries });
+      if (entries) worlds.push({ name: String(w.name || ptxt('importedWorld')), entries });
     }
     return worlds.length ? { kind: 'multi', worlds } : null;
   }
   const entries = wbParseEntries(text);
   if (!entries) return null;
-  return { kind: 'single', name: String((d && d.name) || '导入的世界书'), entries };
+  return { kind: 'single', name: String((d && d.name) || ptxt('importedWorld')), entries };
 }
 wbImport.onclick = () => wbImportFile.click();
 wbImportFile.addEventListener('change', () => {
@@ -1811,7 +1816,7 @@ wbImportFile.addEventListener('change', () => {
       }
       if (first) { aiCfg.worldSel = first.id; aiCfg.wb = getActiveEntries(); persistAI(); }
       renderWorldSelector(); renderWorldCards(); renderWbTitle(); renderWb(); renderWbMatch();
-      toast('已导入 ' + info.worlds.length + ' 本世界书');
+      toast(ptxt('importedWorlds', { count: info.worlds.length }));
     } else {
       wbImportName = info.name;
       wbOpenImportModal(info.entries, f.name);
@@ -1823,7 +1828,7 @@ wbExport.onclick = () => {
   saveWb();
   const w = activeWorld();
   if (!w) return;
-  wbDownload(wbBuildSingleWorld(w), (w.name || '拓展提示词') + '.json');
+  wbDownload(wbBuildSingleWorld(w), (w.name || ptxt('unnamedWorld')) + '.json');
 };
 wbBundle.onclick = () => {
   saveWb();
@@ -1877,10 +1882,10 @@ worldEnabled.addEventListener('change', () => {
   if (!w) return;
   w.enabled = worldEnabled.checked;
   persistAI(); renderWorldSelector(); renderWorldCards(); renderWbTitle(); renderWbMatch();
-  toast(w.enabled ? '拓展提示词已启用' : '拓展提示词已停用（不再注入提示词）');
+  toast(w.enabled ? ptxt('worldEnabledToast') : ptxt('worldDisabledToast'));
 });
 worldAdd.onclick = addWorld;
-previewWorld.onclick = () => { const t = worldBookPreview(genDesc.value.trim()); toast('已复制拓展提示词'); copyText(t, '已复制拓展提示词'); };
+previewWorld.onclick = () => { const t = worldBookPreview(genDesc.value.trim()); toast(ptxt('previewCopied')); copyText(t, ptxt('previewCopied')); };
 
 /* ---------- 自由问答 ---------- */
 // V1.1：问答历史持久化到 localStorage，关闭浏览器后再次打开仍在
