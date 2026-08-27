@@ -4,46 +4,47 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';">
-<title>AI 绘画 Tag 工具箱 V1.3.38 · Danbooru 标签选择器</title>
+<title>AI 绘画 Tag 工具箱 V1.4.0 · Danbooru 标签选择器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 <header>
-  <button class="hbtn" id="menuBtn" title="分类菜单">☰</button>
-  <div class="brand"><span class="logo">🎨</span>AI 绘画 Tag 工具箱<small id="brandSub">加载中…</small></div>
+  <button class="hbtn" id="menuBtn" data-i18n-title="ui.header.menu">☰</button>
+  <div class="brand"><span class="logo">🎨</span><span data-i18n="ui.header.brand">AI 绘画 Tag 工具箱</span><small id="brandSub" data-i18n="ui.common.loading"></small></div>
   <div class="header-workspace" id="headerWorkspace">
     <div class="search" id="searchWrap">
       <span class="si">🔍</span>
-      <input id="q" type="text" title="快捷键：Ctrl+K 或 / 可快速聚焦搜索框" placeholder="搜索标签：英文 / 中文 / 别名（如：双马尾、blonde、异色瞳）" autocomplete="off">
+    <input id="q" type="text" data-i18n-title="ui.header.searchTitle" data-i18n-placeholder="ui.header.searchPlaceholder" autocomplete="off">
     </div>
-    <div id="aiCfgBtns" class="ai-module-switcher" role="tablist" aria-label="AI 模块" style="display:none">
+    <div id="aiCfgBtns" class="ai-module-switcher" role="tablist" data-i18n-aria="ui.header.aiModules" style="display:none">
       <span class="ai-module-thumb" aria-hidden="true"></span>
-      <button class="ai-module-tab on" id="aiModuleTalk" data-panel="talk" role="tab" aria-selected="true">🤖 助手页</button>
-      <button class="ai-module-tab" id="aiModulePrompt" data-panel="prompt" role="tab" aria-selected="false">📝 提示词页</button>
-      <button class="ai-module-tab" id="aiModuleApi" data-panel="api" role="tab" aria-selected="false">⚙️ API 页</button>
+      <button class="ai-module-tab on" id="aiModuleTalk" data-panel="talk" role="tab" aria-selected="true" data-i18n="ui.header.talkPage"></button>
+      <button class="ai-module-tab" id="aiModulePrompt" data-panel="prompt" role="tab" aria-selected="false" data-i18n="ui.header.promptPage"></button>
+      <button class="ai-module-tab" id="aiModuleApi" data-panel="api" role="tab" aria-selected="false" data-i18n="ui.header.apiPage"></button>
     </div>
   </div>
-  <button class="hbtn" id="translateBtn" title="打开翻译模块">🌐 翻译</button>
+  <button class="hbtn" id="translateBtn" data-i18n-title="ui.translation.title" data-i18n="ui.header.translation"></button>
   <div class="popwrap">
     <button class="hbtn" id="themeBtn">🎨 样式</button>
     <div class="pop" id="themePop" hidden>
-      <button class="popitem" data-theme="light"><span class="ck">✓</span>☀️ 浅色模式</button>
-      <button class="popitem" data-theme="dark"><span class="ck"></span>🌙 深色模式</button>
-      <button class="popitem" data-theme="auto"><span class="ck"></span>🖥️ 跟随系统</button>
+    <button class="popitem" data-theme="light"><span class="ck">✓</span><span data-i18n="ui.header.light"></span></button>
+      <button class="popitem" data-theme="dark"><span class="ck"></span><span data-i18n="ui.header.dark"></span></button>
+      <button class="popitem" data-theme="auto"><span class="ck"></span><span data-i18n="ui.header.autoTheme"></span></button>
     </div>
   </div>
-  <button class="hbtn" id="aiBtn">🤖 AI 助手</button>
-  <button class="hbtn" id="nsfwBtn"><span class="dot"></span>成人标签</button>
-  <button class="hbtn" id="favBtn">⭐ 收藏组合</button>
-  <button class="hbtn" id="helpBtn">❓ 帮助</button>
-  <button class="hbtn sponsor" id="sponsorBtn">❤️ 赞助作者</button>
+  <button class="hbtn" id="aiBtn" data-i18n="ui.header.aiAssistant"></button>
+  <button class="hbtn" id="nsfwBtn"><span class="dot"></span><span data-i18n="ui.header.adult"></span></button>
+  <button class="hbtn" id="favBtn" data-i18n="ui.header.favorites"></button>
+  <button class="hbtn" id="helpBtn" data-i18n="ui.header.help"></button>
+  <button class="hbtn sponsor" id="sponsorBtn" data-i18n="ui.header.sponsor"></button>
+  <div class="popwrap" id="localeWrap"><button class="hbtn" id="localeBtn" data-i18n="ui.header.language" data-i18n-title="ui.header.languageTitle"></button><div class="pop" id="localePop" hidden></div></div>
 </header>
 
 <div class="wrap" id="wrapEl">
   <aside class="sidebar" id="sidebar">
     <div class="slist" id="catList"></div>
-    <button class="addbtn" id="addTagBtn">＋ 添加标签</button>
+    <button class="addbtn" id="addTagBtn" data-i18n="ui.custom.title"></button>
     <div id="sideAi" style="display:none">
       <button id="talkNew" class="tnew">＋ 新对话</button>
       <div class="tsidehead" style="padding:8px 8px 2px">📚 对话记录</div>
@@ -63,36 +64,36 @@
     <section id="translateView" class="translate-view" aria-label="翻译模块" hidden>
       <div class="translate-page-head">
         <div>
-          <h2>🌐 翻译</h2>
-          <span id="translateStatus">输入内容后自动匹配 Tag；AI 翻译支持双向 Tag 转换</span>
+          <h2 data-i18n="ui.translation.title"></h2>
+          <span id="translateStatus" data-i18n="ui.translation.statusIdle"></span>
         </div>
         <span class="sp"></span>
         <select id="translateDirection" aria-label="翻译方向">
-          <option value="auto">自动识别方向</option>
-          <option value="zh-en">中文 → Tag / English</option>
-          <option value="en-zh">Tag / English → 中文</option>
+          <option value="auto" data-i18n="ui.translation.directionAuto"></option>
+          <option value="zh-en" data-i18n="ui.translation.directionZhToTag"></option>
+          <option value="en-zh" data-i18n="ui.translation.directionTagToZh"></option>
         </select>
-        <button class="abtn ghost" id="translateClear">清空</button>
-        <button class="abtn" id="translateBack">← 返回标签库</button>
+        <button class="abtn ghost" id="translateClear" data-i18n="ui.common.clear"></button>
+        <button class="abtn" id="translateBack" data-i18n="ui.translation.back"></button>
       </div>
       <div class="translate-grid">
         <section class="translate-pane">
-          <div class="translate-pane-head"><span>输入</span><span id="translateInputCount">0 字</span></div>
-          <textarea id="translateInput" class="translate-input" placeholder="输入中文或英文内容…"></textarea>
+          <div class="translate-pane-head"><span data-i18n="ui.translation.input"></span><span id="translateInputCount">0 字</span></div>
+          <textarea id="translateInput" class="translate-input" data-i18n-placeholder="ui.translation.inputPlaceholder"></textarea>
         </section>
         <section class="translate-pane">
           <div class="translate-pane-head">
-            <span>翻译结果</span>
+            <span data-i18n="ui.translation.result"></span>
             <span class="translate-actions">
-              <button class="abtn pri" id="translateAi">🤖 AI 翻译</button>
-              <button class="abtn" id="translateCopy">📋 复制</button>
+              <button class="abtn pri" id="translateAi" data-i18n="ui.translation.aiTranslate"></button>
+              <button class="abtn" id="translateCopy" data-i18n="ui.common.copy"></button>
             </span>
           </div>
-          <textarea id="translateOutput" class="translate-output" readonly placeholder="本地普通翻译或 AI Tag 翻译结果会显示在这里…"></textarea>
+          <textarea id="translateOutput" class="translate-output" readonly data-i18n-placeholder="ui.translation.outputPlaceholder"></textarea>
         </section>
       </div>
       <section class="translate-tags">
-        <div class="translate-tags-head"><span>匹配到的站内 Tag（AI 翻译参考）</span><span id="translateTagCount">0 个</span><span class="sp"></span><button class="abtn ghost" id="translateCopyTags">📋 复制 Tag</button></div>
+        <div class="translate-tags-head"><span data-i18n="ui.translation.matched"></span><span id="translateTagCount">0 个</span><span class="sp"></span><button class="abtn ghost" id="translateCopyTags" data-i18n="ui.translation.copyTags"></button></div>
         <div id="translateTags" class="translate-tag-list"><span class="translate-empty">输入内容后会在这里显示相关 Tag</span></div>
       </section>
     </section>
@@ -162,21 +163,21 @@
 <div class="modal" id="addModal">
   <div class="box">
     <button class="hbtn close" id="addClose">✕</button>
-    <h3>＋ 添加自定义标签</h3>
+    <h3 data-i18n="ui.custom.title"></h3>
     <div class="form">
-      <label>英文标签（必填）
+      <label><span data-i18n="ui.custom.english"></span>
         <input id="nEn" placeholder="例如：sparkling water">
       </label>
-      <label>中文翻译
+      <label><span data-i18n="ui.custom.chinese"></span>
         <input id="nZh" placeholder="例如：气泡水">
       </label>
-      <label>搜索别名（空格分隔，选填）
+      <label><span data-i18n="ui.custom.alias"></span>
         <input id="nAl" placeholder="例如：苏打水 气泡饮">
       </label>
-      <label>子分类（留空则为“自定义”）
+      <label><span data-i18n="ui.custom.subcategory"></span>
         <input id="nSub" placeholder="自定义">
       </label>
-      <label>分类
+      <label><span data-i18n="ui.custom.category"></span>
         <select id="nCat"></select>
       </label>
       <label id="nNewCatWrap" style="display:none">新分类名称
@@ -184,10 +185,10 @@
       </label>
     </div>
     <div class="form-acts">
-      <button class="abtn pri" id="nSave">保存</button>
-      <button class="abtn" id="nCancel">取消</button>
+      <button class="abtn pri" id="nSave" data-i18n="ui.custom.save"></button>
+      <button class="abtn" id="nCancel" data-i18n="ui.custom.cancel"></button>
     </div>
-    <div class="clhead">我的自定义标签</div>
+    <div class="clhead" data-i18n="ui.custom.list"></div>
     <div class="clist" id="customList"></div>
   </div>
 </div>
@@ -200,12 +201,12 @@
     </div>
     <div id="tabApi" style="display:none">
       <div class="aitop slim2">
-        <button class="abtn ghost backbtn" id="apiBack">← 返回 AI 对话</button>
-        <span style="font-weight:700;font-size:14px">⚙️ API 与 ComfyUI 配置</span>
+        <button class="abtn ghost backbtn" id="apiBack" data-i18n="ui.settings.apiBack"></button>
+        <span style="font-weight:700;font-size:14px" data-i18n="ui.settings.apiTitle"></span>
       </div>
       <div class="apibody">
       <div class="form">
-        <label>服务商预设
+        <label><span data-i18n="ui.settings.providerPreset"></span>
           <select id="aiPreset">
             <option value="https://api.openai.com/v1">OpenAI</option>
             <option value="https://api.deepseek.com/v1">DeepSeek（deepseek-chat）</option>
@@ -216,17 +217,17 @@
             <option value="">自定义…</option>
           </select>
         </label>
-        <label>API 地址
+        <label><span data-i18n="ui.settings.apiAddress"></span>
           <input id="aiBase" placeholder="https://api.openai.com/v1">
         </label>
-          <label>API Key（仅存本机系统安全存储；本地 Ollama 可留空）
+          <label><span data-i18n="ui.settings.apiKey"></span>
           <div class="key-row">
             <input id="aiKey" type="password" placeholder="输入后安全保存（不会写入普通配置）" autocomplete="off">
-            <button class="abtn ghost" id="aiKeyClear" type="button">清除已保存 Key</button>
+            <button class="abtn ghost" id="aiKeyClear" type="button" data-i18n="ui.settings.keyClear"></button>
           </div>
           <span class="secret-status" id="aiKeyStatus">正在检查系统安全存储…</span>
           </label>
-        <label>模型名
+        <label><span data-i18n="ui.settings.modelName"></span>
           <select id="aiModel"></select>
           <input id="aiModelCustom" placeholder="输入自定义模型名" style="display:none;margin-top:6px">
         </label>
@@ -234,25 +235,25 @@
           <label class="opt"><input type="checkbox" id="aiStrict" checked> 严格从标签库选取（智能按需发送：识图复刻只发识图得到的 Tag；无图时按你的描述关键词匹配相关标签发给 AI，Token 消耗小）</label>
         </div>
         <div class="row">
-          <button class="abtn" id="aiTest">🔌 测试连接</button>
-          <button class="abtn ghost" id="aiClearCfg">恢复默认</button>
+          <button class="abtn" id="aiTest" data-i18n="ui.settings.testConnection"></button>
+          <button class="abtn ghost" id="aiClearCfg" data-i18n="ui.settings.restoreDefault"></button>
         </div>
         <div class="hint">· 兼容所有 OpenAI 格式接口（<code>…/chat/completions</code>），请求由应用<b>主进程</b>转发到你填写的地址；Key 使用本机系统安全存储加密保存，不写入普通配置。<br>· 部分服务可能需要允许跨域或本地服务先启动；本地 Ollama 需先启动服务。<br>· 使用「📷 图片反馈」需选择<b>支持视觉的模型</b>（如 gpt-4o / gpt-4o-mini、qwen-vl-max、Kimi 视觉版、deepseek-v4-flash-vision-exp、Ollama 的 llama3.2-vision 等）；纯文本模型（如 DeepSeek deepseek-chat）收到图片会报错。</div>
-        <div class="clhead comfyhead">🔌 ComfyUI（本地绘图，🎨 ComfyUI迭代 用）</div>
-        <label>ComfyUI 地址
+        <div class="clhead comfyhead" data-i18n="ui.settings.comfyTitle"></div>
+        <label><span data-i18n="ui.settings.comfyAddress"></span>
           <input id="comfyBase" placeholder="http://127.0.0.1:8188">
         </label>
         <div class="opts">
-          <label class="opt"><input type="checkbox" id="comfyOn"> 启用 ComfyUI 迭代</label>
+          <label class="opt"><input type="checkbox" id="comfyOn"><span data-i18n="ui.settings.comfyEnable"></span></label>
         </div>
         <details class="aiset" style="border:none">
           <summary>🎛 工作流（上传 / 拖入 / 粘贴，参数改动交给用户）</summary>
           <div class="row">
-            <button class="abtn" id="comfyWfJson">📂 上传工作流 JSON</button>
-            <button class="abtn" id="comfyWfPng">🖼 上传 PNG（含工作流）</button>
-            <button class="abtn" id="comfyWfCopy">📋 复制工作流</button>
-            <button class="abtn" id="comfyWfOpen">🌐 打开 ComfyUI 页面</button>
-            <button class="abtn" id="comfyWfSync">🔄 同步工作流设置</button>
+            <button class="abtn" id="comfyWfJson" data-i18n="ui.settings.workflowUpload"></button>
+            <button class="abtn" id="comfyWfPng" data-i18n="ui.settings.workflowPng"></button>
+            <button class="abtn" id="comfyWfCopy" data-i18n="ui.settings.workflowCopy"></button>
+            <button class="abtn" id="comfyWfOpen" data-i18n="ui.settings.workflowOpen"></button>
+            <button class="abtn" id="comfyWfSync" data-i18n="ui.settings.workflowSync"></button>
           </div>
           <input type="file" id="comfyWfJsonFile" accept=".json,application/json" hidden>
           <input type="file" id="comfyWfPngFile" accept="image/png" hidden>
@@ -534,6 +535,7 @@
 <script src="js/globals.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/app-errors.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/config.js"></script>
 <script src="js/data-tags.js"></script>

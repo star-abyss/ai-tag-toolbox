@@ -1,6 +1,6 @@
 {
   "name": "ai-tag-toolbox",
-  "version": "1.3.38",
+  "version": "1.4.0",
   "description": "AI 绘画 Tag 工具箱 - Windows 便携版（内置 WD Tagger 识图）",
   "main": "main.js",
   "author": "AI Tag Toolbox",

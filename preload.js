@@ -60,5 +60,10 @@ contextBridge.exposeInMainWorld('aiTag', {
   translation: {
     available: () => ipcRenderer.invoke('translation:available'),
     run: (text, direction) => ipcRenderer.invoke('translation:run', { text, direction })
+  },
+  locale: {
+    list: () => ipcRenderer.invoke('locale:list'),
+    read: id => ipcRenderer.invoke('locale:read', id),
+    import: pack => ipcRenderer.invoke('locale:import', pack)
   }
 });

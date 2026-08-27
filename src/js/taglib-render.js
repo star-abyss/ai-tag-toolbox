@@ -41,11 +41,11 @@ function renderSidebar() {
     catListEl.appendChild(b);
   };
   const total = tags.filter(t => visible(t) && terms.every(w => t.hay.includes(w))).length;
-  mk('all', '📦', '全部', '', total);
+  mk('all', '📦', t('ui.tag.all'), '', total);
   for (const c of categories) {
     if (c.nsfw && !state.nsfwOn) continue;
     const n = tags.filter(t => t.cat === c.id && visible(t) && terms.every(w => t.hay.includes(w))).length;
-    mk(c.id, c.icon, c.name, c.neg ? 'neg' : (c.nsfw ? 'nsfw' : ''), n);
+    mk(c.id, c.icon, typeof I18n !== 'undefined' && I18n.categoryLabel ? I18n.categoryLabel(c.id) : c.name, c.neg ? 'neg' : (c.nsfw ? 'nsfw' : ''), n);
   }
 }
 
@@ -54,12 +54,13 @@ function renderChips(keepPage) {
   if (!keepPage) _chipVisibleCount = CHIP_BATCH;
   const list = filtered(), terms = termsOf();
   const c = catMap.get(state.cat);
-  catTitle.innerHTML = state.q ? '🔍 搜索：' + esc(state.q) : (c ? '<span class="tico" style="background:' + catColor(c.id) + '28">' + c.icon + '</span>' + esc(c.name) : '<span class="tico">📦</span>全部');
-  catCnt.textContent = list.length + ' 个标签';
+  const cName = c ? (typeof I18n !== 'undefined' && I18n.categoryLabel ? I18n.categoryLabel(c.id) : c.name) : '';
+  catTitle.innerHTML = state.q ? '🔍 搜索：' + esc(state.q) : (c ? '<span class="tico" style="background:' + catColor(c.id) + '28">' + c.icon + '</span>' + esc(cName) : '<span class="tico">📦</span>' + esc(t('ui.tag.all')));
+  catCnt.textContent = t('ui.tag.tagCount', { count: list.length });
   clearQBtn.style.display = state.q ? '' : 'none';
   chipsEl.replaceChildren();
   if (!list.length) {
-    chipsEl.innerHTML = '<div class="empty">😕 没有匹配的标签，换个关键词试试<br><span style="font-size:12px">支持英文、中文、别名搜索</span></div>';
+    chipsEl.innerHTML = '<div class="empty">' + esc(t('ui.tag.noMatch')) + '<br><span style="font-size:12px">' + esc(t('ui.tag.searchHint')) + '</span></div>';
     return;
   }
   const show = list.slice(0, Math.min(400, _chipVisibleCount));
@@ -75,7 +76,7 @@ function renderChips(keepPage) {
       groupEl = document.createElement('div');
       groupEl.className = 'group';
       const cat = catMap.get(t.cat);
-      const label = (state.cat === 'all' || state.q) ? (cat ? cat.icon + ' ' + cat.name + ' · ' : '') : '';
+      const label = (state.cat === 'all' || state.q) ? (cat ? cat.icon + ' ' + (typeof I18n !== 'undefined' && I18n.categoryLabel ? I18n.categoryLabel(cat.id) : cat.name) + ' · ' : '') : '';
       const h = document.createElement('div');
       h.className = 'group-head';
       h.innerHTML = '<span class="name">' + esc(label + t.sub) + '</span><span class="line"></span><span class="n">' + counts.get(key) + ' 个</span>';
@@ -106,7 +107,7 @@ function renderChips(keepPage) {
     const more = document.createElement('button');
     more.className = 'abtn ghost';
     more.style.cssText = 'display:block;margin:16px auto 4px;min-width:180px';
-    more.textContent = '继续加载（已显示 ' + show.length + ' / ' + list.length + '）';
+    more.textContent = t('ui.tag.loadMore', { shown: show.length, total: list.length });
     more.onclick = () => { _chipVisibleCount += CHIP_BATCH; renderChips(true); };
     chipsEl.appendChild(more);
   }
@@ -126,7 +127,7 @@ function renderBar() {
   }
   if (!state.sel.size) selbox.innerHTML = '<span style="color:var(--muted);font-size:12px;padding:4px 0">点击上方标签即可选中，支持多选；点标签右下角 📋 可直接复制单个。</span>';
   previewEl.innerHTML = state.sel.size ? '<b>Prompt：</b>' + esc([...state.sel].join(', ')) : '';
-  $('#copyAll').textContent = '📋 复制 Prompt' + (state.sel.size ? '（' + state.sel.size + '）' : '');
+  $('#copyAll').textContent = t('ui.tag.copyPrompt') + (state.sel.size ? '（' + state.sel.size + '）' : '');
 }
 
 function renderFavs() {
@@ -155,7 +156,7 @@ function loadFav(f, append) {
 function render() {
   renderSidebar(); renderChips(); renderBar(); renderFavs();
   const bsub = $('#brandSub');
-  if (bsub) bsub.textContent = 'V1.3.38 · 共 ' + tags.length + ' 个标签' + (wdModelName ? '（含识图模型同步 ' + wdTags.length + ' 个）' : '') + ' · 单击选择 · 一键复制';
+  if (bsub) bsub.textContent = wdModelName ? t('ui.tag.brandSubWithModel', { count: tags.length, modelCount: wdTags.length }) : t('ui.tag.brandSub', { count: tags.length });
 }
 
 function toggle(en) {

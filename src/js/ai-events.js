@@ -25,9 +25,9 @@ function setAppMode(m) {
   // AI 按钮本身只改变文案和动作，避免进入 AI 后其它按钮整体位移。
   const aiBtn = $('#aiBtn');
   if (aiBtn) {
-    aiBtn.textContent = ai ? '← 返回主页' : '🤖 AI 助手';
-    aiBtn.title = ai ? '返回主页' : '打开 AI 助手';
-    aiBtn.setAttribute('aria-label', ai ? '返回主页' : '打开 AI 助手');
+    aiBtn.textContent = ai ? t('ui.header.backHome') : t('ui.header.aiAssistant');
+    aiBtn.title = ai ? t('ui.header.backHome') : t('ui.header.aiAssistant');
+    aiBtn.setAttribute('aria-label', ai ? t('ui.header.backHome') : t('ui.header.aiAssistant'));
   }
   // 翻译入口在两种主模式下都保留，确保导航位置稳定；进入翻译页时
   // 翻译模块自身会接管页面内容并提供返回标签库按钮。

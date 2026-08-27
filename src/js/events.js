@@ -36,7 +36,7 @@ function setNsfw(on) {
   state.nsfwOn = on;
   if (!on && state.cat === 'nsfw') state.cat = 'quality';
   nsfwBtn.classList.toggle('on', on);
-  nsfwBtn.innerHTML = '<span class="dot"></span>成人标签' + (on ? '：开' : '');
+  nsfwBtn.innerHTML = '<span class="dot"></span>' + (on ? t('ui.header.adultOn') : t('ui.header.adult'));
   if (aiNsfwChk) aiNsfwChk.checked = on;
   persist(); render();
 }
@@ -59,4 +59,3 @@ document.addEventListener('keydown', e => {
     qEl.blur();
   }
 });
-

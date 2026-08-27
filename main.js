@@ -8,6 +8,54 @@ let win = null;
 let ort = null;
 const aiRequests = new Map();
 
+// 语言包只允许 JSON 数据；内置包随应用分发，第三方包保存到 userData/locales。
+function localeDirs() {
+  const dirs = [];
+  try { if (app.isPackaged && process.resourcesPath) dirs.push(path.join(process.resourcesPath, 'locales')); } catch (e) {}
+  dirs.push(path.join(__dirname, 'locales'));
+  try { dirs.push(path.join(app.getPath('userData'), 'locales')); } catch (e) {}
+  return [...new Set(dirs)];
+}
+function localeSafeId(id) { return /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(String(id || '')); }
+function localeReadFile(file) {
+  try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || stat.size > 2 * 1024 * 1024) return null;
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !localeSafeId(data.meta && data.meta.id) || !/^\d+\.\d+\.\d+$/.test(String(data.meta && data.meta.version || ''))) return null;
+    return data;
+  } catch (e) { return null; }
+}
+function localePath(id, dir) { return path.join(dir, String(id) + '.json'); }
+ipcMain.handle('locale:list', async () => {
+  const out = new Map();
+  for (const dir of localeDirs()) {
+    let files = [];
+    try { files = fs.readdirSync(dir); } catch (e) { continue; }
+    for (const name of files) {
+      if (!/^[a-z]{2,3}(?:-[A-Z]{2})?\.json$/.test(name)) continue;
+      const id = name.slice(0, -5), data = localeReadFile(localePath(id, dir));
+      if (data) out.set(id, { id, name: String(data.meta.name || id), nativeName: String(data.meta.nativeName || data.meta.name || id), builtin: dir === path.join(__dirname, 'locales') || dir === path.join(process.resourcesPath || '', 'locales') });
+    }
+  }
+  return [...out.values()];
+});
+ipcMain.handle('locale:read', async (ev, id) => {
+  if (!localeSafeId(id)) return null;
+  for (const dir of localeDirs()) { const data = localeReadFile(localePath(id, dir)); if (data) return data; }
+  return null;
+});
+ipcMain.handle('locale:import', async (ev, pack) => {
+  const data = pack && typeof pack === 'object' && !Array.isArray(pack) ? pack : null;
+  const id = data && data.meta && data.meta.id;
+  if (!data || !localeSafeId(id) || !/^\d+\.\d+\.\d+$/.test(String(data.meta.version || '')) || JSON.stringify(data).length > 2 * 1024 * 1024) return { ok: false, error: '语言包格式不正确' };
+  try {
+    const dir = path.join(app.getPath('userData'), 'locales'); fs.mkdirSync(dir, { recursive: true });
+    const tmp = localePath(id, dir) + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8'); fs.renameSync(tmp, localePath(id, dir));
+    return { ok: true, id };
+  } catch (e) { return { ok: false, error: '语言包保存失败：' + (e && e.message || e) }; }
+});
+
 // API Key 只保存在 Electron safeStorage 加密文件中，不再回传给渲染进程。
 function aiKeyPath() {
   return path.join(app.getPath('userData'), 'secure', 'api-key.bin');

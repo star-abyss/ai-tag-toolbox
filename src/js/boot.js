@@ -2,7 +2,7 @@
 /* ================= 启动 ================= */
 rebuild();
 if (!catMap.has(state.cat)) state.cat = 'quality';
-nsfwBtn.innerHTML = '<span class="dot"></span>成人标签' + (state.nsfwOn ? '：开' : '');
+nsfwBtn.innerHTML = '<span class="dot"></span>' + (state.nsfwOn ? t('ui.header.adultOn') : t('ui.header.adult'));
 nsfwBtn.classList.toggle('on', state.nsfwOn);
 aiNsfwChk.checked = state.nsfwOn;
 aiBase.value = aiCfg.base || DEFAULT_CFG.base;
@@ -96,6 +96,27 @@ window.__saveWb = saveWb;
 window.__storageUsage = storageUsage;
 window.__storageDiagnostics = storageDiagnostics;
 window.__appErrorDiagnostics = typeof appErrorDiagnostics === 'function' ? appErrorDiagnostics : function () { return null; };
+window.__i18nLocale = function () { return typeof I18n !== 'undefined' ? I18n.localeId() : 'zh-CN'; };
+window.__i18nT = function (key, params) { return typeof I18n !== 'undefined' ? I18n.t(key, params) : key; };
+window.__i18nSetLocale = function (id, mode) { return typeof I18n !== 'undefined' ? I18n.setLocale(id, mode) : Promise.resolve(false); };
+window.__i18nAvailable = function () { return typeof I18n !== 'undefined' ? I18n.available() : []; };
+window.__i18nImportPack = function (pack) { return typeof I18n !== 'undefined' ? I18n.importPack(pack) : Promise.resolve({ ok: false, code: 'LOCALE_INVALID' }); };
+window.__i18nDiagnostics = function () { return typeof I18n !== 'undefined' ? I18n.diagnostics() : null; };
+window.addEventListener('localechange', function () {
+  try { if (typeof nsfwBtn !== 'undefined' && nsfwBtn) nsfwBtn.innerHTML = '<span class="dot"></span>' + (state.nsfwOn ? t('ui.header.adultOn') : t('ui.header.adult')); } catch (e) {}
+  try { if (typeof setAppMode === 'function') setAppMode(appMode || 'tag'); } catch (e) {}
+  try { if (typeof render === 'function') render(); } catch (e) {}
+  try { if (typeof renderCustomList === 'function') renderCustomList(); } catch (e) {}
+  try { if (typeof renderCatOptions === 'function') renderCatOptions(); } catch (e) {}
+  try { if (typeof renderMgr === 'function') renderMgr(); } catch (e) {}
+  try { if (typeof renderTalkSidebar === 'function') renderTalkSidebar(); } catch (e) {}
+  try { if (typeof renderWorldSelector === 'function') renderWorldSelector(); } catch (e) {}
+  try { if (typeof renderWorldCards === 'function') renderWorldCards(); } catch (e) {}
+  try { if (typeof renderWbTitle === 'function') renderWbTitle(); } catch (e) {}
+  try { if (typeof renderTranslationTags === 'function' && translateInput && translateInput.value) renderTranslationTags(translateInput.value); } catch (e) {}
+  try { if (typeof applyTheme === 'function') applyTheme(); } catch (e) {}
+});
+if (typeof I18n !== 'undefined' && I18n.init) I18n.init().catch(function () {});
 window.__imageStore = ImageStore;
 window.__idb = IDB;
 window.__persistWithImageRefs = persistWithImageRefs;

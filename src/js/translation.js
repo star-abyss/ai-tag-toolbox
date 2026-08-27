@@ -25,6 +25,10 @@ function translationDirectionLabel(direction, kind) {
   return direction === 'zh-en' ? '中文 → English' : 'English → 中文';
 }
 
+function trText(key, fallback, params) {
+  return typeof t === 'function' ? t(key, params) : (fallback || key);
+}
+
 function translationDirectionFor(text) {
   const selected = translateDirection ? translateDirection.value : 'auto';
   if (selected === 'zh-en' || selected === 'en-zh') return selected;
@@ -223,7 +227,7 @@ function clearTranslation() {
   if (translateOutput) translateOutput.value = '';
   if (translateInputCount) translateInputCount.textContent = '0 字';
   renderTranslationTags('');
-  setTranslationStatus('输入内容后自动匹配 Tag 并翻译');
+  setTranslationStatus(trText('ui.translation.statusIdle', '输入内容后自动匹配 Tag 并翻译'));
   if (translateAiBtn) translateAiBtn.disabled = true;
 }
 
@@ -233,7 +237,7 @@ async function runLocalTranslation(text, requestNo) {
     return;
   }
   const direction = translationDirectionFor(text);
-  setTranslationStatus('正在加载本地模型并翻译（首次使用较慢）…');
+  setTranslationStatus(trText('ui.translation.statusLoading', '正在加载本地模型并翻译（首次使用较慢）…'));
   try {
     const r = await window.aiTag.translation.run(text, direction);
     if (requestNo !== translateRequestNo) return;
@@ -259,10 +263,10 @@ function scheduleLocalTranslation() {
   if (translateTimer) clearTimeout(translateTimer);
   if (!text) {
     if (translateOutput) translateOutput.value = '';
-    setTranslationStatus('输入内容后自动匹配 Tag 并翻译');
+    setTranslationStatus(trText('ui.translation.statusIdle', '输入内容后自动匹配 Tag 并翻译'));
     return;
   }
-  setTranslationStatus('已匹配 Tag，等待本地翻译…');
+  setTranslationStatus(trText('ui.translation.statusWaiting', '已匹配 Tag，等待本地翻译…'));
   translateTimer = setTimeout(() => runLocalTranslation(text, requestNo), 450);
 }
 
@@ -272,7 +276,7 @@ async function runAiTranslation() {
   if (translateAiBtn) translateAiBtn.disabled = true;
   const direction = translationDirectionFor(text);
   const refs = buildTranslationReference(text, 60, direction);
-  setTranslationStatus('正在调用 AI 翻译（已提供 ' + refs.length + ' 个本站 Tag 对照）…');
+  setTranslationStatus(trText('ui.translation.aiStatus', '正在调用 AI 翻译（已提供 ' + refs.length + ' 个本站 Tag 对照）…', { count: refs.length }));
   try {
     const prompt = buildTranslationPrompt(text, direction);
     const result = await chatComplete([
@@ -280,7 +284,8 @@ async function runAiTranslation() {
       { role: 'user', content: prompt.user }
     ], { stream: false });
     translateOutput.value = String(result || '').trim();
-    setTranslationStatus('AI 翻译 · ' + translationDirectionLabel(direction, 'ai') + ' · 参考 ' + refs.length + ' 个 Tag', 'ok');
+    const aiDir = direction === 'zh-en' ? trText('ui.translation.aiDirectionZhToTag', '中文 → Tag') : trText('ui.translation.aiDirectionTagToZh', 'Tag → 中文');
+    setTranslationStatus(trText('ui.translation.aiDone', 'AI 翻译 · ' + aiDir + ' · 参考 ' + refs.length + ' 个 Tag', { direction: aiDir, count: refs.length }), 'ok');
   } catch (e) {
     setTranslationStatus(typeof formatAppError === 'function' ? formatAppError(e, 'AI 翻译') : ('AI 翻译失败：' + ((e && e.message) || e)), 'error');
   } finally {
@@ -314,8 +319,8 @@ async function openTranslation() {
   if (window.aiTag && window.aiTag.translation && typeof window.aiTag.translation.available === 'function') {
     try {
       const r = await window.aiTag.translation.available();
-      if (r && r.available) setTranslationStatus('本地模型就绪 · 输入内容后自动翻译', 'ok');
-      else setTranslationStatus(typeof formatAppError === 'function' ? formatAppError('未找到本地翻译模型，请检查 models/translation', '本地翻译') : '未找到本地翻译模型，请检查 models/translation', 'error');
+      if (r && r.available) setTranslationStatus(trText('ui.translation.statusLocalReady', '本地模型就绪 · 输入内容后自动翻译'), 'ok');
+      else setTranslationStatus(typeof formatAppError === 'function' ? formatAppError('未找到本地翻译模型，请检查 models/translation', '本地翻译') : trText('ui.translation.localUnavailable', '未找到本地翻译模型，请检查 models/translation'), 'error');
     } catch (e) {
       setTranslationStatus(typeof formatAppError === 'function' ? formatAppError(e, '本地翻译模型检查') : '本地模型状态读取失败', 'error');
     }

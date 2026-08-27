@@ -19,7 +19,7 @@ themePop.addEventListener('click', e => {
   storageSet(LS_THEME, theme);
   applyTheme();
   themePop.hidden = true;
-  toast(theme === 'dark' ? '已切换深色模式' : (theme === 'light' ? '已切换浅色模式' : '已设为跟随系统'));
+  toast(theme === 'dark' ? t('ui.header.dark') : (theme === 'light' ? t('ui.header.light') : t('ui.header.autoTheme')));
 });
 document.addEventListener('click', e => {
   if (!e.target.closest('.popwrap') && !themePop.hidden) themePop.hidden = true;

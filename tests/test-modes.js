@@ -155,6 +155,36 @@ async function runErrorMessageTest(deps) {
   }
 }
 
+async function runI18nTest(deps) {
+  const { app, BrowserWindow, path } = deps;
+  const w = new BrowserWindow({ show: false, webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true, sandbox: false } });
+  try {
+    await w.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
+    await new Promise(r => setTimeout(r, 1000));
+    const result = await w.webContents.executeJavaScript(`(async function(){
+      const oldState = localStorage.getItem('dbt_locale_v1');
+      const available = __i18nAvailable();
+      const toEn = await __i18nSetLocale('en-US', 'manual');
+      await new Promise(r => setTimeout(r, 80));
+      const en = { lang: document.documentElement.lang, translate: document.getElementById('translateAi').textContent.trim(), direction: document.querySelector('#translateDirection option[value="zh-en"]').textContent.trim(), category: document.querySelector('#catList .cat:nth-child(2) span:nth-child(2)') && document.querySelector('#catList .cat:nth-child(2) span:nth-child(2)').textContent.trim(), error: formatAppError(new Error('HTTP 401: Authentication Fails (governor)'), 'AI') };
+      const toZh = await __i18nSetLocale('zh-CN', 'manual');
+      await new Promise(r => setTimeout(r, 80));
+      const zh = { lang: document.documentElement.lang, translate: document.getElementById('translateAi').textContent.trim(), direction: document.querySelector('#translateDirection option[value="en-zh"]').textContent.trim() };
+      const invalid = await __i18nImportPack('{bad json');
+      if (oldState === null) localStorage.removeItem('dbt_locale_v1'); else localStorage.setItem('dbt_locale_v1', oldState);
+      return { available, toEn, en, toZh, zh, invalid };
+    })()`);
+    console.log('I18NTEST result: ' + JSON.stringify(result));
+    const ids = (result && result.available || []).map(x => x.id);
+    const ok = result && result.toEn && result.toZh && ids.includes('zh-CN') && ids.includes('en-US') && result.en.lang === 'en-US' && /AI Translate/.test(result.en.translate) && /Chinese/.test(result.en.direction) && /AI authentication failed/i.test(result.en.error) && result.zh.lang === 'zh-CN' && /AI 翻译/.test(result.zh.translate) && /Tag/.test(result.zh.direction) && result.invalid && result.invalid.ok === false && result.invalid.code === 'LOCALE_INVALID_JSON';
+    console.log('I18NTEST stage: ' + (ok ? 'done' : 'failed'));
+    app.exit(ok ? 0 : 1);
+  } catch (e) {
+    console.log('I18NTEST FAIL: ' + (e && e.message || e));
+    app.exit(1);
+  }
+}
+
 // 主进程安全 API 请求回归：验证 Key 可写入系统安全存储、不会出现在普通配置，
 // 且实际请求由主进程带上 Authorization 后返回结果。
 async function runSecureAiTest(deps) {
@@ -535,6 +565,7 @@ function initTestModes(deps) {
   if (idx('--translationtest') >= 0) { runTranslationTest(deps); return true; }
   if (idx('--translationprompttest') >= 0) { runTranslationPromptTest(deps); return true; }
   if (idx('--errortest') >= 0) { runErrorMessageTest(deps); return true; }
+  if (idx('--i18ntest') >= 0) { runI18nTest(deps); return true; }
   if (idx('--secureaitest') >= 0) { runSecureAiTest(deps); return true; }
   if (idx('--imagestoragetest') >= 0) { runImageStorageTest(deps); return true; }
   if (idx('--translationui') >= 0) { runTranslationUiTest(deps, after('--translationui')); return true; }

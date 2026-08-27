@@ -95,9 +95,14 @@ function normalizeAppError(error, context) {
 function formatAppError(error, context, options) {
   const n = normalizeAppError(error, context);
   const opts = options || {};
-  const prefix = opts.prefix ? String(opts.prefix) + '：' : '';
-  const diagnostic = '诊断：' + n.code + (n.status ? ' / HTTP ' + n.status : '') + (n.detail ? ' · ' + n.detail : '');
-  const text = prefix + n.title + '：' + n.message + (n.hint ? ' 建议：' + n.hint : '') + ' ' + diagnostic;
+  const prefix = opts.prefix ? String(opts.prefix) + ': ' : '';
+  const title = typeof I18n !== 'undefined' && I18n.errorText ? I18n.errorText(n.code, 'title', n.title) : n.title;
+  const message = typeof I18n !== 'undefined' && I18n.errorText ? I18n.errorText(n.code, 'message', n.message) : n.message;
+  const hint = typeof I18n !== 'undefined' && I18n.errorText ? I18n.errorText(n.code, 'hint', n.hint) : n.hint;
+  const diagnosticLabel = typeof I18n !== 'undefined' && I18n.t ? I18n.t('ui.common.diagnostic') : '诊断';
+  const suggestionLabel = typeof I18n !== 'undefined' && I18n.t ? I18n.t('ui.common.suggestion') : '建议';
+  const diagnostic = diagnosticLabel + ': ' + n.code + (n.status ? ' / HTTP ' + n.status : '') + (n.detail ? ' · ' + n.detail : '');
+  const text = prefix + title + ': ' + message + (hint ? ' ' + suggestionLabel + ': ' + hint : '') + ' ' + diagnostic;
   APP_ERROR_LAST = Object.assign({}, n, { raw: appErrorRaw(error), formatted: text, at: Date.now() });
   try { console.error('[APP_ERROR]', APP_ERROR_LAST); } catch (e) {}
   try { if (typeof window !== 'undefined') window.__lastAppError = APP_ERROR_LAST; } catch (e) {}
@@ -109,7 +114,11 @@ function appErrorSummary(error, context) {
   APP_ERROR_LAST = Object.assign({}, n, { raw: appErrorRaw(error), at: Date.now() });
   try { console.error('[APP_ERROR]', APP_ERROR_LAST); } catch (e) {}
   try { if (typeof window !== 'undefined') window.__lastAppError = APP_ERROR_LAST; } catch (e) {}
-  return n.title + '：' + n.message + (n.hint ? ' 建议：' + n.hint : '') + '（' + n.code + '）';
+  const title = typeof I18n !== 'undefined' && I18n.errorText ? I18n.errorText(n.code, 'title', n.title) : n.title;
+  const message = typeof I18n !== 'undefined' && I18n.errorText ? I18n.errorText(n.code, 'message', n.message) : n.message;
+  const hint = typeof I18n !== 'undefined' && I18n.errorText ? I18n.errorText(n.code, 'hint', n.hint) : n.hint;
+  const suggestionLabel = typeof I18n !== 'undefined' && I18n.t ? I18n.t('ui.common.suggestion') : '建议';
+  return title + ': ' + message + (hint ? ' ' + suggestionLabel + ': ' + hint : '') + ' (' + n.code + ')';
 }
 
 function appErrorDiagnostics() { return APP_ERROR_LAST ? Object.assign({}, APP_ERROR_LAST) : null; }

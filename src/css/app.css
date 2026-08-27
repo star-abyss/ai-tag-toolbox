@@ -684,7 +684,7 @@ header{flex:none;display:flex;align-items:center;gap:10px;padding:10px 18px;back
 .codepre{margin:0;padding:12px 14px;overflow-x:auto;font-family:'Cascadia Code',Consolas,Menlo,monospace;font-size:12.5px;line-height:1.6;color:#e2e4ef;white-space:pre-wrap;word-break:break-all}
 .msg-text{white-space:pre-wrap;word-break:break-word}
 
-/* ================= 主页面翻译模块（V1.3.38） ================= */
+/* ================= 主页面翻译模块（V1.4.0） ================= */
 #tagLibraryView{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 #tagLibraryView[hidden]{display:none!important}
 #translateView[hidden]{display:none}
@@ -731,7 +731,7 @@ body.translation-mode #translateBtn{background:var(--pri-bg);border-color:var(--
   .translate-input,.translate-output{min-height:180px}
 }
 
-/* ================= 视觉系统刷新（V1.3.38） =================
+/* ================= 视觉系统刷新（V1.4.0） =================
  * 参考 Radix Colors / Material 3 的角色化配色：中性底色承载内容，
  * 蓝色负责主要操作，青色表示成功，珊瑚色表示危险，玫瑰色只作为
  * 成人/赞助语义色。标签选中态使用“浅底 + 彩色边框 + 勾选徽章”，

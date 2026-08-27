@@ -5,7 +5,7 @@ function renderCatOptions() {
   for (const c of categories) {
     const o = document.createElement('option');
     o.value = c.id;
-    o.textContent = c.icon + ' ' + c.name + (c.nsfw ? '（成人）' : '');
+    o.textContent = c.icon + ' ' + (typeof I18n !== 'undefined' && I18n.categoryLabel ? I18n.categoryLabel(c.id) : c.name) + (c.nsfw ? '（' + t('ui.header.adult') + '）' : '');
     nCat.appendChild(o);
   }
   const o = document.createElement('option');
@@ -56,4 +56,3 @@ function saveCustom() {
   nEn.value = ''; nZh.value = ''; nAl.value = ''; nSub.value = ''; nCat.value = categories[0].id; nNewCat.value = '';
   toast(overrode ? '已更新标签「' + en + '」（覆盖内置翻译/别名）' : '已添加标签：' + en);
 }
-
