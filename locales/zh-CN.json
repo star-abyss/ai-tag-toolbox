@@ -96,7 +96,10 @@
       "aiStatus": "正在调用 AI 翻译（已提供 {count} 个本站 Tag 对照）…",
       "aiDone": "AI 翻译 · {direction} · 参考 {count} 个 Tag",
       "aiDirectionZhToTag": "中文 → Tag",
-      "aiDirectionTagToZh": "Tag → 中文"
+      "aiDirectionTagToZh": "Tag → 中文",
+      "aiThinking": "💭 AI 思考过程",
+      "aiThinkingNow": "💭 AI 正在思考…",
+      "aiThinkingDone": "💭 AI 思考完成"
     },
     "settings": {
       "language": "界面语言",
@@ -115,9 +118,9 @@
       "providerPreset": "服务商预设",
       "modelName": "模型名",
       "keyClear": "清除已保存 Key",
-      "comfyTitle": "🔌 ComfyUI（本地绘图，🎨 ComfyUI迭代 用）",
+      "comfyTitle": "🔌 ComfyUI（本地绘图）",
       "comfyAddress": "ComfyUI 地址",
-      "comfyEnable": "启用 ComfyUI 迭代",
+      "comfyEnable": "启用 ComfyUI 出图",
       "workflowJson": "工作流 JSON",
       "workflowUpload": "📂 上传工作流 JSON",
       "workflowPng": "🖼 上传 PNG（含工作流）",
@@ -127,10 +130,37 @@
       ,"timeoutEnable": "启用 AI 自动超时停止",
       "timeoutSeconds": "自动停止时间",
       "timeoutHint": "默认不自动截断 AI 请求；AI 持续思考时会一直等待，直到 AI 返回、你点击“停止”或发生连接错误。启用自动超时后，最短为 300 秒。",
-      "timeoutUnit": "秒"
+      "timeoutUnit": "秒",
+      "modelsLoading": "正在读取模型…",
+      "modelFetchFailed": "未能拉取模型，已使用本地候选列表",
+      "localModeHint": "本地模式：API Key 可留空，模型从本机服务读取。",
+      "remoteModeHint": "远程模式：选择厂商后自动读取可用模型。",
+      "visionModelMark": "👁 表示支持图片输入的视觉模型",
+      "visionApiTitle": "👁 识图 API（独立配置）",
+      "visionInherit": "沿用主对话 API 配置",
+      "visionAddress": "识图 API 地址",
+      "visionKey": "识图 API Key",
+      "visionModel": "识图模型",
+      "visionTest": "🔌 测试识图 API",
+      "visionHint": "主 AI 可以直接看图，也可以调用识图 API。识图 API 只输出绘图 Tag / 观察结果，结果仅作辅助参考。",
+      "agentTitle": "🧩 外部 Agent 工具接口",
+      "agentWrite": "允许外部 Agent 修改提示词和 ComfyUI 设置",
+      "agentHint": "默认只读。工具清单和调用示例位于应用目录的 agent-tools 文件夹；本地接口默认地址 http://127.0.0.1:32145。"
+      ,"customModel": "输入自定义模型名称"
+      ,"localKeyPlaceholder": "本地模式可留空"
+      ,"remoteKeyPlaceholder": "输入 API Key"
+      ,"keySaved": "Key 已填写（本地保存）"
+      ,"localKeyEmpty": "本地模式：API Key 可留空"
+      ,"remoteKeyEmpty": "未填写 API Key"
     },
     "ai": {
-      "modeAssist": "💬 对话",
+      "modeAssist": "💬 助手",
+      "modeDraw": "🎨 绘图",
+      "renderImage": "ComfyUI 出图",
+      "drawSettings": "绘图设置",
+      "iterations": "迭代",
+      "comfyUnavailable": "ComfyUI 未连接",
+      "comfyWorkflowUnavailable": "工作流未就绪",
       "modeGen": "✨ 生成Tag",
       "modeRk": "🎯 复刻",
       "modeComfy": "🎨 迭代",
@@ -138,6 +168,11 @@
       "clearChat": "🗑 清空对话",
       "uploadImage": "🖼 上传图片",
       "identify": "本地识图",
+      "aiVision": "🖼 AI识图",
+      "visionModel": "识图模型",
+      "builtinTags": "原图内置 Tag",
+      "modelTags": "模型识别 Tag",
+      "openVision": "识图",
       "clearImage": "清除图片",
       "generate": "✨ 生成",
       "identifyRecreate": "🎯 识图并复刻",
@@ -152,9 +187,9 @@
       "comfy": "迭代",
       "currentImage": "当前图片",
       "notUploaded": "未上传图片",
-      "imageHint": "上传图片后自动读取内置 Tag；点击“本地识图”提取模型 Tag。",
+      "imageHint": "把单张图片上传或拖入识图模块后自动读取内置 Tag；对话框图片不会自动进入识图。",
       "describe": "🖼 AI 描述",
-      "talkIntro": "上传 / 粘贴 / 拖入图片（自动编号 + 本地识图 Tag），然后选下方模式：✨ 生成Tag · 🔍 本地识图 · 🎯 识图并复刻 · 🎨 ComfyUI迭代 · 🤖 助手对话。",
+      "talkIntro": "对话框支持多张图片作为 AI 附件；识图模块单独处理一张图片，主标签页和 AI 页面共用。下方只需选择助手或绘图模式；绘图模式可按需实际出图。",
       "statusModel": "AI 模型：{model}",
       "statusNoModel": "未配置 AI 模型",
       "statusPreset": "预设：{name}",

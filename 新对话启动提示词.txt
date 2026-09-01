@@ -1,0 +1,213 @@
+你是 AI 绘画 Tag 工具箱下一阶段重构的执行 Codex。请直接在现有项目上工作，不要另起临时项目。
+
+项目源码：
+F:\codex\rewrite-v1.4.3
+
+当前版本：V1.4.4
+
+开始前请完整阅读：
+
+1. F:\codex\rewrite-v1.4.3\项目当前架构与统一重构规划.md
+2. F:\codex\rewrite-v1.4.3\V1.4.4-架构方案.md
+3. F:\codex\rewrite-v1.4.3\README.md
+4. 项目中的 AGENTS.md 和相关工作准则
+5. 如需了解旧行为，再阅读：
+   C:\Users\admin\Desktop\素材仓库\实现经验\V1.4.2模块实现经验与业务流程.txt
+   C:\Users\admin\Desktop\素材仓库\架构设计\新架构设计与重写计划.txt
+
+必须区分：
+
+- 当前架构：V1.4.4 已经存在的真实代码；
+- 统一重构规划：下一阶段目标，不代表已经实现；
+- V1.4.2：只作为页面、业务行为和素材参考，不要搬回旧全局脚本、旧 Bridge、双重 Store 或旧调用链。
+
+本项目是开源、本地运行的中小型桌面工具。优先级是：
+
+1. 先得到可以运行的代码；
+2. 简洁；
+3. 清晰；
+4. 模块化和易扩展；
+5. 流畅的反馈；
+6. 必要的防呆和数据一致性；
+7. 最后才是复杂验证。
+
+不要引入复杂账户、鉴权、部署安全、企业审计、重型状态框架或没有必要的抽象。人工核验优先，能跑优先。
+
+一、统一 Calls 能力网关
+
+页面 UI、应用内主 AI、外部 Agent 和 MCP 都通过同一套稳定工具调用：
+
+    UI / 主 AI / Agent
+            ↓
+        Calls 网关
+            ↓
+    Tags / Vision / Comfy / Prompts
+
+Calls 只负责：
+
+- 稳定工具名到 handler 的路由；
+- 工具 schema；
+- 轻量参数整理；
+- 能力是否可用；
+- 统一成功和错误结果；
+- 取消、进度和事件转发。
+
+Calls 不负责 AI 推理、Prompt 组合、会话、识图算法、ComfyUI 迭代或页面渲染。
+
+内部模块可以直接协作，例如 Vision 调用 Images 和 Prompts，Translation 调用 Tags。不要强制所有内部调用再次绕过 Calls。
+
+二、独立单图 Vision Service
+
+最终统一接口：
+
+    vision.processOne({
+      imageId,
+      mode: "metadata" | "local" | "ai",
+      model,
+      instruction
+    })
+
+硬性规则：
+
+- 一次只处理一个明确的 imageId；
+- 不接受 imageIds 数组；
+- 不从 talk、quick、gen、comfy 集合猜图片；
+- 不继承主 AI 会话历史；
+- UI、主 AI 和 Agent 使用同一个 Vision handler。
+
+模式含义：
+
+- metadata：读取内置 Tag、工作流和生成参数；
+- local：调用 WD EVA02 本地模型识别常见绘图 Tag；
+- ai：调用独立视觉 API。
+
+AI 识图时必须由 Prompts 模块提供有效提示词：
+
+    prompts.getEffective("vision")
+
+调用者只能提供一次性的 instruction，不能替换系统提示词，也不能修改提示词库。
+
+三、只保留两个 AI 用户模式
+
+助手模式：
+
+- 不注入绘图业务 Prompt、生成规则、复刻规则或 Comfy 迭代规则；
+- 可以作为普通助手；
+- 用户明确要求时可以调用 Tag 查询、单图识图和可用的 ComfyUI。
+
+绘图模式：
+
+- 注入绘图 Prompt，第一版可以复用当前 main 加 generate 的有效组合；
+- 使用和助手模式完全相同的 AI/tool 调用循环；
+- 根据上下文完成文生图、图片复刻、改图和 ComfyUI 迭代。
+
+Generate、Recreate、ComfyIteration 不再是三套独立 Runner，而是绘图模式下的不同任务上下文。
+
+四、三个核心 Runtime Tools
+
+    tags.search
+    vision.processOne
+    comfy.render
+
+应用内 AI 调用 comfy.render 时主要传正向和负向 Tag。宽高、steps、CFG、seed、sampler、scheduler、工作流和模型节点默认由用户设置管理，不要让主 AI 随意覆盖。
+
+五、ComfyUI 能力动态控制
+
+把工具 schema 交给 AI 前，先判断：
+
+- ComfyUI 地址是否可访问；
+- 工作流是否存在；
+- 工作流是否是有效 API 格式。
+
+如果未连接或工作流无效：
+
+- 不向主 AI 暴露 comfy.render；
+- 助手模式和绘图模式都只能使用 Tag 查询和识图；
+- 页面显示不可用；
+- handler 保留最后一道简单检查。
+
+六、Agent 工具分组
+
+Runtime Tools：
+
+- tags.search；
+- vision.processOne；
+- 可用时的 comfy.render；
+- 读取提示词和 ComfyUI 设置。
+
+Admin / Config Tools：
+
+- 修改 ComfyUI 宽高、steps、CFG、迭代次数；
+- 修改提示词覆盖值；
+- 新建、修改、停用、删除自定义提示词。
+
+Admin 工具受 agentWriteEnabled 控制。内置默认提示词永远不能修改或删除，reset 必须恢复默认文本和启用状态。
+
+七、图片边界
+
+- 对话和 ComfyUI 上下文可以拥有多张图片；
+- Vision 每次只能处理一张；
+- 右侧识图面板只有 currentVisionImageId；
+- 新拖入或上传图片替换右侧当前图片，并取消旧识图请求、清除旧结果；
+- 主 AI 调用 Vision 时必须传明确 imageId；
+- ComfyUI 返图得到 artifact/imageId 后才能交给 Vision。
+
+八、统一 AI Runner
+
+只建立一个 Runner，负责：
+
+1. 按 assistant 或 draw 选择 Prompt profile；
+2. 按 capabilities 生成工具清单；
+3. 调用主 AI；
+4. 执行 Calls 工具；
+5. 把工具结果放回同一任务上下文；
+6. 流式发送正文、reasoning 和工具事件；
+7. 保存会话和工具轨迹；
+8. 支持停止、错误和重试。
+
+AI 对话回合数、工具调用次数和 ComfyUI 渲染次数必须分开统计。
+
+九、推荐执行顺序
+
+1. 建立 Vision Service；
+2. 用 vision.processOne 替换旧的三个 Vision 工具；
+3. 将右侧识图改为单图 currentVisionImageId；
+4. 实现动态 capabilities，未连接时隐藏 comfy.render；
+5. 建立统一 AI Runner；
+6. 合并 UI 为助手模式和绘图模式；
+7. 分离 Agent Runtime 与 Admin 工具；
+8. 删除旧四模式、Vision 数组接口和重复循环。
+
+十、必须保留
+
+- V1.4.2 风格的主要页面布局和操作习惯；
+- 标签数据、分类、同义词和搜索；
+- Images 的 PNG 元数据解析；
+- WD EVA02 模型；
+- ImageStore 和 artifact；
+- Prompts 的默认值、覆盖值、停用和恢复；
+- 预设、世界书和收藏；
+- 双 API 配置；
+- ComfyUI connector 和 API 工作流导入；
+- Storage、migrate、会话和消息操作；
+- 本地翻译；
+- Agent HTTP/MCP 入口。
+
+十一、编码与交付
+
+- 先检查 git status，保护已有改动；
+- 每次只解决一个边界，完成后立即提交；
+- 提交信息使用中文，例如：V1.4.5：建立单图 Vision Service；
+- 默认运行 npm run check 和 git diff --check；
+- AI/Comfy 核心链路只做必要的最小 smoke/mock；
+- 不自动 git push、发布 Release 或扩大范围；
+- 最终完成后打包桌面测试版本并停下等待人工反馈。
+
+第一步请先报告：
+
+1. 当前代码与目标架构的差距；
+2. 准备执行的第一个小步骤；
+3. 将修改哪些文件；
+4. 如何确认第一步完成。
+
+报告后直接开始第一个阶段，不要只给泛泛方案而不修改代码。

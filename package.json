@@ -1,16 +1,12 @@
 {
-  "name": "ai-tag-toolbox",
-  "version": "1.4.1",
-  "description": "AI 绘画 Tag 工具箱 - Windows 便携版（内置 WD Tagger 识图）",
-  "main": "main.js",
-  "author": "AI Tag Toolbox",
-  "license": "MIT",
-  "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
-    "onnxruntime-node": "^1.19.2"
-  },
-  "allowScripts": {
-    "electron@31.7.7": true,
-    "onnxruntime-node@1.27.0": true
-  }
+    "name":  "ai-tag-toolbox-rewrite",
+    "version":  "1.4.131",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.131 识图按钮定位修复测试版",
+    "main":  "main.js",
+    "private":  true,
+    "type":  "commonjs",
+    "scripts":  {
+                    "dev":  "electron .",
+                    "check":  "node scripts/check.mjs"
+                }
 }

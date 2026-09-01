@@ -1,73 +1,31 @@
-# AI 绘画 Tag 工具箱 V1.4.1
+# AI 绘画 Tag 工具箱 V1.4.131
 
-本地 AI 绘画提示词工作台（Windows 便携版）。面向画师与 AI 绘画爱好者：把图片/想法快速变成可直接使用的提示词。
+这是一次简洁模块化重写的本地测试版，页面外观沿用 V1.4.2 的使用习惯，业务代码不再依赖旧版脚本链。
 
-## 📥 下载
+## 当前结构
 
-👉 **[Releases 下载页](https://github.com/star-abyss/ai-tag-toolbox/releases)**
+- `main.js`：Electron 启动入口
+- `preload.js`：加载并注入业务模块的薄桥接
+- `src/index.html`、`src/app.css`、`src/app.js`：页面与 UI 入口
+- `src/modules/tags.js`：标签目录与标签状态
+- `src/modules/images.js`：图片对象与 PNG 元数据基础能力
+- `src/modules/vision.js`：本地 WD EVA02 识图适配
+- `src/modules/vision-service.js`：统一单图 Vision Service（`vision.processOne`）
+- `src/modules/translation.js`：本地翻译与 Tag 参考匹配
+- `src/modules/assistant.js`：统一 AI、会话和助手/绘图任务上下文
+- `src/modules/ai-runner.js`：助手/绘图共用的 AI 与 Calls 工具循环
+- `src/modules/comfy.js`：ComfyUI 连接与工作流处理
+- `src/modules/prompts.js`、`src/modules/storage.js`：提示词素材与轻量存储
+- `assets/`：标签数据和提示词素材
 
-- 下载最新 `AI.Tag.Vx.x.x.7z`，解压后运行 `AI绘画Tag工具箱.exe`，**无需安装、无需联网**。
-- 若提示缺少模型，请确保 `models/` 目录与 exe 同目录放置（已包含在 7z 内）。
+Vision 识图一次只处理一个明确的 `imageId`，`mode` 支持 `metadata`、`local` 和 `ai`；页面、主 AI 与外部 Agent 通过同一个 Calls handler 调用。
 
-## ✨ 功能
+AI 页面现在提供“助手”和“绘图”两种模式。ComfyUI 未连接或工作流无效时，`comfy.render` 不会下发给主 AI；绘图模式只有勾选实际出图时才会请求渲染。
 
-- **18093 条本地标签库**：分类浏览、中英文搜索、收藏组合、自定义标签
-- **本地识图（WD EVA02）**：完全离线，不消耗 API，识别图片后一键出 Tag
-- **离线中英翻译**：本地模型翻译，不联网
-- **双向 AI Tag 翻译**：中文描述 → 标准 Tag、Tag → 中文，自动携带本站多译名对照
-- **中英文界面**：支持自动检测、手动切换和 JSON 语言包扩展
-- **长耗时 AI 请求**：默认不自动截断，可选 300～3600 秒自动停止；对话、翻译和识图显示已用时
-- **AI 助手四种模式**：
-  - 💬 对话：自由问答，支持附图
-  - ✨ 生成Tag：描述 → 最终提示词
-  - 🎯 复刻：图片 → 本地识图 → 视觉描述 → 最终提示词
-  - 🎨 迭代：AI + ComfyUI 自动出图并多轮改进
-- **图片元数据解析**：读取 AI 原图内嵌提示词（A1111 / NovelAI / ComfyUI）
-- **世界书（拓展提示词）与提示词预设**：可导入导出、按模块启用
-- **多会话管理**：历史消息编辑、重新生成、归档
-- **兼容主流服务商**：OpenAI / DeepSeek / SiliconFlow / Moonshot / 阿里云百炼 / Ollama / 自定义接口
+阶段 4–8 已完成：Calls 提供动态 capabilities 与 Agent Runtime/Admin 分组，`src/modules/ai-runner.js` 统一助手/绘图工具循环；用户界面只显示助手和绘图，Comfy 渲染是绘图上下文中的可选工具。旧生成/复刻/迭代入口、Vision 别名和文本 Comfy 协议已移除；旧会话恢复时只做一次性模式映射。
 
-## 🚀 快速开始
+外部 Agent 默认只获得 Runtime 工具（Tag、单图 Vision、可用时 Comfy 渲染、提示词/Comfy 设置读取）。打开“允许外部 Agent 修改提示词和 ComfyUI 迭代设置”后才会出现 Admin 工具。
 
-1. 下载 7z 解压，运行 `AI绘画Tag工具箱.exe`；
-2. 顶部「🤖 AI 助手」进入工作台，选择模式；
-3. 在「⚙️ API 与 ComfyUI」填写你的模型接口（本地识图与翻译不需要 API Key）；
-4. 上传/粘贴/拖入图片即可开始。
+运行 `npm run check` 可执行快速语法和核心素材检查；`npm run dev` 需要 Electron 依赖。
 
-## 🛠 从源码运行（开发者）
-
-```bash
-npm install          # 安装依赖（onnxruntime-node 等）
-npx electron .       # 启动开发版
-```
-
-- 本地模型放在 `models/`：`wd-eva02-tagger-2026-canary.onnx`（识图）、`translation/`（离线翻译）。
-- 自测：`npx electron . --uitest`（UI 集成测试）、`npx electron . --smoke <图片> eva02`（识图冒烟）。
-- 国际化自测：`npx electron . --i18ntest`；错误提示自测：`npx electron . --errortest`。
-
-## 🌐 语言包
-
-- 内置 `zh-CN` 和 `en-US`，顶部“文/A”菜单可立即切换。
-- 第三方语言包使用 JSON 数据格式，导入后保存在用户数据目录；语言包不能执行脚本。
-- 语言包可只覆盖部分界面、分类或 Tag，未翻译内容按 English → 简体中文回退。
-
-## 📁 目录结构
-
-```
-src/
-  index.html        单页界面
-  js/               按域拆分的前端模块（标签库/对话/提示词/世界书/ComfyUI/翻译…）
-  css/app.css       样式
-  extra-tags.js     扩展标签数据
-main.js             Electron 主进程（窗口/识图推理/翻译/ComfyUI 桥）
-preload.js          安全桥接
-tests/test-modes.js 自测模式
-```
-
-## 📜 许可与说明
-
-- 个人项目，功能以实际版本为准；
-- 标签数据与翻译模型来自开源社区对照表，仅供学习与创作使用；
-- 使用第三方 AI 接口时请遵守服务商条款。
-
-**历史版本与更新日志见 [Releases](https://github.com/star-abyss/ai-tag-toolbox/releases)。**
+ComfyUI 工作流在提交前会按采样器连接关系覆盖固定的正/负向 Tag、尺寸、steps、CFG 等节点；无法定位可写节点时会返回明确错误，不会把旧参数当作成功执行。单图识图模块在标签主页面和 AI 页面复用同一实例，入口与折叠控制保持在模块内部。桌面包由打包脚本复制 Electron 运行时、模型和 `resources/app` 源码目录生成。模型缺失时标签库和普通页面仍可打开，本地识图会显示不可用原因。

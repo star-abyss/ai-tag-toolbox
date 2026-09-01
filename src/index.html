@@ -1,570 +1,735 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';">
-<title>AI 绘画 Tag 工具箱 V1.4.1 · Danbooru 标签选择器</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
-<link rel="stylesheet" href="css/app.css">
-</head>
-<body>
-<header>
-  <button class="hbtn" id="menuBtn" data-i18n-title="ui.header.menu">☰</button>
-  <div class="brand"><span class="logo">🎨</span><span data-i18n="ui.header.brand">AI 绘画 Tag 工具箱</span><small id="brandSub" data-i18n="ui.common.loading"></small></div>
-  <div class="header-workspace" id="headerWorkspace">
-    <div class="search" id="searchWrap">
-      <span class="si">🔍</span>
-    <input id="q" type="text" data-i18n-title="ui.header.searchTitle" data-i18n-placeholder="ui.header.searchPlaceholder" autocomplete="off">
-    </div>
-    <div id="aiCfgBtns" class="ai-module-switcher" role="tablist" data-i18n-aria="ui.header.aiModules" style="display:none">
-      <span class="ai-module-thumb" aria-hidden="true"></span>
-      <button class="ai-module-tab on" id="aiModuleTalk" data-panel="talk" role="tab" aria-selected="true" data-i18n="ui.header.talkPage"></button>
-      <button class="ai-module-tab" id="aiModulePrompt" data-panel="prompt" role="tab" aria-selected="false" data-i18n="ui.header.promptPage"></button>
-      <button class="ai-module-tab" id="aiModuleApi" data-panel="api" role="tab" aria-selected="false" data-i18n="ui.header.apiPage"></button>
-    </div>
-  </div>
-  <button class="hbtn" id="translateBtn" data-i18n-title="ui.translation.title" data-i18n="ui.header.translation"></button>
-  <div class="popwrap">
-  <button class="hbtn" id="themeBtn" data-i18n="ui.header.style" data-i18n-title="ui.header.styleTitle"></button>
-    <div class="pop" id="themePop" hidden>
-    <button class="popitem" data-theme="light"><span class="ck">✓</span><span data-i18n="ui.header.light"></span></button>
-      <button class="popitem" data-theme="dark"><span class="ck"></span><span data-i18n="ui.header.dark"></span></button>
-      <button class="popitem" data-theme="auto"><span class="ck"></span><span data-i18n="ui.header.autoTheme"></span></button>
-    </div>
-  </div>
-  <button class="hbtn" id="aiBtn" data-i18n="ui.header.aiAssistant"></button>
-  <button class="hbtn" id="nsfwBtn"><span class="dot"></span><span data-i18n="ui.header.adult"></span></button>
-  <button class="hbtn" id="favBtn" data-i18n="ui.header.favorites"></button>
-  <button class="hbtn" id="helpBtn" data-i18n="ui.header.help"></button>
-  <button class="hbtn sponsor" id="sponsorBtn" data-i18n="ui.header.sponsor"></button>
-  <div class="popwrap" id="localeWrap"><button class="hbtn" id="localeBtn" data-i18n="ui.header.language" data-i18n-title="ui.header.languageTitle"></button><div class="pop" id="localePop" hidden></div></div>
-</header>
-
-<div class="wrap" id="wrapEl">
-  <aside class="sidebar" id="sidebar">
-    <div class="slist" id="catList"></div>
-    <button class="addbtn" id="addTagBtn" data-i18n="ui.custom.title"></button>
-    <div id="sideAi" style="display:none">
-      <button id="talkNew" class="tnew" data-i18n="ui.ai.newChat"></button>
-      <div class="tsidehead" style="padding:8px 8px 2px">📚 对话记录</div>
-      <div id="talkSessionList" class="tlist" style="flex:1"></div>
-    </div>
-  </aside>
-  <main class="main">
-    <div id="tagLibraryView" class="tag-library-view">
-      <div class="toolbar">
-        <h2 id="catTitle">质量词</h2>
-        <span class="cnt" id="catCnt"></span>
-        <span class="sp"></span>
-        <button class="abtn ghost" id="clearQ" style="display:none">✕ 清除搜索</button>
-      </div>
-      <div class="content" id="content"><div id="chips"></div></div>
-    </div>
-    <section id="translateView" class="translate-view" aria-label="翻译模块" hidden>
-      <div class="translate-page-head">
-        <div>
-          <h2 data-i18n="ui.translation.title"></h2>
-          <span id="translateStatus" data-i18n="ui.translation.statusIdle"></span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
+    />
+    <title>AI 绘画 Tag 工具箱 V1.4.131 · Danbooru 标签选择器</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
+    />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-left">
+        <button class="hbtn" id="menuBtn" data-i18n-title="ui.header.menu">☰</button>
+        <div class="brand">
+          <span class="logo">🎨</span><span data-i18n="ui.header.brand">AI 绘画 Tag 工具箱</span
+          ><small id="brandSub" data-i18n="ui.common.loading"></small>
         </div>
-        <span class="sp"></span>
-        <select id="translateDirection" aria-label="翻译方向">
-          <option value="auto" data-i18n="ui.translation.directionAuto"></option>
-          <option value="zh-en" data-i18n="ui.translation.directionZhToTag"></option>
-          <option value="en-zh" data-i18n="ui.translation.directionTagToZh"></option>
-        </select>
-        <button class="abtn ghost" id="translateClear" data-i18n="ui.common.clear"></button>
-        <button class="abtn" id="translateBack" data-i18n="ui.translation.back"></button>
       </div>
-      <div class="translate-grid">
-        <section class="translate-pane">
-          <div class="translate-pane-head"><span data-i18n="ui.translation.input"></span><span id="translateInputCount">0 字</span></div>
-          <textarea id="translateInput" class="translate-input" data-i18n-placeholder="ui.translation.inputPlaceholder"></textarea>
+      <div class="header-workspace" id="headerWorkspace">
+        <div class="search" id="searchWrap">
+          <span class="si">🔍</span>
+          <input
+            id="q"
+            type="text"
+            data-i18n-title="ui.header.searchTitle"
+            data-i18n-placeholder="ui.header.searchPlaceholder"
+            autocomplete="off"
+          />
+        </div>
+        <div
+          id="aiCfgBtns"
+          class="ai-module-switcher"
+          role="tablist"
+          data-i18n-aria="ui.header.aiModules"
+          style="display: none"
+        >
+          <span class="ai-module-thumb" aria-hidden="true"></span>
+          <button
+            class="ai-module-tab on"
+            id="aiModuleTalk"
+            data-panel="talk"
+            role="tab"
+            aria-selected="true"
+            data-i18n="ui.header.talkPage"
+          ></button>
+          <button
+            class="ai-module-tab"
+            id="aiModulePrompt"
+            data-panel="prompt"
+            role="tab"
+            aria-selected="false"
+            data-i18n="ui.header.promptPage"
+          ></button>
+          <button
+            class="ai-module-tab"
+            id="aiModuleApi"
+            data-panel="api"
+            role="tab"
+            aria-selected="false"
+            data-i18n="ui.header.apiPage"
+          ></button>
+        </div>
+      </div>
+      <div class="header-actions" id="headerActions">
+        <button
+          class="hbtn"
+          id="translateBtn"
+          data-i18n-title="ui.translation.title"
+          data-i18n="ui.header.translation"
+        ></button>
+      <div class="popwrap">
+        <button class="hbtn" id="themeBtn" data-i18n="ui.header.style" data-i18n-title="ui.header.styleTitle"></button>
+        <div class="pop" id="themePop" hidden>
+          <button class="popitem" data-theme="light">
+            <span class="ck">✓</span><span data-i18n="ui.header.light"></span>
+          </button>
+          <button class="popitem" data-theme="dark">
+            <span class="ck"></span><span data-i18n="ui.header.dark"></span>
+          </button>
+          <button class="popitem" data-theme="auto">
+            <span class="ck"></span><span data-i18n="ui.header.autoTheme"></span>
+          </button>
+        </div>
+      </div>
+      <button class="hbtn" id="aiBtn" data-i18n="ui.header.aiAssistant"></button>
+      <button class="hbtn" id="nsfwBtn"><span class="dot"></span><span data-i18n="ui.header.adult"></span></button>
+      <button class="hbtn" id="favBtn" data-i18n="ui.header.favorites"></button>
+      <button class="hbtn" id="helpBtn" data-i18n="ui.header.help"></button>
+      <button class="hbtn sponsor" id="sponsorBtn" data-i18n="ui.header.sponsor"></button>
+        <div class="popwrap" id="localeWrap">
+          <button
+            class="hbtn"
+            id="localeBtn"
+            data-i18n="ui.header.language"
+            data-i18n-title="ui.header.languageTitle"
+          ></button>
+          <div class="pop" id="localePop" hidden></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap" id="wrapEl">
+      <aside class="sidebar" id="sidebar">
+        <div class="slist" id="catList"></div>
+        <button class="addbtn" id="addTagBtn" data-i18n="ui.custom.title"></button>
+        <div id="sideAi" style="display: none">
+          <button id="talkNew" class="tnew" data-i18n="ui.ai.newChat"></button>
+          <button id="talkManage" class="tnew" type="button">🗂 对话管理</button>
+          <div class="tsidehead" style="padding: 8px 8px 2px">📚 对话记录</div>
+          <div id="talkSessionList" class="tlist" style="flex: 1"></div>
+        </div>
+      </aside>
+      <main class="main">
+        <div id="tagLibraryView" class="tag-library-view">
+          <div class="toolbar">
+            <h2 id="catTitle">质量词</h2>
+            <span class="cnt" id="catCnt"></span>
+            <span class="sp"></span>
+            <button class="abtn ghost" id="clearQ" style="display: none">✕ 清除搜索</button>
+          </div>
+          <div class="content" id="content"><div id="chips"></div></div>
+        </div>
+        <section id="translateView" class="translate-view" aria-label="翻译模块" hidden>
+          <div class="translate-page-head">
+            <div>
+              <h2 data-i18n="ui.translation.title"></h2>
+              <span id="translateStatus" data-i18n="ui.translation.statusIdle"></span>
+            </div>
+            <span class="sp"></span>
+            <select id="translateDirection" aria-label="翻译方向">
+              <option value="auto" data-i18n="ui.translation.directionAuto"></option>
+              <option value="zh-en" data-i18n="ui.translation.directionZhToTag"></option>
+              <option value="en-zh" data-i18n="ui.translation.directionTagToZh"></option>
+            </select>
+            <button class="abtn ghost" id="translateClear" data-i18n="ui.common.clear"></button>
+            <button class="abtn" id="translateBack" data-i18n="ui.translation.back"></button>
+          </div>
+          <div class="translate-grid">
+            <section class="translate-pane">
+              <div class="translate-pane-head">
+                <span data-i18n="ui.translation.input"></span><span id="translateInputCount">0 字</span>
+              </div>
+              <textarea
+                id="translateInput"
+                class="translate-input"
+                data-i18n-placeholder="ui.translation.inputPlaceholder"
+              ></textarea>
+            </section>
+            <section class="translate-pane">
+              <div class="translate-pane-head">
+                <span data-i18n="ui.translation.result"></span>
+                <span class="translate-actions">
+                  <button class="abtn pri" id="translateAi" data-i18n="ui.translation.aiTranslate"></button>
+                  <button class="abtn" id="translateCopy" data-i18n="ui.common.copy"></button>
+                </span>
+              </div>
+              <details id="translateThinking" class="translate-thinking" hidden>
+                <summary id="translateThinkingTitle" data-i18n="ui.translation.aiThinking"></summary>
+                <pre id="translateThinkingBody"></pre>
+              </details>
+              <textarea
+                id="translateOutput"
+                class="translate-output"
+                readonly
+                data-i18n-placeholder="ui.translation.outputPlaceholder"
+              ></textarea>
+            </section>
+          </div>
+          <section class="translate-tags">
+            <div class="translate-tags-head">
+              <span data-i18n="ui.translation.matched"></span><span id="translateTagCount">0 个</span
+              ><span class="sp"></span
+              ><button class="abtn ghost" id="translateCopyTags" data-i18n="ui.translation.copyTags"></button>
+            </div>
+            <div id="translateTags" class="translate-tag-list">
+              <span class="translate-empty">输入内容后会在这里显示相关 Tag</span>
+            </div>
+          </section>
         </section>
-        <section class="translate-pane">
-          <div class="translate-pane-head">
-            <span data-i18n="ui.translation.result"></span>
-            <span class="translate-actions">
-              <button class="abtn pri" id="translateAi" data-i18n="ui.translation.aiTranslate"></button>
-              <button class="abtn" id="translateCopy" data-i18n="ui.common.copy"></button>
-            </span>
-          </div>
-          <textarea id="translateOutput" class="translate-output" readonly data-i18n-placeholder="ui.translation.outputPlaceholder"></textarea>
-        </section>
-      </div>
-      <section class="translate-tags">
-        <div class="translate-tags-head"><span data-i18n="ui.translation.matched"></span><span id="translateTagCount">0 个</span><span class="sp"></span><button class="abtn ghost" id="translateCopyTags" data-i18n="ui.translation.copyTags"></button></div>
-        <div id="translateTags" class="translate-tag-list"><span class="translate-empty">输入内容后会在这里显示相关 Tag</span></div>
-      </section>
-    </section>
-  </main>
-</div>
-
-<div class="bar">
-  <span class="label">已选 <b id="selCount">0</b> 个</span>
-  <div class="barmid">
-    <div class="selbox" id="selbox"></div>
-    <div class="preview" id="preview"></div>
-  </div>
-  <div class="acts">
-    <button class="abtn pri" id="copyAll">📋 复制 Prompt</button>
-    <button class="abtn" id="saveFav">⭐ 收藏当前组合</button>
-    <button class="abtn ghost" id="clearSel">清空</button>
-  </div>
-</div>
-
-<div class="scrim" id="scrim"></div>
-
-<div class="drawer" id="drawer">
-  <h3>⭐ 收藏组合 <button class="hbtn" id="drawerClose">✕</button></h3>
-  <div class="body">
-    <div class="favform">
-      <input id="favName" placeholder="给当前已选组合起个名字…">
-      <button class="abtn pri" id="favSave">保存</button>
-    </div>
-    <div id="favList"></div>
-  </div>
-</div>
-
-<div class="modal" id="helpModal">
-  <div class="box">
-    <button class="hbtn close" id="helpClose">✕</button>
-    <h3 id="helpTitle" data-i18n="uiExtra.help.title"></h3>
-    <div id="helpBody" class="helpbody" style="white-space:pre-line" data-i18n="uiExtra.help.body"></div>
-    <!--
-      <li>左侧<b>分类栏</b>切换分类，右侧标签区按<b>子分类分块</b>展示；顶部“🎨 样式”可切换<b>浅色 / 深色 / 跟随系统</b>。</li>
-      <li><b>单击标签</b>＝选中 / 取消选中；悬停标签右下角 <b>📋</b>＝立即复制单个标签。</li>
-      <li>底部栏 <b>📋 复制 Prompt</b>＝把已选标签按英文逗号拼接复制，可直接粘贴到 NovelAI / Stable Diffusion / Midjourney 提示词框。</li>
-      <li><b>搜索</b>支持英文标签、中文翻译和别名（如“双马尾”→“twintails”），多词用空格分隔，实时过滤全部分类并按分类分组展示。</li>
-      <li>按 <code>/</code> 或 <code>Ctrl+K</code> 快速聚焦搜索框，<code>Esc</code> 清除搜索 / 关闭面板。</li>
-      <li><b>收藏</b>：选好一组标签后点“⭐ 收藏当前组合”并命名，之后可一键载入 / 追加。</li>
-      <li><b>＋ 添加标签</b>：左侧栏底部可添加自己的标签（英文名必填），选择已有分类或新建分类；自定义标签保存在浏览器本地，可随时删除。</li>
-      <li><b>🤖 AI 助手（💬 对话）</b>：在弹窗“⚙️ API 设置”里填入兼容 OpenAI 格式的 API（地址 / Key / 模型），即可让 AI 依据 <b>Anima 模型写作规范</b>与本站标签库生成整套提示词或挑选 Tag。<b>统一对话工作台</b>：✨ 生成 Tag（只出提示词）、🔍 本地识图（内置 WD EVA02 高精度模型，完全离线）、🎯 识图并复刻（识图 → AI 描述 → 出 Tag）、🎨 ComfyUI 迭代（连本机 ComfyUI 自动渲染、看图改图，次数可选）、🤖 助手对话（不注入任何预设，自由对话）。上传 / 粘贴 / 拖入图片会自动编号（图1、图2…）并附带本地识图 Tag，AI 按编号精确引用。<b>系统提示词可见可改</b>（📝 提示词页），可“↺ 重置为默认提示词”；<b>世界书（World Info）条目</b>按关键词 / 常驻自动注入，支持导入导出 SillyTavern 格式、打包整套提示词。生成过程<b>实时流式显示“💭 思考过程”与最终结果</b>；对话历史保存在本机，可在「🗂 对话管理」页管理。成人内容跟随顶部“成人标签”开关（注意：OpenAI 官方接口等有平台级审查，仍可能拒绝，建议用 DeepSeek / 硅基流动 / 本地 Ollama 等开放模型）。API Key 仅存本机系统安全存储，请求由应用主进程转发，不经浏览器脚本直接读取。</li>
-      <li><b>成人标签</b>默认隐藏，点击顶部“成人标签”按钮开启后才显示。</li>
-      <li>已选内容、收藏、自定义标签、样式设置均保存在浏览器本地（localStorage），换浏览器或清理数据会丢失。</li>
-      <li>想扩充内置数据？用文本编辑器打开本文件，在脚本的 <code>TAGS</code> 数组里按 <code>["英文","中文","别名","分类","子分类",0]</code> 格式加一行即可。</li>
-    -->
-  </div>
-</div>
-
-<div class="modal" id="sponsorModal">
-  <div class="box sponsor-box">
-    <button class="hbtn close" id="sponsorClose">✕</button>
-    <h3>❤️ 赞助作者</h3>
-    <div class="sponsor-card">
-      <div class="savatar">🎨</div>
-      <div class="sname">star_abyss</div>
-      <div class="ssub">如果这个工具箱对你有帮助，欢迎赞助作者，支持持续更新 🌟</div>
-      <a class="abtn pri slink" id="sponsorGo" href="https://ifdian.net/a/AI-Tag-Toolbox" target="_blank" rel="noopener">💖 前往爱发电赞助</a>
-      <div class="surl">ifdian.net/a/AI-Tag-Toolbox</div>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="addModal">
-  <div class="box">
-    <button class="hbtn close" id="addClose">✕</button>
-    <h3 data-i18n="ui.custom.title"></h3>
-    <div class="form">
-      <label><span data-i18n="ui.custom.english"></span>
-        <input id="nEn" placeholder="例如：sparkling water">
-      </label>
-      <label><span data-i18n="ui.custom.chinese"></span>
-        <input id="nZh" placeholder="例如：气泡水">
-      </label>
-      <label><span data-i18n="ui.custom.alias"></span>
-        <input id="nAl" placeholder="例如：苏打水 气泡饮">
-      </label>
-      <label><span data-i18n="ui.custom.subcategory"></span>
-        <input id="nSub" placeholder="自定义">
-      </label>
-      <label><span data-i18n="ui.custom.category"></span>
-        <select id="nCat"></select>
-      </label>
-      <label id="nNewCatWrap" style="display:none">新分类名称
-        <input id="nNewCat" placeholder="例如：机娘元素">
-      </label>
-    </div>
-    <div class="form-acts">
-      <button class="abtn pri" id="nSave" data-i18n="ui.custom.save"></button>
-      <button class="abtn" id="nCancel" data-i18n="ui.custom.cancel"></button>
-    </div>
-    <div class="clhead" data-i18n="ui.custom.list"></div>
-    <div class="clist" id="customList"></div>
-  </div>
-</div>
-
-<div id="aiView" style="display:none">
-  <div class="aibody">
-    <div class="aitop slim">
-      <span style="flex:1"></span>
-      <button class="hbtn close" id="aiClose" title="返回标签页">✕</button>
-    </div>
-    <div id="tabApi" style="display:none">
-      <div class="aitop slim2">
-        <button class="abtn ghost backbtn" id="apiBack" data-i18n="ui.settings.apiBack"></button>
-        <span style="font-weight:700;font-size:14px" data-i18n="ui.settings.apiTitle"></span>
-      </div>
-      <div class="apibody">
-      <div class="form">
-        <label><span data-i18n="ui.settings.providerPreset"></span>
-          <select id="aiPreset">
-            <option value="https://api.openai.com/v1">OpenAI</option>
-            <option value="https://api.deepseek.com/v1">DeepSeek（deepseek-chat）</option>
-            <option value="https://api.siliconflow.cn/v1">硅基流动 SiliconFlow</option>
-            <option value="https://api.moonshot.cn/v1">Moonshot Kimi</option>
-            <option value="https://dashscope.aliyuncs.com/compatible-mode/v1">阿里云百炼（通义）</option>
-            <option value="http://localhost:11434/v1">Ollama（本地）</option>
-            <option value="">自定义…</option>
-          </select>
-        </label>
-        <label><span data-i18n="ui.settings.apiAddress"></span>
-          <input id="aiBase" placeholder="https://api.openai.com/v1">
-        </label>
-          <label><span data-i18n="ui.settings.apiKey"></span>
-          <div class="key-row">
-            <input id="aiKey" type="password" placeholder="输入后安全保存（不会写入普通配置）" autocomplete="off">
-            <button class="abtn ghost" id="aiKeyClear" type="button" data-i18n="ui.settings.keyClear"></button>
-          </div>
-          <span class="secret-status" id="aiKeyStatus">正在检查系统安全存储…</span>
-          </label>
-        <label><span data-i18n="ui.settings.modelName"></span>
-          <select id="aiModel"></select>
-          <input id="aiModelCustom" placeholder="输入自定义模型名" style="display:none;margin-top:6px">
-        </label>
-        <div class="opts">
-          <label class="opt"><input type="checkbox" id="aiStrict" checked> 严格从标签库选取（智能按需发送：识图复刻只发识图得到的 Tag；无图时按你的描述关键词匹配相关标签发给 AI，Token 消耗小）</label>
-        </div>
-        <div class="opts timeout-options">
-          <label class="opt"><input type="checkbox" id="aiTimeoutEnabled"><span data-i18n="ui.settings.timeoutEnable"></span></label>
-          <label class="opt"><span data-i18n="ui.settings.timeoutSeconds"></span> <input id="aiTimeoutSec" type="number" min="300" max="3600" step="30" value="300" style="width:78px"> <span data-i18n="ui.settings.timeoutUnit"></span></label>
-        </div>
-        <div class="hint" data-i18n="ui.settings.timeoutHint"></div>
-        <div class="row">
-          <button class="abtn" id="aiTest" data-i18n="ui.settings.testConnection"></button>
-          <button class="abtn ghost" id="aiClearCfg" data-i18n="ui.settings.restoreDefault"></button>
-        </div>
-        <div class="hint">· 兼容所有 OpenAI 格式接口（<code>…/chat/completions</code>），请求由应用<b>主进程</b>转发到你填写的地址；Key 使用本机系统安全存储加密保存，不写入普通配置。<br>· 部分服务可能需要允许跨域或本地服务先启动；本地 Ollama 需先启动服务。<br>· 使用「📷 图片反馈」需选择<b>支持视觉的模型</b>（如 gpt-4o / gpt-4o-mini、qwen-vl-max、Kimi 视觉版、deepseek-v4-flash-vision-exp、Ollama 的 llama3.2-vision 等）；纯文本模型（如 DeepSeek deepseek-chat）收到图片会报错。</div>
-        <div class="clhead comfyhead" data-i18n="ui.settings.comfyTitle"></div>
-        <label><span data-i18n="ui.settings.comfyAddress"></span>
-          <input id="comfyBase" placeholder="http://127.0.0.1:8188">
-        </label>
-        <div class="opts">
-          <label class="opt"><input type="checkbox" id="comfyOn"><span data-i18n="ui.settings.comfyEnable"></span></label>
-        </div>
-        <details class="aiset" style="border:none">
-          <summary>🎛 工作流（上传 / 拖入 / 粘贴，参数改动交给用户）</summary>
-          <div class="row">
-            <button class="abtn" id="comfyWfJson" data-i18n="ui.settings.workflowUpload"></button>
-            <button class="abtn" id="comfyWfPng" data-i18n="ui.settings.workflowPng"></button>
-            <button class="abtn" id="comfyWfCopy" data-i18n="ui.settings.workflowCopy"></button>
-            <button class="abtn" id="comfyWfOpen" data-i18n="ui.settings.workflowOpen"></button>
-            <button class="abtn" id="comfyWfSync" data-i18n="ui.settings.workflowSync"></button>
-          </div>
-          <input type="file" id="comfyWfJsonFile" accept=".json,application/json" hidden>
-          <input type="file" id="comfyWfPngFile" accept="image/png" hidden>
-          <label>正向提示词（对应工作流 {{prompt}}，AI 渲染指令可进一步覆盖）
-            <textarea id="comfyPos" rows="2" class="wfarea" style="min-height:44px" placeholder="1girl, silver hair, ..."></textarea>
-          </label>
-          <label>负面提示词（{{negative}}）
-            <textarea id="comfyNeg" rows="2" class="wfarea" style="min-height:44px" placeholder="lowres, bad hands, ..."></textarea>
-          </label>
-          <div class="opts">
-            <label class="opt">尺寸 <input id="comfyW" type="number" value="768" style="width:64px"> × <input id="comfyH" type="number" value="1024" style="width:64px"></label>
-            <label class="opt">步数 <input id="comfySteps" type="number" value="25" style="width:64px"></label>
-            <label class="opt">CFG <input id="comfyCfg" type="number" step="0.1" value="7" style="width:64px"></label>
-          </div>
-          <div class="hint">上传 / 拖入工作流（JSON 或含工作流的 PNG）后：自动识别标准采样器 / 提示词节点并注入 <code>{{prompt}}</code>/<code>{{negative}}</code>/<code>{{width}}</code>/<code>{{height}}</code>/<code>{{steps}}</code>/<code>{{cfg}}</code>/<code>{{seed}}</code> 占位符，上方表单即这些参数。模型（Checkpoint/UNet/CLIP/VAE/LoRA…）全部由工作流决定，无需单独选择。占位符：<code>{{prompt}}</code> <code>{{negative}}</code> <code>{{seed}}</code> <code>{{width}}</code> <code>{{height}}</code> <code>{{steps}}</code> <code>{{cfg}}</code> <code>{{ckpt}}</code> <code>{{sampler}}</code> <code>{{scheduler}}</code>。</div>
-          <label>工作流 JSON（API 格式，可编辑；留空则不能迭代）
-            <textarea id="comfyWf" class="wfarea" placeholder='粘贴/上传 ComfyUI API 格式工作流 JSON'></textarea>
-          </label>
-          <div class="row">
-            <button class="abtn" id="comfyTest">🔌 测试连接</button>
-            <button class="abtn ghost" id="comfyWfClear">清空工作流</button>
-            <button class="abtn ghost" id="comfyClearCfg">恢复默认</button>
-          </div>
-          <div class="hint">· ComfyUI 需在本机运行（默认 http://127.0.0.1:8188）；返图由本工具自动抓取并经视觉模型分析。<br>· 「🌐 打开 ComfyUI 页面」在应用内窗口打开 ComfyUI 并自动载入工作流、把正/负提示词写进提示词节点；改完在 ComfyUI 里 Run 后点「🔄 同步工作流设置」读回。</div>
-        </details>
-      </div>
-      </div>
-    </div>
-    <div id="tabTalk">
-      <div class="tkshell">
-        <section class="talkmain">
-          <div class="tkbody">
-            <div class="tkconv">
-              <div class="cstatus" id="talkStatus">就绪</div>
-              <div class="comfyconv talkconv" id="talkConv"><div class="cmsg sys"><div class="body">选择上方模式，输入内容后按 Enter 或点「发送」。上传 / 粘贴 / 拖入图片会在右侧显示并提取 Tag。</div></div></div>
+      </main>
+      <div class="tag-vision-slot" id="tagVisionSlot">
+        <aside class="tkpane" id="tagPane" data-image-context="vision" tabindex="0" aria-label="单图识图区域">
+          <div class="tp-headbar">
+            <button class="tp-vision-toggle" id="tpVisionToggle" type="button" title="收起识图面板" aria-label="收起识图面板" aria-controls="tagPane" aria-expanded="true">
+              <span class="tp-vision-icon" aria-hidden="true">🔍</span>
+              <span class="tp-vision-label" data-i18n="ui.ai.openVision">识图</span>
+              <span class="tp-vision-arrow" aria-hidden="true">›</span>
+            </button>
+            <div class="tphead" data-i18n="ui.ai.currentImage"></div>
+            <div class="tp-head-actions">
+              <button class="tp-icon danger" id="tpClearImg" type="button" title="清空识图图片" aria-label="清空识图图片" data-i18n-title="ui.ai.clearImage" data-i18n-aria="ui.ai.clearImage">🗑</button>
             </div>
           </div>
-          <div class="imgsrow talkimgs" id="talkImgRow" style="display:none"></div>
-          <div class="tkmodebar">
-            <div class="tkthumb" id="tkThumb"></div>
-            <div class="tkmode on" data-mode="assist"><span data-i18n="ui.ai.modeAssist"></span></div>
-            <div class="tkmode" data-mode="gen"><span data-i18n="ui.ai.modeGen"></span></div>
-            <div class="tkmode" data-mode="rk"><span data-i18n="ui.ai.modeRk"></span></div>
-            <div class="tkmode" data-mode="comfy"><span data-i18n="ui.ai.modeComfy"></span>
-              <select id="talkIters" class="tkmode-sel" title="ComfyUI 迭代次数（最多几轮）"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select>
-            </div>
+          <div id="tpImg" class="tp-img" data-image-context="vision"><div class="tp-empty" data-i18n="ui.ai.notUploaded"></div></div>
+          <button class="tp-act" id="tpUpload" data-i18n="ui.ai.uploadImage"></button>
+          <input type="file" id="tpFile" accept="image/*" hidden />
+          <div class="tp-identify-row">
+            <button class="tp-act pri" id="tpIdentify" data-i18n="ui.ai.identify"></button>
+            <select id="tpWdModel" class="tp-model" aria-label="识图模型" title="选择识图模型" data-i18n-title="ui.ai.visionModel" data-i18n-aria="ui.ai.visionModel">
+              <option value="eva02">EVA02 Canary</option>
+            </select>
           </div>
-          <div class="comfyin talkin">
-            <textarea id="talkIn" rows="2" placeholder="描述你的需求…（Enter 发送，Shift+Enter 换行；可直接粘贴 / 拖入图片）"></textarea>
-            <div class="talkbar">
-              <button class="abtn" id="talkImgBtn" data-i18n="ui.ai.uploadImage"></button>
-              <span class="tgrow"></span>
-              <button class="abtn pri" id="talkSendBtn" data-i18n="ui.ai.send"></button>
-              <button class="abtn danger" id="talkClearBtn" data-i18n="ui.ai.clearChat"></button>
-            </div>
-            <input type="file" id="talkImgFile" accept="image/*" multiple hidden>
-            <div class="hint">· 🔍 本地识图：只识别 Tag，显示在右侧面板（不进入对话）。<br>· 🎨 ComfyUI迭代 需先在「⚙️ API 设置 → ComfyUI」勾选启用并上传工作流。</div>
-          </div>
-        </section>
-        <aside class="tkpane" id="tagPane">
-          <div class="tphead" data-i18n="ui.ai.currentImage"></div>
-          <div id="tpImg" class="tp-img"><div class="tp-empty" data-i18n="ui.ai.notUploaded"></div></div>
-          <button class="tp-act pri" id="tpIdentify" data-i18n="ui.ai.identify"></button>
-          <button class="tp-act" id="tpClearImg" data-i18n="ui.ai.clearImage"></button>
+          <button class="tp-act" id="tpDescribe" data-i18n="ui.ai.aiVision"></button>
+          <button class="tp-act ghost" id="tpStop" data-i18n="ui.ai.stop" style="display: none"></button>
           <div id="tpModes" class="tp-mods"></div>
-          <div class="tp-empty" id="tpPlaceholder" style="display:none" data-i18n="ui.ai.imageHint"></div>
+          <div class="tp-empty" id="tpPlaceholder" style="display: none" data-i18n="ui.ai.imageHint"></div>
         </aside>
       </div>
     </div>
-    <div id="tabGen" style="display:none">
-      <div class="genconv" id="genConv"></div>
-      <div class="geninput">
-        <div class="genlabel">描述你想画的画面，或上传图片让 AI 识图 / 复刻</div>
-        <div class="imgsrow" id="genImgRow" style="display:none"></div>
-        <textarea id="genDesc" rows="3" placeholder="两个女孩坐在教室里…（也可只添加图片，让 AI 根据图片推测 / 修正 Tag；支持在对话框直接 Ctrl+V 粘贴图片）"></textarea>
-        <div class="opts">
-          <label class="opt"><input type="checkbox" id="genNeg"> 同时生成负面提示词</label>
-          <label class="opt"><input type="checkbox" id="aiNsfwChk"> 允许成人内容（与顶部“成人标签”开关联动）</label>
+
+    <div class="bar">
+      <span class="label">已选 <b id="selCount">0</b> 个</span>
+      <div class="barmid">
+        <div class="selbox" id="selbox"></div>
+        <div class="preview" id="preview"></div>
+      </div>
+      <div class="acts">
+        <button class="abtn pri" id="copyAll">📋 复制 Prompt</button>
+        <button class="abtn" id="saveFav">⭐ 收藏当前组合</button>
+        <button class="abtn ghost" id="clearSel">清空</button>
+      </div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+
+    <div class="drawer" id="drawer">
+      <h3>⭐ 收藏组合 <button class="hbtn" id="drawerClose">✕</button></h3>
+      <div class="body">
+        <div class="favform">
+          <input id="favName" placeholder="给当前已选组合起个名字…" />
+          <button class="abtn pri" id="favSave">保存</button>
         </div>
-        <div class="row">
-          <button class="abtn" id="genImgBtn">📷 上传图片</button>
-          <button class="abtn pri" id="genGo">✨ 生成</button>
-          <button class="abtn" id="genRkGo">🎯 识图并复刻</button>
-          <button class="abtn" id="genRedo" title="对最近一次生成 / 识图重新执行（roll）">🔄 重新生成</button>
-          <button class="abtn ghost" id="genStop" style="display:none">■ 停止</button>
-          <div class="gennew-wrap">
-            <button class="abtn" id="genNew">🔄 新对话</button>
-            <div class="gennew-menu" id="genNewMenu" hidden>
-              <button class="gennew-opt" id="genNewKeep">💾 保留当前对话并开启新对话</button>
-              <button class="gennew-opt danger" id="genNewDrop">🗑 删除当前对话并开启新对话</button>
+        <div id="favList"></div>
+      </div>
+    </div>
+
+    <div class="modal" id="helpModal">
+      <div class="box">
+        <button class="hbtn close" id="helpClose">✕</button>
+        <h3 id="helpTitle" data-i18n="uiExtra.help.title"></h3>
+        <div id="helpBody" class="helpbody" style="white-space: pre-line" data-i18n="uiExtra.help.body"></div>
+      </div>
+    </div>
+
+    <div class="modal" id="sponsorModal">
+      <div class="box sponsor-box">
+        <button class="hbtn close" id="sponsorClose">✕</button>
+        <h3>❤️ 赞助作者</h3>
+        <div class="sponsor-card">
+          <div class="savatar">🎨</div>
+          <div class="sname">star_abyss</div>
+          <div class="ssub">如果这个工具箱对你有帮助，欢迎赞助作者，支持持续更新 🌟</div>
+          <a
+            class="abtn pri slink"
+            id="sponsorGo"
+            href="https://ifdian.net/a/AI-Tag-Toolbox"
+            target="_blank"
+            rel="noopener"
+            >💖 前往爱发电赞助</a
+          >
+          <div class="surl">ifdian.net/a/AI-Tag-Toolbox</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="addModal">
+      <div class="box">
+        <button class="hbtn close" id="addClose">✕</button>
+        <h3 data-i18n="ui.custom.title"></h3>
+        <div class="form">
+          <label
+            ><span data-i18n="ui.custom.english"></span>
+            <input id="nEn" placeholder="例如：sparkling water" />
+          </label>
+          <label
+            ><span data-i18n="ui.custom.chinese"></span>
+            <input id="nZh" placeholder="例如：气泡水" />
+          </label>
+          <label
+            ><span data-i18n="ui.custom.alias"></span>
+            <input id="nAl" placeholder="例如：苏打水 气泡饮" />
+          </label>
+          <label
+            ><span data-i18n="ui.custom.subcategory"></span>
+            <input id="nSub" placeholder="自定义" />
+          </label>
+          <label
+            ><span data-i18n="ui.custom.category"></span>
+            <select id="nCat"></select>
+          </label>
+          <label id="nNewCatWrap" style="display: none"
+            >新分类名称
+            <input id="nNewCat" placeholder="例如：机娘元素" />
+          </label>
+        </div>
+        <div class="form-acts">
+          <button class="abtn pri" id="nSave" data-i18n="ui.custom.save"></button>
+          <button class="abtn" id="nCancel" data-i18n="ui.custom.cancel"></button>
+        </div>
+        <div class="clhead" data-i18n="ui.custom.list"></div>
+        <div class="clist" id="customList"></div>
+      </div>
+    </div>
+
+    <div id="aiView" style="display: none">
+      <div class="aibody">
+        <div class="aitop slim">
+          <span style="flex: 1"></span>
+          <button class="hbtn close" id="aiClose" title="返回标签页">✕</button>
+        </div>
+        <div id="tabApi" style="display: none">
+          <div class="aitop slim2">
+            <button class="abtn ghost backbtn" id="apiBack" data-i18n="ui.settings.apiBack"></button>
+            <span style="font-weight: 700; font-size: 14px" data-i18n="ui.settings.apiTitle"></span>
+          </div>
+          <div class="apibody">
+            <div class="form">
+              <label
+                ><span data-i18n="ui.settings.providerPreset"></span>
+                <select id="aiPreset">
+                  <option value="https://api.openai.com/v1">OpenAI</option>
+                  <option value="https://api.deepseek.com/v1">DeepSeek（deepseek-chat）</option>
+                  <option value="https://api.siliconflow.cn/v1">硅基流动 SiliconFlow</option>
+                  <option value="https://api.moonshot.cn/v1">Moonshot Kimi</option>
+                  <option value="https://dashscope.aliyuncs.com/compatible-mode/v1">阿里云百炼（通义）</option>
+                  <option value="http://localhost:11434/v1">Ollama（本地）</option>
+                  <option value="">自定义…</option>
+                </select>
+              </label>
+              <div class="api-mode-hint" id="aiModeHint"></div>
+              <label
+                ><span data-i18n="ui.settings.apiAddress"></span>
+                <input id="aiBase" placeholder="https://api.openai.com/v1" />
+              </label>
+              <label
+                ><span data-i18n="ui.settings.apiKey"></span>
+                <div class="key-row">
+                  <input
+                    id="aiKey"
+                    type="password"
+                    placeholder="输入后安全保存（不会写入普通配置）"
+                    autocomplete="off"
+                  />
+                  <button class="abtn ghost" id="aiKeyClear" type="button" data-i18n="ui.settings.keyClear"></button>
+                </div>
+                <span class="secret-status" id="aiKeyStatus">正在检查系统安全存储…</span>
+              </label>
+              <label
+                ><span data-i18n="ui.settings.modelName"></span>
+                <select id="aiModel"></select>
+                <input id="aiModelCustom" data-i18n-placeholder="ui.settings.customModel" placeholder="输入自定义模型名" style="display: none; margin-top: 6px" />
+              </label>
+              <div class="api-model-hint" data-i18n="ui.settings.visionModelMark"></div>
+              <details class="aiset api-vision-settings" open>
+                <summary data-i18n="ui.settings.visionApiTitle">👁 识图 API（独立配置）</summary>
+                <label class="opt"><input type="checkbox" id="visionInheritPrimary" checked /> <span data-i18n="ui.settings.visionInherit">沿用主对话 API 配置</span></label>
+                <div id="visionApiFields">
+                  <label><span data-i18n="ui.settings.visionAddress">识图 API 地址</span>
+                    <input id="visionBase" placeholder="https://api.openai.com/v1" />
+                  </label>
+                  <label><span data-i18n="ui.settings.visionKey">识图 API Key</span>
+                    <input id="visionKey" type="password" placeholder="可留空" autocomplete="off" />
+                  </label>
+                  <label><span data-i18n="ui.settings.visionModel">识图模型</span>
+                    <select id="visionModel"></select>
+                    <input id="visionModelCustom" placeholder="输入自定义识图模型名" style="display: none; margin-top: 6px" />
+                  </label>
+                  <div class="row"><button class="abtn" id="visionTest" data-i18n="ui.settings.visionTest">🔌 测试识图 API</button></div>
+                </div>
+                <div class="hint" data-i18n="ui.settings.visionHint">主 AI 可以直接看图，也可以调用识图 API。识图 API 只输出绘图 Tag / 观察结果，结果仅作辅助参考。</div>
+                <div class="hint" id="visionCapabilityHint" role="status"></div>
+              </details>
+              <div class="opts">
+                <label class="opt"
+                  ><input type="checkbox" id="aiStrict" checked />
+                  严格从标签库选取（智能按需发送：识图复刻只发识图得到的 Tag；无图时按你的描述关键词匹配相关标签发给
+                  AI，Token 消耗小）</label
+                >
+              </div>
+              <div class="opts timeout-options">
+                <label class="opt"
+                  ><input type="checkbox" id="aiTimeoutEnabled" /><span data-i18n="ui.settings.timeoutEnable"></span
+                ></label>
+                <label class="opt"
+                  ><span data-i18n="ui.settings.timeoutSeconds"></span>
+                  <input
+                    id="aiTimeoutSec"
+                    type="number"
+                    min="300"
+                    max="3600"
+                    step="30"
+                    value="300"
+                    style="width: 78px" />
+                  <span data-i18n="ui.settings.timeoutUnit"></span
+                ></label>
+              </div>
+              <div class="hint" data-i18n="ui.settings.timeoutHint"></div>
+              <div class="row">
+                <button class="abtn" id="aiTest" data-i18n="ui.settings.testConnection"></button>
+                <button class="abtn ghost" id="aiClearCfg" data-i18n="ui.settings.restoreDefault"></button>
+              </div>
+              <div class="hint">
+                · 兼容所有 OpenAI
+                格式接口（<code>…/chat/completions</code>），请求由应用<b>主进程</b>转发到你填写的地址；Key
+                使用本机系统安全存储加密保存，不写入普通配置。<br />· 部分服务可能需要允许跨域或本地服务先启动；本地
+                Ollama 需先启动服务。<br />· 使用「📷 图片反馈」需选择<b>支持视觉的模型</b>（如 gpt-4o /
+                gpt-4o-mini、qwen-vl-max、Kimi 视觉版、deepseek-v4-flash-vision-exp、Ollama 的 llama3.2-vision
+                等）；纯文本模型（如 DeepSeek deepseek-chat）收到图片会报错。
+              </div>
+              <details class="aiset agent-settings">
+                <summary data-i18n="ui.settings.agentTitle">🧩 外部 Agent 工具接口</summary>
+                <label class="opt"><input type="checkbox" id="agentWriteEnabled" /> <span data-i18n="ui.settings.agentWrite">允许外部 Agent 修改提示词和 ComfyUI 迭代设置</span></label>
+                <div class="hint" data-i18n="ui.settings.agentHint">默认只读。工具清单和调用示例位于应用目录的 agent-tools 文件夹；本地接口默认地址 http://127.0.0.1:32145。</div>
+                <div class="secret-status" id="agentStatus">工具服务启动中…</div>
+              </details>
+              <div class="clhead comfyhead" data-i18n="ui.settings.comfyTitle"></div>
+              <label
+                ><span data-i18n="ui.settings.comfyAddress"></span>
+                <input id="comfyBase" placeholder="http://127.0.0.1:8188" />
+              </label>
+              <div class="opts">
+                <label class="opt"
+                  ><input type="checkbox" id="comfyOn" /><span data-i18n="ui.settings.comfyEnable"></span
+                ></label>
+              </div>
+              <details class="aiset" style="border: none">
+                <summary>🎛 工作流（上传 / 拖入 / 粘贴，参数改动交给用户）</summary>
+                <div class="row">
+                  <button class="abtn" id="comfyWfJson" data-i18n="ui.settings.workflowUpload"></button>
+                  <button class="abtn" id="comfyWfPng" data-i18n="ui.settings.workflowPng"></button>
+                  <button class="abtn" id="comfyWfCopy" data-i18n="ui.settings.workflowCopy"></button>
+                  <button class="abtn" id="comfyWfOpen" data-i18n="ui.settings.workflowOpen"></button>
+                  <button class="abtn" id="comfyWfSync" data-i18n="ui.settings.workflowSync"></button>
+                </div>
+                <input type="file" id="comfyWfJsonFile" accept=".json,application/json" hidden />
+                <input type="file" id="comfyWfPngFile" accept="image/png" hidden />
+                <label
+                  >正向提示词（对应工作流 {{prompt}}，AI 渲染指令可进一步覆盖）
+                  <textarea
+                    id="comfyPos"
+                    rows="2"
+                    class="wfarea"
+                    style="min-height: 44px"
+                    placeholder="1girl, silver hair, ..."
+                  ></textarea>
+                </label>
+                <div class="hint" id="comfyCapabilityHint">ComfyUI 状态检查中…</div>
+                <label
+                  >负面提示词（{{negative}}）
+                  <textarea
+                    id="comfyNeg"
+                    rows="2"
+                    class="wfarea"
+                    style="min-height: 44px"
+                    placeholder="lowres, bad hands, ..."
+                  ></textarea>
+                </label>
+                <div class="opts">
+                  <label class="opt"
+                    >尺寸 <input id="comfyW" type="number" value="768" style="width: 64px" /> ×
+                    <input id="comfyH" type="number" value="1024" style="width: 64px"
+                  /></label>
+                  <label class="opt">步数 <input id="comfySteps" type="number" value="25" style="width: 64px" /></label>
+                  <label class="opt"
+                    >CFG <input id="comfyCfg" type="number" step="0.1" value="7" style="width: 64px"
+                  /></label>
+                  <label class="opt">最大迭代 <input id="comfyIters" type="number" min="1" max="10" value="3" style="width: 64px" /></label>
+                </div>
+                <div class="hint">
+                  上传 / 拖入工作流（JSON 或含工作流的 PNG）后：自动识别标准采样器 / 提示词节点并注入
+                  <code>{{prompt}}</code
+                  >/<code>{{negative}}</code>/<code>{{width}}</code>/<code>{{height}}</code>/<code>{{steps}}</code>/<code>{{cfg}}</code>/<code
+                    >{{seed}}</code
+                  >
+                  占位符，上方表单即这些参数。模型（Checkpoint/UNet/CLIP/VAE/LoRA…）全部由工作流决定，无需单独选择。占位符：<code
+                    >{{prompt}}</code
+                  >
+                  <code>{{negative}}</code> <code>{{seed}}</code> <code>{{width}}</code> <code>{{height}}</code>
+                  <code>{{steps}}</code> <code>{{cfg}}</code> <code>{{ckpt}}</code> <code>{{sampler}}</code>
+                  <code>{{scheduler}}</code>。
+                </div>
+                <label
+                  >工作流 JSON（API 格式，可编辑；留空则不能迭代）
+                  <textarea id="comfyWf" class="wfarea" placeholder="粘贴/上传 ComfyUI API 格式工作流 JSON"></textarea>
+                </label>
+                <div class="row">
+                  <button class="abtn" id="comfyTest">🔌 测试连接</button>
+                  <button class="abtn ghost" id="comfyWfClear">清空工作流</button>
+                  <button class="abtn ghost" id="comfyClearCfg">恢复默认</button>
+                </div>
+                <div class="hint">
+                  · ComfyUI 需在本机运行（默认 http://127.0.0.1:8188）；返图由本工具自动抓取并经视觉模型分析。<br />·
+                  「🌐 打开 ComfyUI 页面」在应用内窗口打开 ComfyUI 并自动载入工作流、把正/负提示词写进提示词节点；改完在
+                  ComfyUI 里 Run 后点「🔄 同步工作流设置」读回。
+                </div>
+              </details>
             </div>
           </div>
         </div>
-        <input type="file" id="genImgFile" accept="image/*" multiple hidden>
-        <div class="hint">· <b>✨ 生成</b>＝默认调用 Tag 生成（绘图）指令，把描述 / 图片转为最终 Tag。<br>· <b>🎯 识图并复刻</b>＝先本地识图（图片若内置 Tag 则直接解析），再调识图提示词补充关系，最后把描述 + 原图 + 初步 Tag 一并送入 Tag 生成指令输出最终 Tag。<br>· 识图 / AI 描述见「🖼 识图」页签；「🔄 重新生成」对最近一次结果重新执行。会话自动保存在本机。</div>
-        <div class="wbmatch" id="genWbMatch"></div>
-      </div>
-    </div>
-    <div id="tabVis" style="display:none">
-      <div class="visdrop" id="visDrop" title="点击后按 Ctrl+V 粘贴，或直接拖入图片">
-        <div class="visdrop-in">📥 点击此处后 Ctrl+V 粘贴图片<br><span>或把图片直接拖入此区域；上传请点下方「上传图片」按钮；AI 绘图原图会自动解析内置 Tag</span></div>
-      </div>
-      <div class="imgsrow" id="visImgRow" style="display:none"></div>
-      <div class="row">
-        <button class="abtn" id="visImgBtn">📷 上传图片</button>
-        <button class="abtn pri" id="visTagBtn">🔍 本地识图Tag</button>
-        <label class="wdmodel">模型
-          <select id="visWdModel">
-            <option value="eva02">EVA02 2026 Canary（高精度 · 新角色）</option>
-          </select>
-        </label>
-        <button class="abtn pri" id="visDescBtn">🖼 AI 描述</button>
-        <button class="abtn ghost" id="visStop" style="display:none">■ 停止</button>
-        <button class="abtn" id="visClearBtn">🗑 清理</button>
-      </div>
-      <input type="file" id="visImgFile" accept="image/*" multiple hidden>
-      <div class="hint">· <b>🔍 本地识图Tag</b>：用内置 WD Tagger 提取 Danbooru Tag（离线、免费），识别引擎为 <b>EVA02 2026 Canary</b>（高精度 · 新角色，16473 个标签）。<br>· <b>🖼 AI 描述</b>：调用「⚙️ API 设置」里的视觉模型，按「📝 提示词 → 识图提示词」描述图片内容（需联网）。<br>· 支持拖入 / Ctrl+V 粘贴；若图片是 AI 绘图原图（PNG 含生成参数），会自动解析内置 Tag。</div>
-      <div class="visout" id="visOut" style="display:none">
-        <div class="wdout">
-          <div class="wdout-head"><span class="foldbtn" id="visFold">▾ 折叠</span> 🔍 识图 Tag（<span id="visTagCount">0</span>）<span id="visTagSrc" style="font-weight:400;color:var(--muted)"></span><span style="flex:1"></span><button class="fbtn" id="visCopyTags">📋 复制Tag</button></div>
-          <div class="tagchips" id="visTags"></div>
-        </div>
-        <div class="wdout">
-          <div class="wdout-head">🖼 AI 描述<span style="flex:1"></span><button class="fbtn" id="visCopyDesc">📋 复制</button></div>
-          <pre class="visdesc" id="visDesc"></pre>
-        </div>
-      </div>
-    </div>
-    <div id="tabChat" style="display:none">
-      <div class="chatbox" id="chatBox"></div>
-      <div class="imgsrow" id="chatImgRow" style="display:none"></div>
-      <div class="chatinput">
-        <textarea id="chatIn" rows="1" placeholder="问点什么，例如：帮我挑几个适合夏日泳池场景的 Tag（Enter 发送，Shift+Enter 换行；支持直接 Ctrl+V 粘贴图片）"></textarea>
-        <button class="abtn" id="chatImgBtn" title="添加图片（需支持视觉的模型）">📷 图片</button>
-        <button class="abtn pri" id="chatSend">发送</button>
-        <button class="abtn ghost" id="chatClear">清空对话</button>
-      </div>
-      <input type="file" id="chatImgFile" accept="image/*" multiple hidden>
-      <div class="wbmatch" id="chatWbMatch"></div>
-      <div class="hint">AI 已内置 Anima 写作规范与本站标签库，可帮你挑选 Tag；回复中的提示词会单独成气泡、加粗显示，并带「📋 复制提示词」按钮（复制时包含已设置的权重）；回复下方的库内标签点选后旁边出现 ▲▼ 权重调节（默认 0 不变，每次 ±0.1，长按连续调整），回复中对应英文词同步标黄，权重非 0 时该词显示为 (词:权重)。点用户消息上的 ✏️ 可修改后自动重发；AI 消息上的 📄 原始消息 / 🗑️ 删除（需确认）。<b>支持图片</b>：点「📷 图片」上传（可多选，自动压缩），可让 AI 根据图片推测 Tag 或指出图中内容与 Tag 的偏差；需要支持视觉的模型。对话自动保存在本机，可在「🗂 对话管理」页导出 / 清空。</div>
-    </div>
-    <div id="tabPrompt" style="display:none">
-      <div class="aitop slim2">
-        <button class="abtn ghost backbtn" id="promptBack" data-i18n="ui.prompt.back"></button>
-        <span style="font-weight:700;font-size:14px" data-i18n="ui.prompt.title"></span>
-      </div>
-      <details id="mainPrompt" open class="promptcard">
-          <summary data-i18n-title="ui.promptExtra.toggleTitle"><span data-i18n="ui.prompt.main"></span> <span class="pcsub" data-i18n="ui.prompt.mainSub"></span></summary>
-        <div class="pcbody">
-          <div class="presetbar">
-            <span style="font-size:13px;color:var(--muted)" data-i18n="ui.prompt.preset"></span>
-            <select id="presetSel" class="wbselect"></select>
-            <button class="abtn ghost" id="presetSave" data-i18n="ui.prompt.savePreset"></button>
-            <button class="abtn ghost" id="presetImport" data-i18n="ui.prompt.import"></button>
-            <button class="abtn ghost" id="presetExport" data-i18n="ui.prompt.export"></button>
-            <button class="abtn ghost danger" id="presetDelete" data-i18n="ui.prompt.delete"></button>
+        <div id="tabTalk" data-image-context="conversation" data-image-collection="talk">
+          <div class="tkshell">
+            <section class="talkmain" data-image-context="conversation" data-image-collection="talk">
+              <div class="tkbody">
+                <div class="tkconv">
+                  <div class="tk-statusline">
+                    <div class="tk-comfy-module" id="comfyUiModule" hidden>
+                      <div class="tk-comfy-status cstatus" id="comfyStatus">ComfyUI 状态检查中…</div>
+                      <div class="tkdraw-actions" id="tkDrawControls" hidden>
+                        <span class="tkdraw-caption" data-i18n="ui.ai.drawSettings">绘图设置</span>
+                        <label class="tkdraw-toggle" id="tkDrawRenderWrap">
+                          <input type="checkbox" id="tkDrawRender" />
+                          <span class="tkdraw-switch" aria-hidden="true"></span>
+                          <span data-i18n="ui.ai.renderImage">ComfyUI 出图</span>
+                        </label>
+                        <label class="tkdraw-iterations" id="tkDrawIterationsWrap">
+                          <span data-i18n="ui.ai.iterations">迭代</span>
+                          <select id="tkDrawIterations" aria-label="迭代次数" data-i18n-aria="ui.ai.iterations">
+                            <option value="1">1 次</option>
+                            <option value="2">2 次</option>
+                            <option value="3" selected>3 次</option>
+                            <option value="4">4 次</option>
+                            <option value="5">5 次</option>
+                            <option value="6">6 次</option>
+                            <option value="7">7 次</option>
+                            <option value="8">8 次</option>
+                            <option value="9">9 次</option>
+                            <option value="10">10 次</option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                    <div class="cstatus talk-status" id="talkStatus" aria-live="polite"></div>
+                  </div>
+                  <div class="comfyconv talkconv" id="talkConv" data-image-context="conversation" data-image-collection="talk">
+                    <div class="cmsg sys">
+                      <div class="body">
+                        选择上方模式，输入内容后按 Enter 或点「发送」。对话框中的图片只作为 AI 对话附件；识图模块可在主标签页或 AI 页面单独接收一张图片。
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="imgsrow talkimgs" id="talkImgRow" style="display: none"></div>
+              <div class="tkmodebar">
+                <div class="tkthumb" id="tkThumb"></div>
+                <div class="tkmode on" data-mode="assistant"><span data-i18n="ui.ai.modeAssist"></span></div>
+                <div class="tkmode" data-mode="draw"><span data-i18n="ui.ai.modeDraw"></span></div>
+              </div>
+              <div class="comfyin talkin" data-image-context="conversation" data-image-collection="talk">
+                <textarea
+                  id="talkIn"
+                  rows="2"
+                  placeholder="描述你的需求…（Enter 发送，Shift+Enter 换行；可直接粘贴 / 拖入图片）"
+                ></textarea>
+                <div class="talkbar">
+                  <button class="abtn" id="talkImgBtn" data-i18n="ui.ai.uploadImage"></button>
+                  <span class="tgrow"></span>
+                  <button class="abtn pri" id="talkSendBtn" data-i18n="ui.ai.send"></button>
+                  <button class="abtn ghost" id="talkStopBtn" data-i18n="ui.ai.stop" style="display: none"></button>
+                  <button class="abtn danger" id="talkClearBtn" data-i18n="ui.ai.clearChat"></button>
+                </div>
+                <input type="file" id="talkImgFile" accept="image/*" multiple hidden />
+                <div class="hint">
+                  · 🔍 识图模块一次只保留一张图片，不会进入 AI 对话；主标签页和 AI 页面共用同一张当前识图图片。<br />· 🎨 ComfyUI迭代 需先在「⚙️ API 设置 →
+                  ComfyUI」勾选启用并上传工作流。
+                </div>
+              </div>
+            </section>
           </div>
-          <div class="row" style="margin-top:6px">
-            <button class="abtn" id="pcolExport" data-i18n="ui.prompt.exportCollection"></button>
-            <button class="abtn ghost" id="pcolImport" data-i18n="ui.prompt.importCollection"></button>
-            <input type="file" id="pcolFile" accept=".json,application/json" hidden>
-            <button class="abtn ghost" id="promptModReset" data-i18n="ui.prompt.resetModules"></button>
-          </div>
-          <div class="hint" style="margin:4px 0 10px" data-i18n="ui.prompt.modulesHint"></div>
-          <details class="pmod-lead" data-special="base">
-            <summary><span data-i18n="ui.prompt.base"></span> <span class="pcsub" data-i18n="ui.prompt.baseSub"></span><span style="flex:1"></span><button class="abtn" id="aiSysReset" data-i18n="ui.promptExtra.resetDefault"></button></summary>
-            <div class="pmod-mods"></div>
-            <div class="form"><textarea id="aiSys" rows="12"></textarea></div>
-          </details>
-          <details class="pmod-lead" data-special="genTask">
-            <summary><span data-i18n="ui.prompt.genTask"></span> <span class="pcsub" data-i18n="ui.prompt.genTaskSub"></span><span style="flex:1"></span><button class="abtn" id="genTaskReset" data-i18n="ui.promptExtra.resetDefault"></button></summary>
-            <div class="pmod-mods"></div>
-            <div class="form"><textarea id="genTask" rows="9"></textarea></div>
-          </details>
-          <details class="pmod-lead" data-special="quality">
-            <summary><span data-i18n="ui.prompt.quality"></span> <span class="pcsub" data-i18n="ui.prompt.qualitySub"></span><span style="flex:1"></span><button class="abtn" id="qpReset" data-i18n="ui.promptExtra.reset"></button></summary>
-            <div class="pmod-mods"></div>
-            <div class="qprefix"><textarea id="qpText" rows="4"></textarea></div>
-          </details>
-          <details class="pmod-lead" data-special="vision">
-            <summary><span data-i18n="ui.prompt.vision"></span> <span class="pcsub" data-i18n="ui.prompt.visionSub"></span><span style="flex:1"></span><button class="abtn" id="aiVisionReset" data-i18n="ui.promptExtra.resetDefault"></button></summary>
-            <div class="pmod-mods"></div>
-            <div class="qprefix" style="border-left-color:var(--cp)"><textarea id="aiVision" rows="6"></textarea></div>
-          </details>
-          <details class="pmod-lead" data-special="system">
-            <summary><span data-i18n="ui.prompt.system"></span> <span class="pcsub" data-i18n="ui.prompt.systemSub"></span><span style="flex:1"></span></summary>
-            <div class="pmod-mods"></div>
-            <div class="hint" data-i18n="ui.prompt.systemHint"></div>
-          </details>
-          <div class="hint" data-i18n="ui.prompt.mainHint"></div>
         </div>
-      </details>
+        <div id="tabPrompt" style="display: none">
+          <div class="aitop slim2">
+            <button class="abtn ghost backbtn" id="promptBack" data-i18n="ui.prompt.back"></button>
+            <span style="font-weight: 700; font-size: 14px" data-i18n="ui.prompt.title"></span>
+          </div>
+          <details id="mainPrompt" open class="promptcard">
+            <summary data-i18n-title="ui.promptExtra.toggleTitle">
+              <span data-i18n="ui.prompt.main"></span> <span class="pcsub" data-i18n="ui.prompt.mainSub"></span>
+            </summary>
+            <div class="pcbody">
+              <div class="presetbar">
+                <span style="font-size: 13px; color: var(--muted)" data-i18n="ui.prompt.preset"></span>
+                <select id="presetSel" class="wbselect"></select>
+                <button class="abtn ghost" id="presetSave" data-i18n="ui.prompt.savePreset"></button>
+                <button class="abtn ghost" id="presetImport" data-i18n="ui.prompt.import"></button>
+                <button class="abtn ghost" id="presetExport" data-i18n="ui.prompt.export"></button>
+                <button class="abtn ghost danger" id="presetDelete" data-i18n="ui.prompt.delete"></button>
+              </div>
+              <div class="row" style="margin-top: 6px">
+                <button class="abtn" id="pcolExport" data-i18n="ui.prompt.exportCollection"></button>
+                <button class="abtn ghost" id="pcolImport" data-i18n="ui.prompt.importCollection"></button>
+                <input type="file" id="pcolFile" accept=".json,application/json" hidden />
+                <button class="abtn ghost" id="promptModReset" data-i18n="ui.prompt.resetModules"></button>
+              </div>
+              <div class="hint" style="margin: 4px 0 10px" data-i18n="ui.prompt.modulesHint"></div>
+              <details class="pmod-lead" data-special="base">
+                <summary>
+                  <span data-i18n="ui.prompt.base"></span> <span class="pcsub" data-i18n="ui.prompt.baseSub"></span
+                  ><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="aiSysEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
+                  ><button class="abtn" id="aiSysReset" data-i18n="ui.promptExtra.resetDefault"></button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="form"><textarea id="aiSys" rows="12"></textarea></div>
+              </details>
+              <details class="pmod-lead" data-special="genTask">
+                <summary>
+                  <span data-i18n="ui.prompt.genTask"></span>
+                  <span class="pcsub" data-i18n="ui.prompt.genTaskSub"></span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="genTaskEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
+                  ><button class="abtn" id="genTaskReset" data-i18n="ui.promptExtra.resetDefault"></button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="form"><textarea id="genTask" rows="9"></textarea></div>
+              </details>
+              <details class="pmod-lead" data-special="quality">
+                <summary>
+                  <span data-i18n="ui.prompt.quality"></span>
+                  <span class="pcsub" data-i18n="ui.prompt.qualitySub"></span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="qpEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
+                  ><button class="abtn" id="qpReset" data-i18n="ui.promptExtra.reset"></button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="qprefix"><textarea id="qpText" rows="4"></textarea></div>
+              </details>
+              <details class="pmod-lead" data-special="vision">
+                <summary>
+                  <span data-i18n="ui.prompt.vision"></span> <span class="pcsub" data-i18n="ui.prompt.visionSub"></span
+                  ><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="aiVisionEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
+                  ><button class="abtn" id="aiVisionReset" data-i18n="ui.promptExtra.resetDefault"></button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="qprefix" style="border-left-color: var(--cp)">
+                  <textarea id="aiVision" rows="6"></textarea>
+                </div>
+              </details>
+              <details class="pmod-lead" data-special="system">
+                <summary>
+                  <span data-i18n="ui.prompt.system"></span> <span class="pcsub" data-i18n="ui.prompt.systemSub"></span
+                  ><span style="flex: 1"></span>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="hint" data-i18n="ui.prompt.systemHint"></div>
+              </details>
+              <div class="hint" data-i18n="ui.prompt.mainHint"></div>
+            </div>
+          </details>
 
-      <details id="worldBookCard" open class="promptcard">
-      <summary data-i18n-title="ui.promptExtra.toggleTitle"><span data-i18n="ui.prompt.world"></span> <span class="pcsub" data-i18n="ui.prompt.worldSub"></span></summary>
-        <div class="pcbody">
-          <div class="wbrow">
-            <span data-i18n="ui.prompt.worldCurrent"></span>
-            <select id="worldSel" class="wbselect"></select>
-            <label class="opt"><input type="checkbox" id="worldEnabled" checked> <span data-i18n="ui.prompt.worldEnabled"></span></label>
-            <button class="abtn" id="worldAdd" data-i18n="ui.prompt.newWorld"></button>
-            <button class="abtn" id="wbImport" data-i18n="ui.prompt.import"></button>
-            <button class="abtn" id="wbExport" data-i18n="ui.prompt.exportWorld"></button>
-            <button class="abtn" id="wbBundle" data-i18n="ui.prompt.bundleWorld"></button>
-          </div>
-          <div class="row" style="margin-top:4px;align-items:center">
-            <span style="font-size:13px;color:var(--muted)" data-i18n="ui.prompt.enabledObjects"></span>
-            <span id="wbCallMods" style="display:inline-flex;gap:6px"></span>
-          </div>
-          <div id="worldCards"></div>
-          <input type="file" id="wbImportFile" accept=".json,application/json" hidden>
-          <div class="clhead wbheadline" style="margin-top:12px"><span id="wbListTitle" data-i18n="ui.prompt.entryTitle"></span><span style="flex:1"></span><button class="abtn" id="wbFoldAll" data-i18n="ui.prompt.allCollapse"></button><button class="abtn" id="wbAdd" data-i18n="ui.prompt.newEntry"></button></div>
-          <div class="wblist" id="wbList"></div>
-          <div class="row"><button class="abtn" id="previewWorld" data-i18n="ui.prompt.previewWorld"></button></div>
-          <div class="hint" data-i18n="ui.promptExtra.worldHint"></div>
+          <details id="worldBookCard" open class="promptcard">
+            <summary data-i18n-title="ui.promptExtra.toggleTitle">
+              <span data-i18n="ui.prompt.world"></span> <span class="pcsub" data-i18n="ui.prompt.worldSub"></span>
+            </summary>
+            <div class="pcbody">
+              <div class="wbrow">
+                <span data-i18n="ui.prompt.worldCurrent"></span>
+                <select id="worldSel" class="wbselect"></select>
+                <label class="opt"
+                  ><input type="checkbox" id="worldEnabled" checked /> <span data-i18n="ui.prompt.worldEnabled"></span
+                ></label>
+                <button class="abtn" id="worldAdd" data-i18n="ui.prompt.newWorld"></button>
+                <button class="abtn" id="wbImport" data-i18n="ui.prompt.import"></button>
+                <button class="abtn" id="wbExport" data-i18n="ui.prompt.exportWorld"></button>
+                <button class="abtn" id="wbBundle" data-i18n="ui.prompt.bundleWorld"></button>
+              </div>
+              <div class="row" style="margin-top: 4px; align-items: center">
+                <span style="font-size: 13px; color: var(--muted)" data-i18n="ui.prompt.enabledObjects"></span>
+                <span id="wbCallMods" style="display: inline-flex; gap: 6px"></span>
+              </div>
+              <div id="worldCards"></div>
+              <input type="file" id="wbImportFile" accept=".json,application/json" hidden />
+              <div class="clhead wbheadline" style="margin-top: 12px">
+                <span id="wbListTitle" data-i18n="ui.prompt.entryTitle"></span><span style="flex: 1"></span
+                ><button class="abtn" id="wbFoldAll" data-i18n="ui.prompt.allCollapse"></button
+                ><button class="abtn" id="wbAdd" data-i18n="ui.prompt.newEntry"></button>
+              </div>
+              <div class="wblist" id="wbList"></div>
+              <div class="row"><button class="abtn" id="previewWorld" data-i18n="ui.prompt.previewWorld"></button></div>
+              <div class="hint" data-i18n="ui.promptExtra.worldHint"></div>
+            </div>
+          </details>
         </div>
-      </details>
-    </div>
-    <div id="tabMgr" style="display:none">
-      <div class="clhead">✍️ 当前生成对话<span style="flex:1"></span></div>
-      <div id="mgrGenCur"></div>
-      <div class="clhead">🗂 历史生成对话<span style="flex:1"></span></div>
-      <div id="mgrGenList"></div>
-      <div class="clhead">💬 自由问答对话<span style="flex:1"></span></div>
-      <div id="mgrChatCur"></div>
-      <div class="hint">· 对话仅保存在本机浏览器（localStorage），换浏览器或清理数据会丢失。<br>· “✨ 生成 Tag”页点「🔄 新对话」会把当前对话自动存档到这里；从历史“载入”后可继续对话，删除后不可恢复。<br>· “📋 导出”可把整段对话复制为纯文本，方便粘贴到别处。</div>
-    </div>
-    <div id="tabComfy" style="display:none">
-      <div class="cstatus" id="comfyStatus">未开始 · ComfyUI 未连接</div>
-      <div class="comfyconv" id="comfyConv"><div class="cmsg sys"><div class="body">在下方输入需求，点「▶ 开始调试」：AI 会生成 Tag → 调用 ComfyUI 渲染 → 分析返图 → 修正提示词，自动循环最多「最大迭代」次，最后给出【调试结论】与【最终提示词】。勾选调试模式后为助手模式：不强制格式，适合你手动粘贴提示词反复试。</div></div></div>
-      <div class="comfyin">
-        <div class="imgsrow" id="comfyImgRow" style="display:none"></div>
-        <textarea id="comfyIn" rows="2" placeholder="例如：把她的整体色调改成红色系（可先发一张图给它当基准）；或输入全新需求让 AI 生成 → 渲染 → 看图改图"></textarea>
-        <div class="row">
-          <button class="abtn" id="comfyImgBtn">📷 图片（基准图）</button>
-          <button class="abtn pri" id="comfyGo">▶ 开始调试</button>
-          <button class="abtn" id="comfyStep" title="只执行一轮（AI 生成 → 渲染 → 分析），手动推进">⏯ 单步</button>
-          <button class="abtn ghost" id="comfyStop" style="display:none">■ 停止</button>
-          <button class="abtn" id="comfyClear">🗑 清空</button>
-        </div>
-        <input type="file" id="comfyImgFile" accept="image/*" multiple hidden>
-        <div class="hint">· 上传/拖入的图片会<b>连同本地识图 Tag</b> 一并发给 AI（改图用它当基准，无需 LIST/RELOAD 找图）。<br>· 「🖼 上传 PNG（含工作流）」/ 拖到上方设置区 = 读取工作流；这里拖图 = 基准图。</div>
+        <div id="tabMgr" style="display: none">
+          <div class="clhead">✍️ 当前生成对话<span style="flex: 1"></span></div>
+          <div id="mgrGenCur"></div>
+          <div class="clhead">🗂 历史生成对话<span style="flex: 1"></span></div>
+          <div id="mgrGenList"></div>
+          <div class="clhead">💬 自由问答对话<span style="flex: 1"></span></div>
+          <div id="mgrChatCur"></div>
+          <div class="hint">
+            · 对话仅保存在本机，换电脑或清理应用数据会丢失。<br />· 在“助手 / 绘图”工作台点「🔄
+            新对话」可开启新的会话；从历史“载入”后可继续对话，删除后不可恢复。<br />· “📋
+            导出”可把整段对话复制为纯文本，方便粘贴到别处。
       </div>
     </div>
+
   </div>
-</div>
-
-<div class="modal" id="wbModal">
-  <div class="box">
-    <button class="hbtn close" id="wbModalClose">✕</button>
-    <h3 data-i18n="ui.promptExtra.importModalTitle"></h3>
-    <div class="hint" id="wbModalHint"></div>
-    <div class="form-acts">
-      <button class="abtn" id="wbSelAll" data-i18n="ui.promptExtra.selectAll"></button>
-      <button class="abtn" id="wbSelNone" data-i18n="ui.promptExtra.selectNone"></button>
+      </div>
+    <div class="modal" id="wbModal">
+      <div class="box">
+        <button class="hbtn close" id="wbModalClose">✕</button>
+        <h3 data-i18n="ui.promptExtra.importModalTitle"></h3>
+        <div class="hint" id="wbModalHint"></div>
+        <div class="form-acts">
+          <button class="abtn" id="wbSelAll" data-i18n="ui.promptExtra.selectAll"></button>
+          <button class="abtn" id="wbSelNone" data-i18n="ui.promptExtra.selectNone"></button>
+        </div>
+        <div class="wbimport" id="wbImportList"></div>
+        <div class="form-acts">
+          <button class="abtn pri" id="wbImportGo" data-i18n="ui.promptExtra.importSelected"></button>
+          <button class="abtn" id="wbImportCancel" data-i18n="ui.common.cancel"></button>
+        </div>
+      </div>
     </div>
-    <div class="wbimport" id="wbImportList"></div>
-    <div class="form-acts">
-      <button class="abtn pri" id="wbImportGo" data-i18n="ui.promptExtra.importSelected"></button>
-      <button class="abtn" id="wbImportCancel" data-i18n="ui.common.cancel"></button>
+
+    <div class="modal" id="cfmModal">
+      <div class="box cfb">
+        <div id="cfmIcon">⚠️</div>
+        <div class="cfmsg" id="cfmText"></div>
+        <div class="form-acts">
+          <button class="abtn ghost" id="cfmNo">取消</button>
+          <button class="abtn pri danger" id="cfmYes">确定</button>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
 
-<div class="modal" id="cfmModal">
-  <div class="box cfb">
-    <div id="cfmIcon">⚠️</div>
-    <div class="cfmsg" id="cfmText"></div>
-    <div class="form-acts">
-      <button class="abtn ghost" id="cfmNo">取消</button>
-      <button class="abtn pri danger" id="cfmYes">确定</button>
-    </div>
-  </div>
-</div>
+    <div class="toast" id="toast"></div>
 
-<div class="toast" id="toast"></div>
-
-<script src="extra-tags.js"></script>
-<script src="js/globals.js"></script>
-<script src="js/storage.js"></script>
-<script src="js/app-errors.js"></script>
-<script src="js/i18n.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/config.js"></script>
-<script src="js/data-tags.js"></script>
-<script src="js/synonyms.js"></script>
-<script src="js/store.js"></script>
-<script src="js/wd-sync.js"></script>
-<script src="js/tag-search.js"></script>
-<script src="js/taglib-render.js"></script>
-<script src="js/ai-core.js"></script>
-<script src="js/ai-client.js"></script>
-<script src="js/ai-job.js"></script>
-<script src="js/img-ref.js"></script>
-<script src="js/comfy.js"></script>
-<script src="js/prompts.js"></script>
-<script src="js/prompt-collection.js"></script>
-<script src="js/talk.js"></script>
-<script src="js/mgr.js"></script>
-<script src="js/custom-tags.js"></script>
-<script src="js/modals.js"></script>
-<script src="js/theme.js"></script>
-<script src="js/ai-events.js"></script>
-<script src="js/translation.js"></script>
-<script src="js/events.js"></script>
-<script src="js/boot.js"></script>
-</body>
+    <script src="app-view.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>

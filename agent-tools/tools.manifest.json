@@ -1,0 +1,33 @@
+{
+  "name": "AI 绘画 Tag 工具箱",
+  "apiVersion": "1.0",
+  "transport": {
+    "http": "http://127.0.0.1:32145",
+    "list": "GET /tools/list",
+    "call": "POST /tools/call"
+  },
+  "schemaEndpoint": "GET /tools/list",
+  "schemaFormat": "Each tool returned by /tools/list includes inputSchema, permission and group. The list is filtered by agentWriteEnabled.",
+  "tools": [
+    { "name": "tags.search", "group": "runtime", "permission": "read", "description": "查询 Tag 库。返回结果仅作辅助参考。" },
+    { "name": "vision.processOne", "group": "runtime", "permission": "read", "description": "单图识图；一次只处理一个明确 imageId（或一个本地 imagePath），mode 支持 metadata、local、ai。" },
+    { "name": "comfy.render", "group": "runtime", "permission": "read", "description": "提交一次 ComfyUI 渲染并返回图片 artifact；仅在 ComfyUI 可用时出现。" },
+    { "name": "tags.describe", "group": "runtime", "permission": "read", "description": "把中文描述转换为规范绘图标签。" },
+    { "name": "assets.listModels", "group": "runtime", "permission": "read", "description": "列出 ComfyUI 可用模型文件。" },
+    { "name": "comfy.submit", "group": "runtime", "permission": "read", "description": "提交任意 ComfyUI API 工作流并返回任务编号。" },
+    { "name": "comfy.getResult", "group": "runtime", "permission": "read", "description": "查询 ComfyUI 任务状态和输出文件。" },
+    { "name": "comfy.objectInfo", "group": "runtime", "permission": "read", "description": "读取 ComfyUI 节点定义。" },
+    { "name": "comfy.cancel", "group": "runtime", "permission": "read", "description": "中断 ComfyUI 当前任务或清理队列。" },
+    { "name": "comfy.getImage", "group": "runtime", "permission": "read", "description": "根据 artifact 或文件名读取 ComfyUI 图片。" },
+    { "name": "prompts.list", "group": "runtime", "permission": "read", "description": "读取提示词列表。" },
+    { "name": "prompts.read", "group": "runtime", "permission": "read", "description": "读取当前或默认提示词。" },
+    { "name": "settings.comfy.get", "group": "runtime", "permission": "read", "description": "读取 ComfyUI 当前渲染设置。" },
+    { "name": "settings.comfy.update", "group": "admin", "permission": "write", "description": "修改 ComfyUI 渲染设置。" },
+    { "name": "settings.comfy.setIterations", "group": "admin", "permission": "write", "description": "设置 ComfyUI 最大迭代次数（1–10）。" },
+    { "name": "prompts.create", "group": "admin", "permission": "write", "description": "新建自定义提示词。" },
+    { "name": "prompts.update", "group": "admin", "permission": "write", "description": "修改提示词覆盖值或自定义提示词；默认文本不变。" },
+    { "name": "prompts.delete", "group": "admin", "permission": "write", "description": "删除自定义提示词；内置提示词不可删除。" },
+    { "name": "prompts.enable", "group": "admin", "permission": "write", "description": "启用或停用提示词。" },
+    { "name": "prompts.reset", "group": "admin", "permission": "write", "description": "恢复提示词内置默认值并重新启用。" }
+  ]
+}

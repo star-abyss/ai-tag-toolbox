@@ -1,0 +1,61 @@
+===== 附录 1 =====
+# 附录1：强透视与动态构图（用于绘制具有冲击感的视角）
+1.在需要强透视时，将 foreshortening, strong perspective / extreme perspective 这些Tag放在质量词之后、角色描述之前。
+2.在角色基本外貌描述之后写入 [伸出的部位] extended toward viewer, dominating foreground, [部位] focus
+3.调整视角，体现角色的主导感就用 from below，体现角色被动感用 from above
+4.如果是动态构图，可以在视角词后加入 dynamic angle, dutch angle 来体现动感
+5.在结尾部分加入 depth of field, blurry background 这两个Tag来凸显主体
+
+===== 附录 2 =====
+# 附录2：第一人称视角（仅用户明确要求时启用）
+
+原则：
+1. 带入第一人称视角，视野内看得见的就写，看不见的直接删。
+2. 避免 viewer's face/head 或 pov face："我"的视角落点就是"我的眼睛所在的空间位置"。因此不能写自己的头部信息（脸、耳朵、后脑勺等），因为第一人称视角中自己的头部在逻辑上不可见。模型无法画出不存在的东西，只会把 face/head 等标签错误解析为画面中某个角色的脸，导致构图崩溃。
+3. 画面中出现"我"的多少身体部位就写多少相关 tag，无部位出现时以视角与构图模拟第一人称的感觉。
+4. 避免 camera/镜头 等描述，因为模型真的会理解为要画一个摄像机。
+5. 当用户输入我的脸/头的时候，切勿直接写 viewer's face/head，应判定为 viewer 不出镜写法。
+6. 下列不同写法并非互斥，需要哪个就启用哪个。
+
+具体写法：
+
+1. viewer不出镜：此时"我"是一个纯视角，眼睛的位置就是观察点。通过以下方式营造第一人称感：
+   - 调整构图视角：用 from below、from above 等定位"我"的空间位置。
+   - 不能写 cunnilingus 这种头部的动作，因为同样在逻辑上不可见，转而用角色的表情和足够近的构图代替这种感觉。
+   - 角色朝画面外做动作：stepping on viewer、looking at viewer 等（只写动作方向，不写身体部位落点）。
+   - 角色的表情和视线方向：如 looking down 暗示角色在看下方的"我"。
+   - 例："她往我脸上尿尿" → from below, 1girl, squatting, peeing onto viewer, looking down
+   - 例："她踩着我的脸" → from below, 1girl, stepping on viewer, foot focus, looking down
+   - 例："她伸出手抱着我" → reaching towards viewer, reaching
+   - 注意：此模式下视角描述词（from below 等）服务于构图，不受正文视角禁令限制。
+
+2. 仅手部出镜：写手部+动作即可。除非用户要求，否则不必写 viewer 的性别。
+   - 例："我伸手抓她屁股" → viewer's hands, ass grab, 1girl, standing, looking back
+
+3. 要求出现我站着/躺着或其他互动的要求时：主动补全其他身体部位出镜。用 viewer's [部位] 或 pov [部位] + 动作/场景。性别必须明确：女性写 female pov，男性写 pov 或 male pov，未声明默认男性。
+   - 例：female pov, viewer's breasts, pov crotch, viewer's leg, on back, lying, completely nude, female masturbation
+   - 例："抚摸我的胸口" → [角色名] touching viewer's chest
+
+第一人称模板
+
+仰视角足交：from below, pov from male, 1girl, footjob, penis, looking down at viewer
+仰视角踩踏：from below, 1girl, stepping on viewer, looking down, smug, foot focus, bare legs, low angle
+仰视角颜面排尿：from below, 1girl, peeing onto viewer, pointing at viewer, looking down, angry
+壁咚互动：1girl, kabedon on viewer, looking at viewer, pov, reaching towards viewer
+俯视角口交暗示：from above, 1catboy, sitting, looking at viewer, fellatio gesture, tongue out, heart eyes
+阴影投射暗示阴茎：from above, 1girl, wariza, looking up, penis shadow, penis awe, wide-eyed
+乳交特写：1girl, pov crotch, paizuri, breasts squeezed together, penis, looking at viewer, 1boy
+递送物品互动：1girl, sitting, holding a baked potato, reaching towards viewer with both hands, looking at viewer, smile
+自反视角看自己身体：female pov looking down her breasts, on back, lying, completely nude, female masturbation, pov crotch
+对镜自拍挑战（固定写法）：1girl, solo, standing, wide shot, one finger selfie challenge \(meme\), mirror, reflection, completely nude, pov hand, holding phone, looking at phone, ass visible through thighs, legs apart, pubic hair peek
+
+===== 附录 3 =====
+# 附录3：分镜（仅用户明确要求时启用）
+1. 若启用分镜模式，标签块开头需加入 multiple views，不使用 zoom layers、cut-in view、split-screen。单画面场景不得使用 multiple views。
+2. 每个分镜格必须明确其位置、大小、形状及与其他分镜的分割关系：
+   - 位置：使用绝对位置（top right corner / bottom left / on the left），禁用相对指代（below the previous one）。
+   - 大小：使用 half-page / large / wide / tall narrow / square / small 等直观尺寸词。
+   - 形状：使用 rectangular / square / circular，禁用复杂形状。
+   - 分割方式：整体版面用 divided into N sections / split diagonally / a [大小] panel on [位置] and a [大小] panel on [位置] 等句式一次声明所有分镜的空间布局。
+3. 分镜内容使用 the main scene: / the [位置] panel: / a small [形状] inset in the [位置]: 分别描述。角色必须沿用主画面已确立的绑定词。
+4. 必须采用"主画面句 + 分镜句"的结构。即先描述一个完整的主画面，再用 the main scene: … the top right panel: … 等独立句子分别描述每个分镜。
