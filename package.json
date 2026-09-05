@@ -1,0 +1,12 @@
+{
+    "name":  "ai-tag-toolbox-rewrite",
+    "version":  "1.4.193",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.193 统一 Agent Runtime 测试版",
+    "main":  "main.js",
+    "private":  true,
+    "type":  "commonjs",
+    "scripts":  {
+                    "dev":  "electron .",
+                    "check":  "node scripts/check.mjs"
+                }
+}
