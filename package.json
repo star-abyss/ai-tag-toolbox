@@ -7,6 +7,6 @@
     "type":  "commonjs",
     "scripts":  {
                     "dev":  "electron .",
-                    "check":  "node scripts/check.mjs"
+                    "check":  "node scripts/check.mjs && node --test tests/*.test.cjs && node tests/regressions-v194.cjs"
                 }
 }
