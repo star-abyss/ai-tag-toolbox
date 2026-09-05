@@ -461,10 +461,9 @@
                 等）；纯文本模型（如 DeepSeek deepseek-chat）收到图片会报错。
               </div>
               <details class="aiset agent-settings">
-                <summary data-i18n="ui.settings.agentTitle">🧩 外部 Agent 工具接口</summary>
-                <label class="opt"><input type="checkbox" id="agentWriteEnabled" /> <span data-i18n="ui.settings.agentWrite">允许外部 Agent 修改提示词和 ComfyUI 迭代设置</span></label>
-                <div class="hint" data-i18n="ui.settings.agentHint">默认只读。工具清单和调用示例位于应用目录的 agent-tools 文件夹；本地接口默认地址 http://127.0.0.1:32145。</div>
-                <div class="secret-status" id="agentStatus">工具服务启动中…</div>
+                <summary>🧩 固定 Agent Runtime</summary>
+                <div class="hint">主 AI 只使用固定工具，页面不开放外部 Agent 写权限。</div>
+                <div class="secret-status" id="agentStatus">固定工具就绪</div>
               </details>
               <div class="clhead comfyhead" data-i18n="ui.settings.comfyTitle"></div>
               <label
@@ -512,7 +511,8 @@
                   <label class="opt"
                     >CFG <input id="comfyCfg" type="number" step="0.1" value="7" style="width: 64px"
                   /></label>
-                  <label class="opt">最大迭代 <input id="comfyIters" type="number" min="1" max="10" value="3" style="width: 64px" /></label>
+                  <label class="opt">批量数量 <input id="batchCount" type="number" min="1" max="8" value="1" style="width: 64px" /></label>
+                  <label class="opt">最大 ComfyUI 调用 <input id="maxComfyCalls" type="number" min="1" max="20" value="3" style="width: 64px" /></label>
                 </div>
                 <div class="hint">
                   上传 / 拖入工作流（JSON 或含工作流的 PNG）后：自动识别标准采样器 / 提示词节点并注入
@@ -553,29 +553,6 @@
                   <div class="tk-statusline">
                     <div class="tk-comfy-module" id="comfyUiModule" hidden>
                       <div class="tk-comfy-status cstatus" id="comfyStatus">ComfyUI 状态检查中…</div>
-                      <div class="tkdraw-actions" id="tkDrawControls" hidden>
-                        <span class="tkdraw-caption" data-i18n="ui.ai.drawSettings">绘图设置</span>
-                        <label class="tkdraw-toggle" id="tkDrawRenderWrap">
-                          <input type="checkbox" id="tkDrawRender" />
-                          <span class="tkdraw-switch" aria-hidden="true"></span>
-                          <span data-i18n="ui.ai.renderImage">ComfyUI 出图</span>
-                        </label>
-                        <label class="tkdraw-iterations" id="tkDrawIterationsWrap">
-                          <span data-i18n="ui.ai.iterations">迭代</span>
-                          <select id="tkDrawIterations" aria-label="迭代次数" data-i18n-aria="ui.ai.iterations">
-                            <option value="1">1 次</option>
-                            <option value="2">2 次</option>
-                            <option value="3" selected>3 次</option>
-                            <option value="4">4 次</option>
-                            <option value="5">5 次</option>
-                            <option value="6">6 次</option>
-                            <option value="7">7 次</option>
-                            <option value="8">8 次</option>
-                            <option value="9">9 次</option>
-                            <option value="10">10 次</option>
-                          </select>
-                        </label>
-                      </div>
                     </div>
                     <div class="cstatus talk-status" id="talkStatus" aria-live="polite"></div>
                   </div>
@@ -589,11 +566,7 @@
                 </div>
               </div>
               <div class="imgsrow talkimgs" id="talkPendingStrip" data-image-context="conversation" style="display: none"><div id="talkImgRow" class="pending-image-list"></div><button type="button" id="talkPendingClear" class="btn btn-icon" title="清空发送区草稿">❌</button></div>
-              <div class="tkmodebar">
-                <div class="tkthumb" id="tkThumb"></div>
-                <button class="tkmode btn btn-segment on" type="button" data-mode="assistant"><span data-i18n="ui.ai.modeAssist"></span></button>
-                <button class="tkmode btn btn-segment" type="button" data-mode="draw"><span data-i18n="ui.ai.modeDraw"></span></button>
-              </div>
+              <div class="tkmodebar" id="tkmodebar" hidden aria-hidden="true"></div>
               <div class="comfyin talkin" data-image-context="conversation">
                 <textarea
                   id="talkIn"
