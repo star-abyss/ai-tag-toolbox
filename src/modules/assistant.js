@@ -1,1455 +1,272 @@
 'use strict';
 
-/**
- * Assistant
- * ----------
- *
- * 这是重写版唯一的 AI 业务入口。代码故意保持“一个模块、几个清楚的步骤”：
- * 组装 Prompt → 调用 AI → 解析结果 → 写入会话。它不复制旧版的全局变量、
- * Bridge、双重 Store 或页面事件，只给页面暴露少量直接可用的方法。
- */
-
-const fs = require('node:fs');
-const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { createComfy } = require('./comfy');
 const { createCalls } = require('./calls');
-const { addCandidate, evaluateCandidate, markRecommended, selectCandidate, snapshot: candidateSnapshot, finalCandidate } = require('./draw-candidates');
 const { createImageRepository } = require('./image-repository');
 const { parsePngMetadata } = require('./images');
 const { createVisionTempStore } = require('./vision-temp-store');
 const { createAgentRuntime } = require('./agent-runtime');
 const { createFixedSubagents } = require('./fixed-subagents');
 const { createPrimaryTools } = require('./primary-tools');
+const { createPrompts } = require('./prompts');
+const { createSettings } = require('./settings');
+const { createAiClient, parseReply } = require('./ai-client');
+const { createPrimaryAgent, publicRequestConfig } = require('./primary-agent');
+const { errorShape, resultError } = require('./error-manager');
 
-const PROMPT_FILES = Object.freeze({
-  primary: '10-主AI固定提示词-PRIMARY_AGENT.txt',
-  vision: '04-识图描述提示词-DEFAULT_VISION_PROMPT.txt',
-  translation: '08-固定翻译子代理-TRANSLATION_AGENT.txt',
-  generateTags: '09-固定生成Tag子代理-GENERATE_TAGS_AGENT.txt'
-});
-
+const SESSION_FORMAT = 'ai-tag-sessions';
+const SESSION_VERSION = 1;
 const VISION_MODEL_HINT = /vision|[-_]?vl(?:[-_]|$)|gpt-4o|gpt-4\.1|qwen.*vl|llava|moondream|internvl|minicpm[-_]?v|pixtral|gemma.*vision|gemini|claude-3|claude.*sonnet|glm-4v|qvq|deepseek.*(?:vision|vl)|kimi.*vision/i;
 const TEXT_ONLY_MODEL_HINT = /deepseek-(?:chat|reasoner|v[23](?:\.\d+)?)(?:$|[-_:])|deepseek-v4-(?:flash|pro)(?![-_]vision)(?:$|[-_:])|gpt-3\.5|text-embedding|(?:^|\/)qwen(?:2(?:\.5)?|3)(?:$|[-_:])|(?:^|\/)llama3(?:$|[-_:])/i;
-
-function text(value, fallback = '') {
-  const result = value == null ? '' : String(value).replace(/^\uFEFF/, '').trim();
-  return result || fallback;
-}
-
-function isObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function clone(value) {
-  if (value == null || typeof value !== 'object') return value;
-  if (Buffer.isBuffer(value)) return Buffer.from(value);
-  if (Array.isArray(value)) return value.map(clone);
-  const output = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (typeof item === 'function' || key === 'signal') continue;
-    output[key] = clone(item);
-  }
-  return output;
-}
-
-function list(value) {
-  return Array.isArray(value) ? value : value == null ? [] : [value];
-}
-
-function activitySnapshot(value) {
-  if (!Array.isArray(value)) return [];
-  return value.filter(item => item && typeof item === 'object').slice(-80).map(item => ({
-    id: text(item.id),
-    type: text(item.type, 'event'),
-    name: text(item.name),
-    round: Number(item.round) || 0,
-    iteration: Number(item.iteration) || 0,
-    status: text(item.status, 'done'),
-    message: text(item.message),
-    candidateId: text(item.candidateId),
-    createdAt: Number(item.createdAt) || Date.now()
-  }));
-}
-
-function modelLooksVision(value) {
-  return VISION_MODEL_HINT.test(String(value || ''));
-}
-
-function modelClearlyTextOnly(value) {
-  return !modelLooksVision(value) && TEXT_ONLY_MODEL_HINT.test(String(value || ''));
-}
-
-function messagesContainImage(messages) {
-  return list(messages).some(message => {
-    const content = message?.content;
-    if (Array.isArray(content) && content.some(part => part?.type === 'image_url' || part?.type === 'image')) return true;
-    return Array.isArray(message?.images) && message.images.length > 0;
-  });
-}
-
-function uid(prefix, sequence) {
-  return `${prefix}_${Date.now().toString(36)}_${(++sequence.value).toString(36)}`;
-}
-
-function readPrompts(promptDir) {
-  const dir = promptDir ? path.resolve(promptDir) : '';
-  const values = {};
-  for (const [key, filename] of Object.entries(PROMPT_FILES)) {
-    try {
-      values[key] = fs.readFileSync(path.join(dir, filename), 'utf8').replace(/^\uFEFF/, '').trim();
-    } catch {
-      values[key] = '';
-    }
-  }
-  return values;
-}
-
-function promptValues(source, promptDir) {
-  const values = readPrompts(promptDir);
-  if (source && typeof source.snapshot === 'function') {
-    try {
-      const snapshot = source.snapshot();
-      Object.assign(values, snapshot && (snapshot.values || snapshot));
-    } catch { /* use files */ }
-  } else if (source && typeof source.get === 'function') {
-    for (const key of Object.keys(PROMPT_FILES)) {
-      try { values[key] = text(source.get(key), values[key]); } catch { /* keep file */ }
-    }
-  } else if (isObject(source)) {
-    Object.assign(values, source);
-  }
-  return values;
-}
-
-function normaliseRole(value) {
-  const role = text(value).toLowerCase();
-  if (role === 'ai' || role === 'bot') return 'assistant';
-  if (role === 'err' || role === 'error') return 'error';
-  return ['system', 'user', 'assistant', 'tool', 'error'].includes(role) ? role : '';
-}
-
-function contentText(value) {
-  if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return value.map(contentText).join('');
-  if (isObject(value)) {
-    if (/^(?:tool_use|tool_call|function_call|function)$/i.test(text(value.type))) return '';
-    if (value.type === 'output_text' && value.text != null) return String(value.text);
-    if (value.text != null) return String(value.text);
-    if (value.content != null) return contentText(value.content);
-    if (value.delta != null) return contentText(value.delta);
-  }
-  return value == null ? '' : String(value);
-}
-
-function imageUrl(value) {
-  if (typeof value === 'string') return value;
-  if (!isObject(value)) return '';
-  return text(value.dataUrl || value.url || value.src || value.previewUrl || value.viewUrl);
-}
-
-function safeRemoteImageUrl(value) {
-  const source = text(value);
-  if (!source) return '';
-  if (/^data:image\/[a-z0-9.+-]+(?:;[a-z0-9._=-]+)*,/i.test(source)) return source;
-  try {
-    const parsed = new URL(source);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? source : '';
-  } catch { return ''; }
-}
-
-function imageBytesDataUrl(value) {
-  if (!isObject(value) || !value.bytes || typeof Buffer === 'undefined') return '';
-  try {
-    const mime = /^image\//i.test(text(value.mime || value.type)) ? text(value.mime || value.type) : 'image/png';
-    return `data:${mime};base64,${Buffer.from(value.bytes).toString('base64')}`;
-  } catch { return ''; }
-}
-
-function contentToolCalls(value) {
-  if (!Array.isArray(value)) return [];
-  return value.filter(item => isObject(item) && /^(?:tool_use|tool_call|function_call|function)$/i.test(text(item.type)))
-    .map((item, index) => normaliseToolCall({ ...item, function: item.function || { name: item.name, arguments: item.arguments ?? item.input ?? item.parameters ?? {} } }, index)).filter(Boolean);
-}
-
-function normaliseImages(value) {
-  return list(value).map((item) => {
-    if (typeof item === 'string') {
-      const safe = safeRemoteImageUrl(item);
-      return safe ? { dataUrl: safe } : null;
-    }
-    if (!isObject(item)) return null;
-    const safe = [item.dataUrl, item.url, item.src, item.previewUrl, item.viewUrl]
-      .map(safeRemoteImageUrl).find(Boolean) || '';
-    if (safe) return { ...item, dataUrl: safe };
-    const materialised = imageBytesDataUrl(item);
-    return materialised ? { ...item, dataUrl: materialised } : null;
-  }).filter(Boolean);
-}
-
-function strictToolCalls(value) {
-  const rows = Array.isArray(value) ? value : value == null ? [] : [value];
-  return rows.map((item, index) => {
-    if (!isObject(item) || !text(item.id || item.call_id || item.callId)) return null;
-    const call = normaliseToolCall(item, index);
-    if (!call?.id || !call.function?.name) return null;
-    try {
-      if (!isObject(JSON.parse(call.function.arguments))) return null;
-    } catch { return null; }
-    return call;
-  }).filter(Boolean);
-}
-
-/** OpenAI-compatible multimodal content. */
-function contentParts(value, images) {
-  const urls = normaliseImages(images).map(imageUrl).filter(Boolean);
-  const body = text(value) || '【图片】请查看用户提供的图片并按任务要求回答。';
-  if (!urls.length) return body;
-  return [{ type: 'text', text: body }, ...urls.map((url) => ({ type: 'image_url', image_url: { url } }))];
-}
-
-function messageForApi(message, imageResolver) {
-  if (!isObject(message)) return null;
-  const role = normaliseRole(message.role);
-  if (!['system', 'user', 'assistant', 'tool'].includes(role)) return null;
-  if (role === 'tool') {
-    const toolBody = message.content != null ? message.content : message.text;
-    const toolCallId = text(message.tool_call_id || message.toolCallId);
-    // OpenAI-compatible APIs reject an isolated role:tool message. Drop it at
-    // the adapter boundary instead of forwarding an empty tool_call_id.
-    if (!toolCallId) return null;
-    return {
-      role,
-      tool_call_id: toolCallId,
-      ...(text(message.name) ? { name: text(message.name) } : {}),
-      content: Array.isArray(toolBody) ? sessionClone(toolBody, 'result') : redactHistoryString(contentText(toolBody))
-    };
-  }
-  let body = message.content != null ? message.content : message.text;
-  // Most OpenAI-compatible APIs only accept image parts on user messages.
-  // Generated images are kept on assistant history entries for UI/candidate
-  // rendering, but must not be sent back as assistant message content.
-  const allowImages = role === 'user';
-  const ref = text(message.imageReference || message.imageRef || message.imgRef);
-  if (Array.isArray(body)) {
-    body = body.map((part) => {
-      if (!isObject(part)) return { type: 'text', text: contentText(part) };
-      if (part.type === 'image_url' && part.image_url) {
-        const url = safeRemoteImageUrl(imageUrl(part.image_url) || imageUrl(part));
-        return url ? { type: 'image_url', image_url: { url } } : { type: 'text', text: '' };
-      }
-      if (part.type === 'text') return { type: 'text', text: contentText(part.text) };
-      return { type: 'text', text: contentText(part) };
-    }).filter((part) => (allowImages || (part.type !== 'image_url' && part.type !== 'image')) && (part.type !== 'text' || part.text));
-    if (ref) body.unshift({ type: 'text', text: ref });
-  } else if (ref) body = `${contentText(body)}\n\n${ref}`.trim();
-  let images = allowImages ? normaliseImages(message.images || message.imgs) : [];
-  if (allowImages && !images.length && imageResolver && message.imageIds) images = normaliseImages(list(message.imageIds).map(imageResolver));
-  if (Array.isArray(body)) {
-    if (allowImages && images.length && !body.some((part) => part.type === 'image_url')) body = [...body, ...normaliseImages(images).map((item) => ({ type: 'image_url', image_url: { url: imageUrl(item) } }))];
-    return { role, content: body.length ? body : [{ type: 'text', text: '' }] };
-  }
-  const output = { role, content: images.length ? contentParts(body, images) : contentText(body) };
-  // `toolCalls` (camelCase) is the persisted UI trace and contains results,
-  // artifacts and candidates; it is not an OpenAI protocol `tool_calls`
-  // array. Only an explicitly supplied snake_case array belongs in the API
-  // payload, and normalize it to the required id/function shape.
-  const calls = message.tool_calls;
-  if (role === 'assistant' && Array.isArray(calls) && calls.length) {
-    const protocolCalls = strictToolCalls(calls);
-    if (protocolCalls.length) output.tool_calls = protocolCalls;
-  }
-  return output;
-}
-
-const PRIVATE_HISTORY_KEYS = new Set([
-  'bytes', 'dataUrl', 'path', 'filePath', 'workflow', 'viewUrl', 'url',
-  'src', 'previewUrl', 'objectUrl', 'thumbnailUrl', 'blob', 'blobId',
-  'data_url', 'file_path', 'view_url', 'preview_url', 'object_url', 'image_url', 'imageUrl'
-]);
-
-function redactHistoryString(value) {
-  return String(value || '')
-    .replace(/data:[^\s,)]+/gi, '[image]')
-    .replace(/(?:file|blob):[^\s,)]+/gi, '[url]')
-    .replace(/https?:\/\/[^\s,)]+/gi, '[url]')
-    .replace(/(?:[A-Za-z]:[\\/]|\\\\)[^\s,)]+/g, '[path]');
-}
-
-function sessionClone(value, context = '') {
-  if (value == null || typeof value !== 'object') {
-    return context === 'result' || context === 'toolCalls' || context === 'artifact' || context === 'raw'
-      ? (typeof value === 'string' ? redactHistoryString(value) : value)
-      : value;
-  }
-  if (Array.isArray(value)) return value.map(item => sessionClone(item, context)).filter(item => item !== undefined);
-  const output = {};
-  for (const [key, item] of Object.entries(value)) {
-    const lowerKey = String(key).toLowerCase();
-    if (PRIVATE_HISTORY_KEYS.has(key) || /^(?:bytes|dataurl|data_url|path|filepath|file_path|workflow|viewurl|view_url|url|src|previewurl|preview_url|objecturl|object_url|thumbnailurl|image_url|imageurl|blob|blobid)$/.test(lowerKey)) continue;
-    if (['result', 'toolcalls', 'artifact', 'raw', 'resolved'].includes(String(context).toLowerCase())
-      && /^(?:imageid|refid|artifactid|promptid|finalimageid|imageids|refids)$/.test(lowerKey)) continue;
-    const nextContext = /^(?:result|toolCalls|artifact|raw|resolved)$/i.test(key) || context === 'toolCalls' ? key : context;
-    if (typeof item === 'string' && (context === 'toolCalls' || context === 'result' || context === 'artifact' || context === 'raw' || key === 'arguments')) {
-      // Native tool arguments are often JSON strings; sanitize both the JSON
-      // fields and any plain provider text before it reaches session storage.
-      let parsed = null;
-      try { parsed = JSON.parse(item); } catch { /* plain text */ }
-      output[key] = parsed && typeof parsed === 'object'
-        ? sessionClone(parsed, 'result')
-        : redactHistoryString(item);
-      continue;
-    }
-    output[key] = sessionClone(item, nextContext);
-  }
-  return output;
-}
-
-function sanitiseApiMessages(messages) {
-  const rows = list(messages).filter(Boolean);
-  const assistantCallIds = new Set();
-  const toolCallIds = new Set();
-  for (const message of rows) {
-    if (message.role === 'assistant') for (const call of message.tool_calls || []) if (call?.id) assistantCallIds.add(String(call.id));
-    if (message.role === 'tool' && message.tool_call_id) toolCallIds.add(String(message.tool_call_id));
-  }
-  return rows.map(message => {
-    if (message.role === 'tool') return assistantCallIds.has(String(message.tool_call_id)) ? message : null;
-    if (message.role !== 'assistant' || !Array.isArray(message.tool_calls)) return message;
-    const paired = message.tool_calls.filter(call => call?.id && toolCallIds.has(String(call.id)));
-    if (paired.length) return { ...message, tool_calls: paired };
-    const output = { ...message };
-    delete output.tool_calls;
-    return output;
-  }).filter(Boolean);
-}
-
-function splitThink(value) {
-  const source = text(value);
-  const thinkMark = /(?:【思考过程】|\[思考过程\]|<thinking>|<think>)/i;
-  const finalMark = /(?:【最终提示词】|\[最终提示词\]|<final>|<prompt>)/i;
-  const ti = source.search(thinkMark);
-  const fi = source.search(finalMark);
-  let thinking = '';
-  let rest = source;
-  if (fi >= 0) {
-    thinking = ti >= 0 && ti < fi ? source.slice(ti, fi) : source.slice(0, fi);
-    rest = source.slice(fi);
-    thinking = thinking.replace(/^\s*(?:【思考过程】|\[思考过程\]|<thinking>|<think>)\s*[:：]?/i, '').trim();
-    rest = rest.replace(/^\s*(?:【最终提示词】|\[最终提示词\]|<final>|<prompt>)\s*[:：]?/i, '').trim();
-  } else if (ti >= 0) {
-    thinking = source.slice(ti).replace(/^\s*(?:【思考过程】|\[思考过程\]|<thinking>|<think>)\s*[:：]?/i, '').trim();
-    rest = source.slice(0, ti).trim();
-  }
-  return { thinking, rest: stripCodeFence(rest) };
-}
-
-function splitNegative(value) {
-  const source = text(value);
-  const lines = source.split(/\r?\n/);
-  const index = lines.findIndex((line) => /(?:负面提示词|负面 Tag|negative prompt|negative tags?)/i.test(line));
-  if (index < 0) return { prompt: source, negative: '' };
-  const prompt = lines.slice(0, index).join('\n').trim();
-  const negative = lines.slice(index).join('\n')
-    .replace(/^\s*[【\[（(]?\s*(?:负面提示词|负面 Tag|negative prompt|negative tags?)\s*[】\]）)]?\s*[:：-]?\s*/i, '')
-    .trim();
-  return { prompt, negative };
-}
-
-function stripCodeFence(value) {
-  return text(value).replace(/^```[\w-]*\s*/, '').replace(/\s*```$/, '').trim();
-}
-
-function parseReply(value) {
-  const thought = splitThink(value);
-  const result = splitNegative(thought.rest);
-  const reply = {
-    thinking: thought.thinking,
-    prompt: result.prompt,
-    negative: result.negative,
-    text: text(value)
-  };
-  reply.think = reply.thinking;
-  reply.pos = reply.prompt;
-  reply.neg = reply.negative;
-  return reply;
-}
-
-function normaliseToolCall(value, index = 0) {
-  if (!isObject(value)) return null;
-  const fn = isObject(value.function) ? value.function : (isObject(value.function_call) ? value.function_call : (isObject(value.functionCall) ? value.functionCall : {}));
-  const name = text(fn.name || value.name || value.tool || value.tool_name).replace(/^(?:functions?|tools?)[.:]/i, '');
-  if (!name) return null;
-  let args = fn.arguments ?? fn.args ?? fn.input ?? value.arguments ?? value.args ?? value.input ?? value.parameters ?? {};
-  if (typeof args !== 'string') {
-    try { args = JSON.stringify(args || {}); } catch { args = '{}'; }
-  }
-  return {
-    id: text(value.id || value.call_id || value.callId, `call_${index}`),
-    type: text(value.type, 'function'),
-    function: { name, arguments: text(args, '{}') }
-  };
-}
-
-function normaliseToolCalls(value) {
-  if (typeof value === 'string') {
-    try { return normaliseToolCalls(JSON.parse(value)); } catch { return []; }
-  }
-  const rows = Array.isArray(value) ? value : value == null ? [] : [value];
-  return rows.map((item, index) => normaliseToolCall(item, index)).filter(Boolean);
-}
-
-function embeddedJsonObjects(value) {
-  const source = String(value || '');
+function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function text(value, fallback = '') { const output = value == null ? '' : String(value).trim(); return output || fallback; }
+function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
+function id(prefix) { return `${prefix}_${randomUUID()}`; }
+function array(value) { return Array.isArray(value) ? value : []; }
+function ids(value) { return [...new Set(array(value).filter(item => typeof item === 'string' && item.trim()).map(item => item.trim()))]; }
+function observe(callback, ...values) { try { callback?.(...values); } catch { /* UI observers are optional. */ } }
+function failure(code, message, requestId, sessionId) { return { ...resultError({ code, message }, requestId), status: code === 'CANCELLED' ? 'cancelled' : 'error', text: message, sessionId }; }
+function transcript(value) {
   const result = [];
-  for (let start = 0; start < source.length; start += 1) {
-    if (source[start] !== '{') continue;
-    let depth = 0;
-    let quoted = false;
-    let escaped = false;
-    for (let index = start; index < source.length; index += 1) {
-      const char = source[index];
-      if (quoted) {
-        if (escaped) escaped = false;
-        else if (char === '\\') escaped = true;
-        else if (char === '"') quoted = false;
-        continue;
-      }
-      if (char === '"') { quoted = true; continue; }
-      if (char === '{') depth += 1;
-      else if (char === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          try { result.push(JSON.parse(source.slice(start, index + 1))); } catch { /* not a complete JSON object */ }
-          start = index;
-          break;
-        }
-      }
-    }
+  for (const row of array(value)) {
+    if (!object(row)) continue;
+    if (row.role === 'assistant') {
+      const item = { role: 'assistant', content: typeof row.content === 'string' ? row.content : '' };
+      const calls = array(row.tool_calls).filter(call => text(call?.id) && text(call?.function?.name) && typeof call?.function?.arguments === 'string');
+      if (calls.length) item.tool_calls = calls.map(call => ({ id: call.id, type: 'function', function: { name: call.function.name, arguments: call.function.arguments } }));
+      if (item.content || item.tool_calls) result.push(item);
+    } else if (row.role === 'tool' && text(row.tool_call_id)) result.push({ role: 'tool', tool_call_id: row.tool_call_id, content: typeof row.content === 'string' ? row.content : JSON.stringify(row.content ?? null) });
   }
   return result;
-}
-
-function parseMarkedToolCalls(value) {
-  const source = text(value);
-  if (!source) return [];
-  const result = [];
-  const patterns = [
-    /<\s*tool[_ -]?call\s*>\s*([\s\S]*?)\s*<\s*\/\s*tool[_ -]?call\s*>/gi,
-    /<\s*function[_ -]?call\s*>\s*([\s\S]*?)\s*<\s*\/\s*function[_ -]?call\s*>/gi,
-    /<\|tool[_ -]?call\|>\s*([\s\S]*?)(?:<\|end[_ -]?tool[_ -]?call\|>|$)/gi,
-    /<｜tool▁call▁begin｜>([\s\S]*?)<｜tool▁call▁end｜>/g
-  ];
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(source))) {
-      let payload = match[1].trim();
-      // Some providers wrap one or more calls in a surrounding JSON array.
-      try {
-        const parsed = JSON.parse(payload);
-        result.push(...normaliseToolCalls(parsed));
-        continue;
-      } catch { /* try an embedded JSON object below */ }
-      const object = payload.match(/\{[\s\S]*\}/);
-      if (!object) continue;
-      try { result.push(...normaliseToolCalls(JSON.parse(object[0]))); } catch { /* malformed provider marker */ }
-    }
-  }
-  // A few local gateways omit XML markers and return a bare JSON function
-  // call in the text stream. Only accept objects that clearly carry a tool
-  // name/function, so ordinary JSON in a response is left untouched.
-  for (const object of embeddedJsonObjects(source)) {
-    if (object && (object.name || object.tool || object.function || object.function_call)
-      && (object.arguments != null || object.args != null || object.input != null || object.parameters != null || object.function || object.function_call)) result.push(...normaliseToolCalls(object));
-  }
-  const seen = new Set();
-  return result.filter(call => {
-    const key = `${call.function.name}|${call.function.arguments}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function normaliseCompletion(value) {
-  if (typeof value === 'string') return { ok: true, text: value, reasoning: '', toolCalls: parseMarkedToolCalls(value), raw: value };
-  if (!isObject(value)) { const output = contentText(value); return { ok: true, text: output, reasoning: '', toolCalls: parseMarkedToolCalls(output), raw: value }; }
-  const nested = value.choices?.[0]?.message || value.choices?.[0]?.delta || value.message || value.delta || null;
-  const source = nested && isObject(nested) ? { ...value, ...nested } : value;
-  const embeddedCalls = [...contentToolCalls(source.content), ...contentToolCalls(source.text)];
-  const responseCalls = source.output?.filter?.(item => item?.type === 'function_call' || item?.type === 'tool_call' || item?.type === 'tool_use');
-  const directCalls = normaliseToolCalls(source.toolCalls || source.tool_calls || source.function_call || source.functionCall);
-  const toolCalls = directCalls.length ? directCalls : (responseCalls?.length ? normaliseToolCalls(responseCalls) : embeddedCalls);
-  const responseText = contentText(source.text != null ? source.text : source.content);
-  const responseReasoning = contentText(source.reasoning != null ? source.reasoning : source.reasoning_content);
-  const markedCalls = toolCalls.length ? toolCalls : parseMarkedToolCalls(`${responseText}\n${responseReasoning}`);
-  return {
-    ok: source.ok !== false,
-    text: responseText,
-    reasoning: responseReasoning,
-    usage: source.usage || null,
-    finishReason: source.finishReason || source.finish_reason || value.choices?.[0]?.finish_reason || null,
-    toolCalls: clone(markedCalls),
-    raw: value.raw || value
-  };
-}
-
-function abortError(message, code) {
-  const error = new Error(message);
-  error.code = code;
-  return error;
-}
-
-function responseChunk(data) {
-  if (!isObject(data)) return { content: '', reasoning: '', done: false };
-  const choice = data.choices && data.choices[0];
-  const delta = choice && (choice.delta || choice.message || choice);
-  const content = contentText(delta && (delta.content != null ? delta.content : delta.text));
-  const reasoning = contentText(delta && (delta.reasoning_content != null ? delta.reasoning_content : delta.reasoning));
-  let rawToolCalls = delta?.tool_calls || delta?.toolCalls || delta?.tool_call;
-  if (typeof rawToolCalls === 'string') {
-    try { rawToolCalls = JSON.parse(rawToolCalls); } catch { rawToolCalls = null; }
-  }
-  const toolCalls = (Array.isArray(rawToolCalls) ? clone(rawToolCalls) : rawToolCalls ? [clone(rawToolCalls)] : []);
-  toolCalls.push(...contentToolCalls(delta?.content));
-  const legacyFunctionCall = delta?.function_call || delta?.functionCall;
-  if (legacyFunctionCall && isObject(legacyFunctionCall)) toolCalls.push({ index: 0, type: 'function', function: clone(legacyFunctionCall) });
-  return {
-    content,
-    reasoning,
-    done: data.done === true || choice?.finish_reason != null,
-    finishReason: choice?.finish_reason || null,
-    toolCalls,
-    usage: data.usage || null,
-    raw: data
-  };
-}
-
-function eventParts(event) {
-  if (typeof event === 'string') return { content: event, reasoning: '', done: false };
-  if (!isObject(event)) return { content: '', reasoning: '', done: false };
-  if (Array.isArray(event.choices)) {
-    const part = responseChunk(event);
-    return { ...part, raw: event };
-  }
-  const kind = text(event.type).toLowerCase();
-  const content = kind === 'reasoning' || kind === 'thought' ? '' : contentText(event.content ?? event.delta ?? event.text);
-  const reasoning = contentText(event.reasoning ?? event.reasoning_content) || (kind === 'reasoning' || kind === 'thought' ? contentText(event.content ?? event.delta ?? event.text) : '');
-  const rawToolCalls = event.toolCalls || event.tool_calls || event.function_call || event.functionCall;
-  const toolCalls = rawToolCalls ? (Array.isArray(rawToolCalls) ? clone(rawToolCalls) : [clone(rawToolCalls)]) : parseMarkedToolCalls(content);
-  return { content, reasoning, toolCalls, done: Boolean(event.done || kind === 'done' || kind === 'complete'), usage: event.usage || null, finishReason: event.finishReason || event.finish_reason || null, raw: event };
-}
-
-function createAiService(owner, initialConfig = {}, injectedGateway = null) {
-  const gateway = injectedGateway && (typeof injectedGateway.complete === 'function' || typeof injectedGateway.stream === 'function')
-    ? injectedGateway
-    : (initialConfig && (typeof initialConfig.complete === 'function' || typeof initialConfig.stream === 'function') ? initialConfig : null);
-  const configSource = gateway && isObject(initialConfig.config) ? initialConfig.config : initialConfig;
-  const config = {
-    base: text(configSource.base || configSource.apiBase),
-    model: text(configSource.model),
-    key: text(configSource.key || configSource.apiKey),
-    temperature: Number.isFinite(Number(configSource.temperature)) ? Number(configSource.temperature) : 0.7,
-    timeoutMs: Number(configSource.timeoutMs) || 120000,
-    maxTokens: configSource.maxTokens
-  };
-
-  function setConfig(next = {}) {
-    if (!isObject(next)) return clone(config);
-    for (const key of ['base', 'model', 'key', 'temperature', 'timeoutMs', 'maxTokens', 'visionModel']) {
-      if (next[key] !== undefined) config[key] = next[key];
-    }
-    return clone(config);
-  }
-
-  function getConfig() { return clone(config); }
-
-  function modelsUrls(base) {
-    const value = text(base).replace(/\/+$/, '');
-    if (!value) return [];
-    if (/\/models$/i.test(value)) return [value];
-    if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/v1)?$/i.test(value)) {
-      const origin = value.replace(/\/v1$/i, '');
-      return [`${origin}/v1/models`, `${origin}/api/tags`];
-    }
-    return [value + '/models'];
-  }
-
-  function modelNames(payload) {
-    const rows = Array.isArray(payload) ? payload : payload?.data || payload?.models || payload?.items || [];
-    return rows.map(item => typeof item === 'string' ? item : text(item?.id || item?.name || item?.model)).filter(Boolean);
-  }
-
-  function requestUrl(base) {
-    const value = text(base).replace(/\/+$/, '');
-    if (!value) return '';
-    if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(value)) return value + '/v1/chat/completions';
-    return /\/chat\/completions$/i.test(value) ? value : `${value}/chat/completions`;
-  }
-
-  function mergedOptions(options = {}) {
-    const source = isObject(options) ? options : {};
-    return { ...config, ...source, base: source.base || source.apiBase || config.base, model: source.model || config.model };
-  }
-
-  async function complete(messages, options = {}) {
-    if (typeof messages === 'string') messages = [{ role: 'user', content: messages }];
-    else if (isObject(messages) && !Array.isArray(messages)) messages = [{ role: 'user', content: text(messages.text || messages.prompt) }];
-    const opts = mergedOptions(options);
-    const apiMessages = sanitiseApiMessages(list(messages).map((item) => messageForApi(item, owner && owner.resolveImage)).filter(Boolean));
-    if (!apiMessages.length) apiMessages.push({ role: 'user', content: '' });
-    if (gateway) {
-      const startedAt = Date.now();
-      const emit = (content, reasoning) => {
-        if (typeof opts.onEvent === 'function') opts.onEvent({ content: contentText(content), reasoning: contentText(reasoning) });
-        if (typeof opts.onDelta === 'function' && (content || reasoning)) opts.onDelta(contentText(content), contentText(reasoning));
-      };
-      const gatewayOptions = { ...opts, onDelta: emit, onEvent: emit };
-      let value;
-      if (opts.stream !== false && typeof gateway.stream === 'function') value = await gateway.stream(apiMessages, gatewayOptions);
-      else if (typeof gateway.complete === 'function') value = await gateway.complete(apiMessages, gatewayOptions);
-      else value = await gateway.stream(apiMessages, gatewayOptions);
-      if (value && typeof value !== 'string' && (typeof value[Symbol.asyncIterator] === 'function' || typeof value[Symbol.iterator] === 'function')) {
-        let full = ''; let reasoning = ''; let usage = null; const toolCalls = [];
-        for await (const event of value) { const part = eventParts(event); full += part.content || ''; reasoning += part.reasoning || ''; usage = part.usage || usage; if (part.toolCalls?.length) toolCalls.push(...part.toolCalls); emit(part.content, part.reasoning); }
-        return { ok: true, text: full, reasoning, usage, toolCalls: normaliseToolCalls(toolCalls), elapsedMs: Date.now() - startedAt, raw: null };
-      }
-      const result = normaliseCompletion(value); result.elapsedMs = Date.now() - startedAt; return result;
-    }
-    if (!opts.base || !opts.model) return { ok: false, text: '请先填写 API 地址和模型名', reasoning: '', status: 'config' };
-    if (typeof fetch !== 'function') throw abortError('当前环境没有 fetch', 'FETCH_UNAVAILABLE');
-
-    const externalSignal = opts.signal;
-    const controller = typeof AbortController === 'function' ? new AbortController() : null;
-    let timedOut = false;
-    let timer = null;
-    const relayAbort = () => controller?.abort();
-    if (externalSignal?.aborted) throw abortError('已停止', 'CANCELLED');
-    if (externalSignal && controller && typeof externalSignal.addEventListener === 'function') externalSignal.addEventListener('abort', relayAbort, { once: true });
-    if (controller && Number(opts.timeoutMs) > 0) timer = setTimeout(() => { timedOut = true; controller.abort(); }, Number(opts.timeoutMs));
-    const startedAt = Date.now();
-    const stream = opts.stream !== false || typeof opts.onDelta === 'function' || typeof opts.onEvent === 'function';
-    const body = { model: opts.model, messages: apiMessages, stream, temperature: Number.isFinite(Number(opts.temperature)) ? Number(opts.temperature) : 0.7 };
-    if (Array.isArray(opts.tools) && opts.tools.length) body.tools = clone(opts.tools);
-    if (opts.tool_choice != null) body.tool_choice = opts.tool_choice;
-    if (opts.maxTokens != null && Number(opts.maxTokens) > 0) body.max_tokens = Number(opts.maxTokens);
-    // Some OpenAI-compatible providers expose a standard switch for their
-    // reasoning budget. Keep it opt-in so ordinary chat requests remain
-    // unchanged; translation passes `none` to request direct output.
-    if (opts.reasoning_effort != null) body.reasoning_effort = opts.reasoning_effort;
-    if (opts.enable_thinking != null) body.enable_thinking = opts.enable_thinking;
-    if (opts.thinking != null) body.thinking = clone(opts.thinking);
-    try {
-      const response = await fetch(requestUrl(opts.base), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(opts.key ? { Authorization: `Bearer ${opts.key}` } : {}) },
-        body: JSON.stringify(body),
-        signal: controller ? controller.signal : externalSignal
-      });
-      if (!response.ok) {
-        let detail = '';
-        try { detail = (await response.text()).slice(0, 300); } catch { /* ignore */ }
-        const statusHint = response.status === 401 || response.status === 403
-          ? '（API Key 认证失败，请检查「API 设置 → API Key / 识图 API Key」是否正确）'
-          : response.status === 404
-            ? '（接口或模型不存在，请检查「API 地址」与「模型名」）'
-            : response.status === 429
-              ? '（请求过于频繁或额度不足，请稍后再试）'
-              : '';
-        const redacted = String(detail).replace(/(sk-[A-Za-z0-9_-]{4})[A-Za-z0-9_-]+/g, '$1****')
-          .replace(/(Authorization['":\s]+Bearer\s+)[A-Za-z0-9_-]+/gi, '$1****');
-        throw abortError(`AI 请求失败：HTTP ${response.status}${redacted ? ` · ${redacted}` : ''}${statusHint}`, response.status === 401 || response.status === 403 ? 'AUTH_FAILED' : 'HTTP_ERROR');
-      }
-      if (!stream || !response.body || (typeof response.body.getReader !== 'function' && typeof response.body[Symbol.asyncIterator] !== 'function')) {
-        const data = await response.json();
-        const message = data?.choices?.[0]?.message || data?.choices?.[0]?.delta || data?.message || data?.delta || data;
-        const result = normaliseCompletion({
-          ok: true,
-          text: message?.content != null ? message.content : data?.output_text,
-          reasoning: message?.reasoning_content != null ? message.reasoning_content : message?.reasoning,
-          toolCalls: message?.tool_calls || message?.toolCalls || message?.function_call || message?.functionCall || data?.tool_calls || data?.toolCalls || data?.function_call || data?.functionCall,
-          usage: data?.usage,
-          raw: data
-        });
-        result.elapsedMs = Date.now() - startedAt;
-        if (typeof opts.onDelta === 'function' && result.text) opts.onDelta(result.text, result.reasoning || '');
-        return result;
-      }
-      const result = await readStream(response.body, opts);
-      result.elapsedMs = Date.now() - startedAt;
-      return result;
-    } catch (error) {
-      if (timedOut) throw abortError(`AI 请求超时（${Number(opts.timeoutMs) || 0}ms）`, 'TIMEOUT');
-      if (externalSignal?.aborted || controller?.signal.aborted) throw abortError('已停止', 'CANCELLED');
-      throw error;
-    } finally {
-      if (timer) clearTimeout(timer);
-      if (externalSignal && typeof externalSignal.removeEventListener === 'function') externalSignal.removeEventListener('abort', relayAbort);
-    }
-  }
-
-  async function listModels(options = {}) {
-    const opts = mergedOptions(options);
-    const urls = modelsUrls(opts.base);
-    if (!urls.length) return { ok: false, models: [], status: 'config', error: '请先填写 API 地址' };
-    if (typeof fetch !== 'function') return { ok: false, models: [], status: 'unavailable', error: '当前环境没有 fetch' };
-    const controller = typeof AbortController === 'function' ? new AbortController() : null;
-    const timeout = setTimeout(() => controller?.abort?.(), Number(options.timeoutMs) || 8000);
-    let lastError = null;
-    try {
-      for (const url of urls) {
-        try {
-          const response = await fetch(url, {
-            method: 'GET',
-            headers: { Accept: 'application/json', ...(opts.key ? { Authorization: 'Bearer ' + opts.key } : {}) },
-            signal: controller?.signal
-          });
-          if (!response.ok) throw new Error('模型列表请求失败：HTTP ' + response.status);
-          const payload = await response.json();
-          const models = [...new Set(modelNames(payload))];
-          if (models.length || urls.length === 1) return { ok: true, models, url };
-          lastError = new Error('模型列表为空');
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      return { ok: false, models: [], status: 'error', error: text(lastError?.message, '模型列表请求失败'), url: urls[0] };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  async function readStream(body, opts) {
-    let full = '';
-    let reasoning = '';
-    let usage = null;
-    let finishReason = null;
-    const toolCallParts = new Map();
-    let pending = '';
-    const decoder = typeof TextDecoder === 'function' ? new TextDecoder() : null;
-    const consume = (line) => {
-      const value = String(line || '').trim();
-      if (!value || value.startsWith(':')) return;
-      const payload = value.startsWith('data:') ? value.slice(5).trim() : value;
-      if (!payload || payload === '[DONE]') return;
-      let data;
-      try { data = JSON.parse(payload); } catch { return; }
-      const part = responseChunk(data);
-      if (part.content) full += part.content;
-      if (part.reasoning) reasoning += part.reasoning;
-      if (part.usage) usage = part.usage;
-      if (part.finishReason) finishReason = part.finishReason;
-      for (const item of part.toolCalls || []) {
-        const knownIndex = item.id ? [...toolCallParts.entries()].find(([, current]) => current.id && current.id === String(item.id))?.[0] : undefined;
-        const index = Number.isFinite(Number(item.index)) ? Number(item.index) : (knownIndex == null ? (item.id && toolCallParts.size ? toolCallParts.size : 0) : knownIndex);
-        const current = toolCallParts.get(index) || { index, id: '', type: 'function', function: { name: '', arguments: '' } };
-        if (item.id && !current.id) current.id = String(item.id);
-        if (item.type) current.type = item.type;
-        if (item.function?.name) {
-          const name = String(item.function.name);
-          current.function.name = !current.function.name
-            ? name
-            : name === current.function.name || name.startsWith(current.function.name)
-              ? name
-              : current.function.name.endsWith(name)
-                ? current.function.name
-                : current.function.name + name;
-        }
-        if (item.function?.arguments) {
-          const fragment = String(item.function.arguments);
-          const previous = current.function.arguments || '';
-          current.function.arguments = fragment.startsWith(previous) ? fragment : previous.endsWith(fragment) ? previous : previous + fragment;
-        }
-        toolCallParts.set(index, current);
-      }
-      if (typeof opts.onEvent === 'function') opts.onEvent({ ...part });
-      if ((part.content || part.reasoning) && typeof opts.onDelta === 'function') opts.onDelta(part.content, part.reasoning);
-    };
-    const consumeBytes = (chunk) => {
-      const bytes = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
-      pending += decoder ? decoder.decode(bytes, { stream: true }) : Buffer.from(bytes).toString('utf8');
-      const lines = pending.split(/\r?\n/);
-      pending = lines.pop() || '';
-      lines.forEach(consume);
-    };
-    if (typeof body.getReader === 'function') {
-      const reader = body.getReader();
-      while (true) {
-        const part = await reader.read();
-        if (part.done) break;
-        consumeBytes(part.value);
-      }
-    } else {
-      for await (const chunk of body) consumeBytes(chunk);
-    }
-    if (decoder) pending += decoder.decode();
-    if (pending) consume(pending);
-    const streamedToolCalls = [...toolCallParts.values()].sort((a, b) => a.index - b.index).map(item => ({
-      id: item.id || `call_${item.index}`,
-      type: item.type || 'function',
-      function: {
-        name: item.function?.name || '',
-        arguments: item.function?.arguments || '{}'
-      }
-    }));
-    const toolCalls = streamedToolCalls.length ? normaliseToolCalls(streamedToolCalls) : parseMarkedToolCalls(`${full}\n${reasoning}`);
-    return { ok: true, text: full, reasoning, usage, finishReason, toolCalls, raw: null };
-  }
-
-  return { complete, stream: (messages, options) => complete(messages, { ...(options || {}), stream: true }), listModels, setConfig, configure: setConfig, getConfig, config: getConfig };
-}
-
-function parseAppendixText(value) {
-  const source = text(value);
-  if (!source) return [];
-  const chunks = source.split(/^=====\s*附录\s*(\d+)\s*=====\s*$/m);
-  const result = [];
-  for (let i = 1; i < chunks.length; i += 2) {
-    const index = Number(chunks[i]) || result.length + 1;
-    const body = text(chunks[i + 1]);
-    if (body) result.push({ id: `appendix-${index}`, index, text: body, title: `附录 ${index}`, enabled: false });
-  }
-  return result;
-}
-
-function normaliseSettings(value = {}, options = {}) {
-  const source = isObject(value) ? value : {};
-  const primary = isObject(source.primaryApi) ? source.primaryApi : {};
-  const vision = isObject(source.visionApi) ? source.visionApi : {};
-  const comfy = isObject(source.comfy) ? source.comfy : {};
-  const limits = isObject(source.limits) ? source.limits : {};
-  const result = {
-    primaryApi: {
-      base: text(primary.base || source.base || options.base || 'https://api.openai.com/v1'),
-      model: text(primary.model || source.model || options.model || 'gpt-4o-mini'),
-      key: text(primary.key || source.key),
-      temperature: Number(primary.temperature ?? source.temperature ?? 0.7) || 0.7,
-      timeoutMs: Number(primary.timeoutMs ?? source.timeoutMs ?? 120000) || 120000
-    },
-    visionApi: {
-      inheritPrimary: vision.inheritPrimary ?? source.visionInheritPrimary ?? true,
-      base: text(vision.base || source.visionBase),
-      model: text(vision.model || source.visionModel),
-      key: text(vision.key || source.visionKey),
-      temperature: Number(vision.temperature ?? source.visionTemperature ?? 0.2) || 0.2,
-      timeoutMs: Number(vision.timeoutMs ?? source.visionTimeoutMs ?? 120000) || 120000
-    },
-    comfy: {
-      enabled: comfy.enabled ?? source.comfyOn ?? false,
-      base: text(comfy.base || source.comfyBase || 'http://127.0.0.1:8188'),
-      workflow: comfy.workflow ?? source.comfyWorkflow ?? '',
-      positiveTags: text(comfy.positiveTags || source.comfyPos),
-      negativeTags: text(comfy.negativeTags || source.comfyNeg),
-      width: Number(comfy.width ?? source.comfyW ?? 768) || 768,
-      height: Number(comfy.height ?? source.comfyH ?? 1024) || 1024,
-      steps: Number(comfy.steps ?? source.comfySteps ?? 25) || 25,
-      cfg: Number(comfy.cfg ?? source.comfyCfg ?? 7) || 7,
-      seed: comfy.seed == null ? undefined : Number(comfy.seed),
-      sampler: text(comfy.sampler || source.comfySampler),
-      scheduler: text(comfy.scheduler || source.comfyScheduler),
-      batchCount: Math.max(1, Math.min(8, Number(comfy.batchCount ?? source.batchCount ?? 1) || 1))
-    },
-    limits: {
-      maxComfyCalls: Math.max(1, Math.min(20, Number(limits.maxComfyCalls ?? source.maxComfyCalls ?? 3) || 3)),
-      maxToolRounds: Math.max(1, Math.min(32, Number(limits.maxToolRounds ?? 8) || 8)),
-      primaryTimeoutMs: Math.max(1000, Number(limits.primaryTimeoutMs ?? source.timeoutSec * 1000 ?? 120000) || 120000)
-    },
-    generateNegativeTags: source.generateNegativeTags === true,
-    strict: source.strict !== false,
-    nsfwEnabled: source.nsfwEnabled === true,
-    timeoutEnabled: source.timeoutEnabled === true,
-    timeoutSec: Math.max(300, Number(source.timeoutSec) || 300)
-  };
-  return {
-    ...result,
-    base: result.primaryApi.base, model: result.primaryApi.model, key: result.primaryApi.key,
-    temperature: result.primaryApi.temperature, timeoutMs: result.primaryApi.timeoutMs,
-    visionInheritPrimary: result.visionApi.inheritPrimary, visionBase: result.visionApi.base,
-    visionModel: result.visionApi.model, visionKey: result.visionApi.key,
-    visionTemperature: result.visionApi.temperature, visionTimeoutMs: result.visionApi.timeoutMs,
-    comfyOn: result.comfy.enabled, comfyBase: result.comfy.base, comfyWorkflow: result.comfy.workflow,
-    comfyPos: result.comfy.positiveTags, comfyNeg: result.comfy.negativeTags,
-    comfyW: result.comfy.width, comfyH: result.comfy.height, comfySteps: result.comfy.steps,
-    comfyCfg: result.comfy.cfg, comfySampler: result.comfy.sampler, comfyScheduler: result.comfy.scheduler,
-    batchCount: result.comfy.batchCount, maxComfyCalls: result.limits.maxComfyCalls
-  };
-}
-
-function mergeSettingsPatch(current = {}, patch = {}) {
-  const base = isObject(current) ? current : {};
-  const next = isObject(patch) ? patch : {};
-  const merged = { ...base, ...clone(next) };
-  const primary = { ...(isObject(base.primaryApi) ? base.primaryApi : {}) };
-  const vision = { ...(isObject(base.visionApi) ? base.visionApi : {}) };
-  const comfy = { ...(isObject(base.comfy) ? base.comfy : {}) };
-  const limits = { ...(isObject(base.limits) ? base.limits : {}) };
-  const copy = (target, source, keys) => keys.forEach(key => { if (source[key] !== undefined) target[key] = source[key]; });
-  copy(primary, next, ['base', 'model', 'key', 'temperature', 'timeoutMs', 'maxTokens']);
-  [['visionInheritPrimary', 'inheritPrimary'], ['visionBase', 'base'], ['visionModel', 'model'], ['visionKey', 'key'], ['visionTemperature', 'temperature'], ['visionTimeoutMs', 'timeoutMs']].forEach(([from, to]) => { if (next[from] !== undefined) vision[to] = next[from]; });
-  [['comfyOn', 'enabled'], ['comfyBase', 'base'], ['comfyWorkflow', 'workflow'], ['comfyPos', 'positiveTags'], ['comfyNeg', 'negativeTags'], ['comfyW', 'width'], ['comfyH', 'height'], ['comfySteps', 'steps'], ['comfyCfg', 'cfg'], ['comfySeed', 'seed'], ['comfySampler', 'sampler'], ['comfyScheduler', 'scheduler'], ['batchCount', 'batchCount']].forEach(([from, to]) => { if (next[from] !== undefined) comfy[to] = next[from]; });
-  copy(limits, next, ['maxComfyCalls', 'maxToolRounds', 'maxToolCalls', 'primaryTimeoutMs']);
-  if (isObject(next.primaryApi)) Object.assign(primary, clone(next.primaryApi));
-  if (isObject(next.visionApi)) Object.assign(vision, clone(next.visionApi));
-  if (isObject(next.comfy)) Object.assign(comfy, clone(next.comfy));
-  if (isObject(next.limits)) Object.assign(limits, clone(next.limits));
-  merged.primaryApi = primary;
-  merged.visionApi = vision;
-  merged.comfy = comfy;
-  merged.limits = limits;
-  return merged;
 }
 
 function createAssistant(options = {}) {
-  const tags = options.tags || null;
+  const storage = options.storage;
   const images = options.images || null;
-  const promptSource = options.promptSource || options.prompts || null;
-  const prompts = promptValues(promptSource, options.promptDir);
-  const sequence = { value: 0 };
-  const state = {
-    sessions: [], currentId: '', busy: false, status: 'idle', jobId: '', lastError: '', lastMode: '',
-    config: { base: text(options.base || options.apiBase), model: text(options.model), temperature: Number(options.temperature) || 0.7, timeoutMs: Number(options.timeoutMs) || 120000 },
-    settings: {}, favorites: []
-  };
-  let activeJob = null;
-  let ai = null;
-  let visionAi = null;
-  let calls = null;
-  let visionService = options.visionService || null;
-  let runtime = null;
-  let primaryTools = null;
-  // The repository is created after the AI/call adapters. Keep a late-bound
-  // reference so the Vision temp store can still enforce conversation scope
-  // without exposing a global Images fallback during startup.
-  let imageRepository = null;
-  const compactCallCache = new Map();
-  const comfy = options.comfy && typeof options.comfy.render === 'function' ? options.comfy : createComfy(options.comfyOptions || {});
-  if (options.comfyBase) comfy.setBase?.(options.comfyBase);
-  if (options.comfyWorkflow) comfy.setWorkflow?.(options.comfyWorkflow);
+  const tags = options.tags || null;
+  const prompts = options.promptSource || options.prompts || createPrompts({ storage, dir: options.promptDir });
+  const initialPrimary = options.primaryApi || options.ai?.config || options.ai || {};
+  const settings = createSettings({ storage, initial: { primaryApi: publicRequestConfig(initialPrimary), visionApi: options.visionApi || {}, ...(object(options.settings) ? options.settings : {}) } });
+  const state = { sessions: [], currentId: '', busy: false, status: 'idle', jobId: '', lastError: '' };
+  let active = null;
+  let runtime;
+  let primaryTools;
+  let calls;
+  let imageRepository;
+  let destroyed = false;
+  function read(key, fallback) { try { return storage?.get ? storage.get(key, fallback) : storage?.load?.(key, fallback) ?? fallback; } catch { return fallback; } }
+  function write(key, value) { if (storage?.set) storage.set(key, clone(value)); else storage?.save?.(key, clone(value)); }
+  let favorites = array(read('rewrite_favorites', [])).map(clone);
+  function sessionById(sessionId = state.currentId) { return state.sessions.find(session => session.id === sessionId) || null; }
+  function sessionBundle() { return { format: SESSION_FORMAT, version: SESSION_VERSION, currentId: state.currentId, sessions: clone(state.sessions) }; }
+  function persist() { write('sessions', sessionBundle()); }
+  function normalizeSession(raw, usedSessions, usedMessages) {
+    const unique = (value, prefix, used) => { let key = text(value, id(prefix)); while (used.has(key)) key = id(prefix); used.add(key); return key; };
+    const sessionId = unique(raw.id, 'session', usedSessions);
+    return {
+      id: sessionId, title: text(raw.title, '新对话'), createdAt: Number(raw.createdAt) || Date.now(), updatedAt: Number(raw.updatedAt) || Date.now(),
+      messages: array(raw.messages).filter(row => object(row) && ['user', 'assistant', 'error'].includes(row.role)).map(row => ({
+        id: unique(row.id, 'message', usedMessages), role: row.role, text: typeof row.text === 'string' ? row.text : '',
+        reasoning: typeof row.reasoning === 'string' ? row.reasoning : '', imageIds: ids(row.imageIds),
+        toolCalls: clone(array(row.toolCalls)), transcript: transcript(row.transcript), artifacts: clone(array(row.artifacts)), events: clone(array(row.events)), activity: clone(array(row.events)),
+        result: object(row.result) ? clone(row.result) : null, status: row.status === 'streaming' ? 'cancelled' : text(row.status, 'done'), createdAt: Number(row.createdAt) || Date.now()
+      }))
+    };
+  }
+  function incomingBundle(value) {
+    let parsed = value;
+    try { if (typeof parsed === 'string') parsed = JSON.parse(parsed); } catch { return null; }
+    return object(parsed) && parsed.format === SESSION_FORMAT && parsed.version === SESSION_VERSION && Array.isArray(parsed.sessions) && parsed.sessions.every(object) ? parsed : null;
+  }
+  const saved = incomingBundle(read('sessions', null));
+  if (saved) {
+    const usedSessions = new Set(); const usedMessages = new Set();
+    state.sessions = saved.sessions.map(row => normalizeSession(row, usedSessions, usedMessages));
+    state.currentId = state.sessions.some(row => row.id === saved.currentId) ? saved.currentId : state.sessions[0]?.id || '';
+  }
+  const visionTempStore = options.visionTempStore || createVisionTempStore({ images, authorizeReference: reference => imageRepository?.authorizeVisionReference?.(reference) || null });
+  imageRepository = options.imageRepository || createImageRepository({ images, storage, sessions: () => state.sessions, saveSessions: persist, currentSessionId: () => state.currentId, onReferenceRemoved: reference => visionTempStore.invalidateReference?.(reference) });
+  visionTempStore.setAuthorizer?.(reference => imageRepository.authorizeVisionReference?.(reference) || null);
+  function newSession(title = '新对话') {
+    cancel();
+    const session = { id: id('session'), title: text(title, '新对话'), messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+    state.sessions.unshift(session); state.currentId = session.id; persist(); return clone(session);
+  }
+  function currentSession() { if (!sessionById()) newSession(); return sessionById(); }
+  if (!state.sessions.length) newSession();
 
-  function storageRead() {
-    const store = options.storage;
-    try {
-      if (store && typeof store.load === 'function') return store.load('sessions') || store.load();
-      if (store && typeof store.get === 'function') return store.get('sessions');
-    } catch { /* optional persistence */ }
-    return null;
+  const ai = createAiClient(settings.primaryProfile(), options.primaryGateway || (options.ai?.complete || options.ai?.stream ? options.ai : null));
+  const visionAi = createAiClient(settings.visionProfile(), options.visionGateway);
+  function visionConfig() {
+    const profile = settings.visionProfile();
+    const imageCapable = VISION_MODEL_HINT.test(profile.model) || !TEXT_ONLY_MODEL_HINT.test(profile.model);
+    return { ...profile, configured: Boolean(profile.base && profile.model && imageCapable), imageCapable, error: !profile.base || !profile.model ? '请先配置识图 API 地址和模型' : !imageCapable ? '当前识图模型不支持图片输入，请选择视觉模型或配置独立识图 API' : '' };
   }
-  function readStored(key, fallback) {
-    const store = options.storage;
-    try {
-      if (store && typeof store.get === 'function') return store.get(key, fallback);
-      if (store && typeof store.load === 'function') return store.load(key, fallback);
-    } catch { /* optional persistence */ }
-    return fallback;
+  const visionClient = Object.freeze({
+    async complete(messages, config = {}) {
+      const profile = visionConfig();
+      if (!profile.imageCapable && array(messages).some(message => array(message.content).some(part => part?.type === 'image_url'))) return failure('VISION_MODEL_NOT_SUPPORTED', profile.error);
+      return visionAi.complete(messages, { ...profile, ...config });
+    },
+    getConfig: visionConfig
+  });
+  async function resolveImage(imageId, context = {}) {
+    if (context.sessionId && context.sessionId !== state.currentId) return null;
+    const reference = { imageId, sessionId: context.sessionId || state.currentId, ...(context.refId ? { refId: context.refId } : {}) };
+    const image = visionTempStore.resolveForVision(reference);
+    if (!image) return null;
+    const url = [image.dataUrl, image.url].find(value => typeof value === 'string' && /^(?:data:image\/|https?:\/\/)/i.test(value));
+    if (url) return { ...image, dataUrl: url };
+    const bytes = await visionTempStore.getBytes(reference);
+    if (!bytes || context.signal?.aborted) return null;
+    const mime = /^image\//i.test(image.mime || '') ? image.mime : 'image/png';
+    return { ...image, dataUrl: `data:${mime};base64,${Buffer.from(bytes).toString('base64')}` };
   }
-  function writeStored(key, value) {
-    const store = options.storage;
-    try {
-      if (store && typeof store.set === 'function') store.set(key, value);
-      else if (store && typeof store.save === 'function') store.save(key, value);
-    } catch { /* optional persistence */ }
-    return clone(value);
+  const comfy = options.comfy && typeof options.comfy.render === 'function' ? options.comfy : createComfy(options.comfyOptions || {});
+  calls = options.calls || createCalls({ tags, images, comfy, prompts, visionTempStore, visionService: options.visionService, localVision: options.localVision || options.vision,
+    parseMetadata: parsePngMetadata, primaryAI: ai, visionAI: visionClient, getPrompt: key => prompts.getEffective?.(key) || prompts.get?.(key) || '',
+    getSettings: settings.snapshot, getCurrentSessionId: () => state.currentId, getRuntime: () => runtime, getPrimaryTools: () => primaryTools });
+  const primary = createPrimaryAgent({ client: ai, prompts, getSettings: settings.snapshot });
+  const subagents = createFixedSubagents({ vision: calls.visionService, translation: options.translation, ai, visionAI: visionClient, prompts, resolveImage, getSettings: settings.snapshot });
+  runtime = createAgentRuntime({ primaryClient: primary, subagents, tools: () => primaryTools, getSettings: settings.snapshot, getPrimaryPrompt: primary.getPrompt });
+  primaryTools = createPrimaryTools({ tags, images, imageRepository, runtime, comfy, getSettings: settings.snapshot });
+
+  function append(role, value, extra = {}, sessionId = state.currentId) {
+    const session = sessionById(sessionId); if (!session) return null;
+    const message = { id: id('message'), role: ['user', 'assistant', 'error'].includes(role) ? role : 'user', text: typeof value === 'string' ? value : '', reasoning: '', imageIds: ids(extra.imageIds), toolCalls: [], transcript: [], artifacts: [], events: [], activity: [], result: null, status: text(extra.status, 'done'), createdAt: Date.now() };
+    session.messages.push(message); session.updatedAt = Date.now(); persist(); return clone(message);
   }
-  function storageWrite() {
-    const store = options.storage;
-    const value = state.sessions.map((session) => sessionClone(session));
-    try {
-      if (store && typeof store.save === 'function') return store.save('sessions', value);
-      if (store && typeof store.set === 'function') return store.set('sessions', value);
-    } catch { /* optional persistence */ }
-    return null;
+  function writable(job) { return !destroyed && active === job && !job.invalidated && sessionById(job.sessionId) === job.session && job.session.messages.includes(job.live); }
+  function cancelledPayload(job) { return { text: job.live.text, reasoning: job.live.reasoning, toolCalls: clone(job.live.toolCalls), transcript: clone(job.live.transcript), artifacts: clone(job.live.artifacts), imageIds: job.live.imageIds.slice(), events: clone(job.live.events) }; }
+  function applyPayload(job, payload = {}) {
+    const live = job.live;
+    if (typeof payload.text === 'string') live.text = payload.text;
+    if (typeof payload.reasoning === 'string') live.reasoning = payload.reasoning;
+    if (Array.isArray(payload.toolCalls)) live.toolCalls = clone(payload.toolCalls);
+    if (Array.isArray(payload.transcript)) live.transcript = transcript(payload.transcript);
+    if (Array.isArray(payload.artifacts)) live.artifacts = clone(payload.artifacts);
+    live.imageIds = ids([...live.imageIds, ...array(payload.imageIds), ...live.artifacts.map(item => item.imageId || item.id)]);
+    if (Array.isArray(payload.events)) live.events = clone(payload.events);
+    live.activity = clone(live.events);
   }
-  function restoreBusinessState() {
-    const stored = readStored('rewrite_settings', {});
-    state.settings = normaliseSettings(isObject(stored) ? stored : {}, {
-      base: state.config.base,
-      model: state.config.model,
-      visionApi: options.visionApi
-    });
-    const favorites = readStored('rewrite_favorites', []); state.favorites = Array.isArray(favorites) ? favorites.map(clone) : [];
-  }
-  function saveBusinessState() {
-    writeStored('rewrite_settings', state.settings); writeStored('rewrite_favorites', state.favorites);
-  }
-  function newSession(title = '新对话', options2 = {}) {
-    if (activeJob && options2.cancelActive !== false) {
-      try { activeJob.controller?.abort?.(); } catch { /* best effort */ }
-    }
-    const now = Date.now();
-    const used = new Set(state.sessions.map(item => text(item.id)).filter(Boolean));
-    let id = uid('session', sequence);
-    let suffix = 1;
-    while (used.has(id)) id = `${id}-new-${suffix++}`;
-    const session = { id, title: text(title, '新对话'), messages: [], createdAt: now, updatedAt: now };
-    state.sessions.unshift(session); state.currentId = session.id; storageWrite(); return clone(session);
-  }
-  function normaliseSessionList(value, usedSessionIds = new Set(), usedMessageIds = new Set()) {
-    const sessions = [];
-    const mapping = [];
-    if (!Array.isArray(value)) return { sessions, mapping };
-    for (const raw of value.filter(isObject)) {
-      const originalId = text(raw.id);
-      const baseId = originalId || uid('session', sequence);
-      let id = baseId;
-      let suffix = 1;
-      while (usedSessionIds.has(id)) id = `${baseId}-import-${suffix++}`;
-      usedSessionIds.add(id);
-      if (originalId) mapping.push({ from: originalId, to: id });
-      const messages = list(raw.messages).filter(isObject).map(message => {
-        const originalMessageId = text(message.id);
-        const baseMessageId = originalMessageId || uid('message', sequence);
-        let messageId = baseMessageId;
-        let messageSuffix = 1;
-        while (usedMessageIds.has(messageId)) messageId = `${baseMessageId}-import-${messageSuffix++}`;
-        usedMessageIds.add(messageId);
-        return {
-          id: messageId, role: normaliseRole(message.role) || 'user',
-          text: contentText(message.text != null ? message.text : message.content), imageIds: list(message.imageIds).filter(Boolean),
-          imageReference: text(message.imageReference || message.imageRef), result: sessionClone(message.result, 'result'),
-          reasoning: text(message.reasoning), toolCalls: Array.isArray(message.toolCalls) ? sessionClone(message.toolCalls, 'toolCalls') : [], candidates: candidateSnapshot(message.candidates), activity: activitySnapshot(message.activity), status: text(message.status, 'done'), createdAt: message.createdAt || Date.now()
-        };
-      });
-      sessions.push({ id, title: text(raw.title, '新对话'), messages, createdAt: raw.createdAt || Date.now(), updatedAt: raw.updatedAt || Date.now() });
-    }
-    return { sessions, mapping };
-  }
-  function restoreSessions(value, options2 = {}) {
-    if (!Array.isArray(value)) return false;
-    const normalised = normaliseSessionList(value, options2.usedSessionIds || new Set(), options2.usedMessageIds || new Set());
-    state.sessions = normalised.sessions;
-    state.currentId = text(state.currentId) || state.sessions[0]?.id || ''; return true;
-  }
-  function sessionById(id) { return state.sessions.find((session) => session.id === (id || state.currentId)); }
-  function currentSession() {
-    const existing = sessionById();
-    if (existing) return existing;
-    newSession('新对话', { cancelActive: false });
-    return sessionById();
-  }
-  function resolveImage(value) {
-    if (!value) return null;
-    if (images && typeof images.get === 'function') { try { return images.get(typeof value === 'string' ? value : value.id) || (isObject(value) ? value : null); } catch { /* fallback */ } }
-    return isObject(value) ? value : null;
-  }
-  function resolveInputImages(input) {
-    const source = input || {};
-    let values = list(source.images || source.imgs); if (!values.length && source.imageIds) values = list(source.imageIds);
-    const result = [];
-    for (const value of values) {
-      let item = resolveImage(value);
-      if (!item && isObject(value) && imageUrl(value)) item = value;
-      if (!item && typeof value === 'string' && imageUrl(value)) item = { dataUrl: value };
-      if (item?.source === 'workflow') continue;
-      if (item && imageUrl(item)) {
-        if (!item.id && images && typeof images.add === 'function') { try { item = images.add(item) || item; } catch { /* transient */ } }
-        result.push(item);
-      }
-    }
-    return result;
-  }
-  function imageIds(items) { return items.map((item) => text(item && item.id)).filter(Boolean); }
-  function safeImageReference(value) {
-    return text(value)
-      .replace(/data:[^\s,)]+/gi, '[image]')
-      .replace(/(?:file|blob):[^\s,)]+/gi, '[url]')
-      .replace(/https?:\/\/[^\s,)]+/gi, '[url]')
-      .replace(/(?:imageId|refId)\s*[:=]\s*[^\s,;)]+/gi, '')
-      .replace(/(?:[A-Za-z]:[\\/]|\\\\)[^\s,)]+/g, '[path]')
-      .replace(/[ \t]{2,}/g, ' ')
-      .trim();
-  }
-  function imageReference(items, analysis) {
-    if (!items.length) return '';
-    if (analysis && text(analysis.referenceText)) return safeImageReference(analysis.referenceText);
-    const lines = [
-      `【附图组 共${items.length}张】（按消息附件顺序编号）`,
-      '【Vision 调用规则】请使用“图N”、候选编号或明确标题引用图片；内部图片标识由程序在会话范围内解析。'
-    ];
-    items.forEach((item, index) => {
-      const title = safeImageReference(text(item.displayTitle || item.displayName || item.filename || item.name, '用户附图')).slice(0, 120);
-      lines.push(`图${index + 1}：${title}`);
-    });
-    return lines.join('\n');
-  }
-  function tagName(value) { return typeof value === 'string' ? text(value) : text(value && (value.en || value.tag || value.name)); }
-  function tagList(values) {
-    const seen = new Set();
-    return list(values).map((value) => { const en = tagName(value); if (!en || seen.has(en.toLowerCase())) return ''; seen.add(en.toLowerCase()); const zh = text(value && value.zh); return en + (zh ? `（${zh}）` : ''); }).filter(Boolean).join(', ');
-  }
-  function localTagsFor(analysis) {
-    const result = [];
-    for (const item of list(analysis && analysis.perImage)) result.push(...list(item.modelTags || item.model), ...list(item.builtinTags || item.builtin));
-    if (!result.length && analysis && Array.isArray(analysis.tags)) result.push(...analysis.tags);
-    const seen = new Set(); return result.filter((item) => { const key = tagName(item).toLowerCase(); if (!key || seen.has(key)) return false; seen.add(key); return true; });
-  }
-  function metadataTags(item) {
-    const metadata = item && item.metadata; if (!metadata) return [];
-    const raw = text(metadata.parameters || metadata.prompt || metadata.description); if (!raw) return [];
-    const positive = raw.split(/\n\s*(?:Negative prompt|负面提示词)\s*[:：]/i)[0];
-    return positive.split(/[,，\n]/).map((part) => text(part).replace(/^[-+*]\s*/, '')).filter((part) => part && part.length < 120).map((en) => ({ en, origin: 'builtin' }));
-  }
-  async function analyseImages(items, input, job) {
-    const perImage = [];
-    for (const item of items) {
-      if (job?.signal?.aborted) throw abortError('已停止', 'CANCELLED');
-      let current = item; let analysis = current.analysis || null;
-      if (current.id && input.analyzeImages !== false) {
-        try {
-          if (visionService?.processOne) {
-            const result = await visionService.processOne({ imageId: current.id, mode: 'local', model: input.model, signal: job?.signal });
-            if (result?.ok) {
-              const data = result.data || {};
-              current = { ...current, metadata: data.metadata || current.metadata, analysis: data };
-              analysis = data;
-            } else if (!analysis) {
-              analysis = { status: result?.code === 'LOCAL_VISION_UNAVAILABLE' ? 'unavailable' : 'error', error: text(result?.error, '识图失败'), tags: [] };
-            }
-          }
-        } catch (error) { analysis = { status: 'error', error: text(error && error.message, '识图失败'), tags: [] }; }
-      }
-      const builtin = list(analysis?.builtinTags).length ? list(analysis.builtinTags) : metadataTags(current);
-      const model = list(analysis?.modelTags || analysis?.tags).filter((tag) => tagName(tag));
-      perImage.push({ imageId: current.id || '', metadata: clone(current.metadata), builtinTags: clone(builtin), modelTags: clone(model), status: analysis?.status || (builtin.length || model.length ? 'done' : 'idle'), error: text(analysis?.error) });
-    }
-    return { images: items.map(clone), perImage, referenceText: imageReference(items) };
-  }
-  function candidateTags(value, input) {
-    if (Array.isArray(input.tagCandidates)) return input.tagCandidates;
-    if (!tags || typeof tags.search !== 'function' || !text(value)) return [];
-    try { return tags.search(value, { includeAdult: input.nsfwEnabled !== false, limit: Number(input.tagLimit) || 100 }); } catch { return []; }
-  }
-  function prompt(key) {
-    if (promptSource && typeof promptSource.get === 'function') {
-      try {
-        const value = promptSource.get(key);
-        return value == null ? text(prompts[key]) : String(value).replace(/^\uFEFF/, '').trim();
-      } catch { /* use snapshot */ }
-    }
-    return text(prompts[key]);
-  }
-  function sessionMessages(session) { return sanitiseApiMessages(list(session && session.messages).map((message) => messageForApi(message, resolveImage)).filter(Boolean)); }
-  function normaliseInput(value) {
-    const input = isObject(value) ? { ...value } : { text: value };
-    input.text = text(input.text != null ? input.text : input.prompt);
-    input.imageIds = list(input.imageIds).filter(Boolean);
-    input.pendingRefIds = list(input.pendingRefIds || input.pendingRefs).filter(Boolean);
-    input.explicitImageRefs = list(input.explicitImageRefs || input.imageRefs).filter(Boolean);
-    input.images = resolveInputImages(input);
-    if (!input.imageIds.length) input.imageIds = imageIds(input.images);
-    return input;
-  }
-  function currentUserMessage(input, body, imagesForMessage) {
-    const content = text(body != null ? body : input.text); const reference = safeImageReference(input.imageReference || input.imageRef); const full = [content, reference].filter(Boolean).join('\n\n');
-    if (!full && !imagesForMessage.length) return null; return { role: 'user', content: imagesForMessage.length ? contentParts(full, imagesForMessage) : full };
-  }
-  function append(role, value, extra = {}, sessionId) {
-    const session = sessionById(sessionId) || currentSession();
-    const message = { id: uid('message', sequence), role: normaliseRole(role) || 'user', text: contentText(value), imageIds: list(extra.imageIds).filter(Boolean), imageReference: text(extra.imageReference || extra.imageRef), result: clone(extra.result), reasoning: text(extra.reasoning), toolCalls: Array.isArray(extra.toolCalls) ? clone(extra.toolCalls) : [], candidates: candidateSnapshot(extra.candidates), activity: activitySnapshot(extra.activity), status: text(extra.status, 'done'), createdAt: Date.now() };
-    session.messages.push(message); session.updatedAt = Date.now(); storageWrite(); return sessionClone(message);
-  }
-  function messageLocation(value, sessionId) {
-    const session = sessionById(sessionId) || currentSession();
-    const index = typeof value === 'number' ? value : session.messages.findIndex((message) => message.id === text(value));
-    return index >= 0 ? { session, index, message: session.messages[index] } : null;
-  }
-  function editMessage(value, nextText, sessionId) {
-    const found = messageLocation(value, sessionId);
-    if (!found) return null;
-    found.message.text = contentText(nextText);
-    found.message.updatedAt = Date.now();
-    found.session.updatedAt = Date.now();
-    storageWrite();
-    return clone(found.message);
-  }
-  function deleteMessage(value, sessionId) {
-    const found = messageLocation(value, sessionId);
-    if (!found) return false;
-    found.session.messages.splice(found.index, 1);
-    found.session.updatedAt = Date.now();
-    storageWrite();
+  function cancel(requestId) {
+    if (!active || (requestId && active.id !== requestId)) return false;
+    const job = active;
+    job.live.status = 'cancelled';
+    job.live.result = { ok: false, error: { code: 'CANCELLED', message: '请求已取消' }, ...cancelledPayload(job) };
+    job.session.updatedAt = Date.now(); persist();
+    job.invalidated = true; active = null;
+    state.busy = false; state.status = 'cancelled'; state.jobId = '';
+    const reason = Object.assign(new Error('请求已取消'), { code: 'CANCELLED' });
+    job.controller.abort(reason); runtime?.cancel?.(job.id);
     return true;
   }
-  async function rerunFromMessage(value, inputPatch = {}, config = {}, sessionId) {
-    const found = messageLocation(value, sessionId);
-    if (!found) return { ok: false, status: 'empty', text: '没有找到要重新执行的消息' };
-    let userIndex = found.message.role === 'user' ? found.index : -1;
-    if (userIndex < 0) {
-      for (let index = found.index - 1; index >= 0; index -= 1) {
-        if (found.session.messages[index]?.role === 'user') { userIndex = index; break; }
-      }
-    }
-    if (userIndex < 0) return { ok: false, status: 'empty', text: '没有找到对应的用户消息' };
-    const previousMessages = found.session.messages.map(clone);
-    const user = clone(found.session.messages[userIndex]);
-    found.session.messages.splice(userIndex);
-    found.session.updatedAt = Date.now();
-    storageWrite();
-    const input = {
-      ...(isObject(inputPatch) ? inputPatch : {}),
-      text: inputPatch?.text != null ? inputPatch.text : user.text,
-      imageIds: Array.isArray(inputPatch?.imageIds) ? inputPatch.imageIds : user.imageIds,
-      sessionId: found.session.id,
-    };
-    let result;
-    try {
-      result = await runPrimaryWithRuntime(input, config);
-    } catch (error) {
-      found.session.messages = previousMessages;
-      found.session.updatedAt = Date.now();
-      storageWrite();
-      throw error;
-    }
-    if (!result || result.ok === false) {
-      found.session.messages = previousMessages;
-      found.session.updatedAt = Date.now();
-      storageWrite();
+  function history(session) {
+    const result = [];
+    for (const message of session.messages) {
+      if (message.role === 'user') result.push({ role: 'user', content: [message.text, message.imageIds.length ? `Attached imageIds: ${message.imageIds.join(', ')}` : ''].filter(Boolean).join('\n\n') });
+      else if (message.transcript?.length) result.push(...transcript(message.transcript));
+      else if (message.role === 'assistant' && message.text && message.status === 'done') result.push({ role: 'assistant', content: message.text });
     }
     return result;
   }
-  function chooseCandidate(messageId, candidateId, source = 'user') {
-    const found = messageLocation(messageId);
-    if (!found) return null;
-    const sourceCandidates = Array.isArray(found.message.candidates)
-      ? found.message.candidates
-      : found.message.result?.candidates;
-    if (!Array.isArray(sourceCandidates)) return null;
-    const candidates = selectCandidate(sourceCandidates, candidateId, source);
-    const selected = finalCandidate(candidates, candidateId);
-    if (!selected) return null;
-    found.message.candidates = candidates;
-    found.message.imageIds = [...new Set(candidates.map(item => text(item.imageId)).filter(Boolean))];
-    found.message.result = {
-      ...(found.message.result || {}),
-      candidates,
-      ...selected,
-      // Keep the existing draw-message renderer/API compatible while binding
-      // the displayed final prompt to the user's selected candidate.
-      prompt: selected.finalPrompt,
-      negative: selected.finalNegative
-    };
-    if (found.message.result?.candidates) found.message.text = selected.finalPrompt;
-    found.session.updatedAt = Date.now();
-    storageWrite();
-    return clone({ messageId: found.message.id, candidates, ...selected });
-  }
-  function visionProfile() {
-    const settings = state.settings || {};
-    const inherit = settings.visionInheritPrimary !== false;
-    const primaryModel = text(settings.model);
-    return {
-      base: inherit ? settings.base : settings.visionBase,
-      // Inherit means the complete primary API profile, including its model.
-      // A previous independent visionModel must never shadow a newly selected
-      // primary vision model; users who need a different model can turn off
-      // inherit mode and use the independent profile below.
-      model: inherit ? primaryModel : text(settings.visionModel),
-      key: inherit ? settings.key : settings.visionKey,
-      temperature: inherit ? settings.temperature : settings.visionTemperature,
-      timeoutMs: inherit ? settings.timeoutMs : settings.visionTimeoutMs
-    };
-  }
-
-  function visionClient() {
-    return {
-      complete: async (messages, config = {}) => {
-        const profile = visionProfile();
-        const effective = { ...profile, ...config };
-        // Do not send a guaranteed text-only primary model a multimodal
-        // request. Providers return an opaque HTTP 400 in this case; a
-        // stable local error lets the UI ask for an independent vision model.
-        if (messagesContainImage(messages) && modelClearlyTextOnly(effective.model)) {
-          return { ok: false, code: 'VISION_MODEL_NOT_SUPPORTED', error: '当前识图模型不支持图片输入，请选择视觉模型或配置独立识图 API' };
-        }
-        return visionAi.complete(messages, effective);
-      },
-      stream: (messages, config = {}) => visionAi.stream(messages, { ...visionProfile(), ...config }),
-      listModels: (config = {}) => visionAi.listModels({ ...visionProfile(), ...config }),
-      setConfig: (config = {}) => visionAi.setConfig(config),
-      getConfig: () => {
-        const profile = visionProfile();
-        const imageCapable = !modelClearlyTextOnly(profile.model);
-        return {
-          ...profile,
-          configured: Boolean(profile.base && profile.model && imageCapable),
-          imageCapable,
-          error: !profile.base || !profile.model
-            ? '请先配置识图 API 地址和模型'
-            : !imageCapable
-              ? '当前识图模型不支持图片输入，请选择视觉模型或配置独立识图 API'
-              : ''
-        };
-      }
-    };
-  }
-
-  const primaryConfig = options.primaryApi || options.ai || options.config || {};
-  ai = createAiService({ resolveImage }, primaryConfig, options.primaryGateway);
-  visionAi = createAiService({ resolveImage }, options.visionApi || {}, options.visionGateway);
-  state.config = ai.getConfig();
-  restoreBusinessState();
-  ai.configure({ base: state.settings.base, model: state.settings.model, key: state.settings.key, temperature: state.settings.temperature, timeoutMs: state.settings.timeoutMs });
-  visionAi.configure(visionProfile());
-  const visionTempStore = options.visionTempStore || createVisionTempStore({
-    images,
-    authorizeReference: reference => imageRepository?.authorizeVisionReference?.(reference) || null
-  });
-  calls = options.calls || createCalls({
-    tags,
-    images,
-    visionTempStore,
-    visionService: options.visionService,
-    localVision: options.localVision || options.vision,
-    parseMetadata: parsePngMetadata || images?.parsePngMetadata,
-    comfy,
-    prompts: promptSource,
-    primaryAI: ai,
-    visionAI: visionClient(),
-    getPrompt: (key, version = 'effective') => version === 'default' && promptSource?.getDefault ? promptSource.getDefault(key) : prompt(key),
-    getSettings: () => state.settings,
-    getCurrentSessionId: () => state.currentId,
-    getRuntime: () => runtime,
-    getPrimaryTools: () => primaryTools,
-    setSettings: value => {
-      if (isObject(value)) state.settings = normaliseSettings(mergeSettingsPatch(state.settings, value));
-      calls?.invalidateCapabilities?.();
-      saveBusinessState();
-      return clone(state.settings);
-    }
-  });
-  visionService = calls?.visionService || visionService;
-  const restored = storageRead(); const restoredSessions = restoreSessions(restored); if (!restoredSessions) newSession();
-  imageRepository = createImageRepository({
-    images,
-    storage: options.storage,
-    sessions: () => state.sessions,
-    saveSessions: storageWrite,
-    currentSessionId: () => state.currentId,
-    deferCollectionMigration: false,
-    onReferenceRemoved: reference => visionTempStore?.invalidateReference?.(reference)
-  });
-  visionTempStore?.setAuthorizer?.(reference => imageRepository?.authorizeVisionReference?.(reference) || null);
-  const subagents = createFixedSubagents({
-    vision: visionService,
-    translation: options.translation || null,
-    ai,
-    visionAI: visionClient(),
-    prompts: promptSource,
-    resolveImage: (imageId, context = {}) => {
-      if (context.sessionId && context.sessionId !== state.currentId) return null;
-      return resolveImage(imageId);
-    },
-    getSettings: () => state.settings
-  });
-  const toolBridge = {
-    resolve: name => primaryTools?.resolve?.(name),
-    list: () => primaryTools?.list?.() || [],
-    openAiTools: () => primaryTools?.openAiTools?.() || [],
-    call: (name, args, context) => primaryTools?.call?.(name, args, context) || { ok: false, error: { code: 'TOOL_UNAVAILABLE', message: `工具不可用：${name}` } }
-  };
-  runtime = createAgentRuntime({ primaryClient: ai, subagents, tools: toolBridge, getSettings: () => state.settings, getPrimaryPrompt: () => prompt('primary') || '你是 AI 绘画 Tag 工具箱的主 AI，只使用固定高层工具完成用户任务。' });
-  primaryTools = createPrimaryTools({ tags, images, imageRepository, runtime, comfy, getSettings: () => state.settings });
   async function runPrimaryWithRuntime(value, config = {}) {
-    const input = normaliseInput(value);
-    const session = sessionById(input.sessionId) || currentSession();
-    input.sessionId = session.id;
-    if (!input.text && !input.images.length) return { ok: false, status: 'empty', text: '请输入内容或添加图片', sessionId: session.id };
-    const requestId = uid('primary', sequence);
-    const controller = new AbortController();
-    activeJob = { id: requestId, controller, signal: controller.signal };
-    state.busy = true; state.status = 'running'; state.jobId = requestId; state.lastError = '';
-    const current = currentUserMessage(input, input.text || '（附图）', input.images);
-    const messages = [...sessionMessages(session), ...(current ? [current] : [])];
-    const user = append('user', input.text || '（附图）', { imageIds: input.imageIds, imageReference: input.imageReference }, session.id);
+    const input = typeof value === 'string' ? { text: value } : object(value) ? value : {};
+    if (destroyed) return failure('ASSISTANT_CLOSED', '会话服务已关闭');
+    if (active) return failure('BUSY', '当前请求仍在处理中', active.id, active.sessionId);
+    const session = input.sessionId ? sessionById(input.sessionId) : currentSession();
+    if (!session || session.id !== state.currentId) return failure('SESSION_UNAVAILABLE', '当前会话不可用', input.requestId, input.sessionId);
+    const body = typeof input.text === 'string' ? input.text.trim() : '';
+    const imageIds = ids(input.imageIds);
+    if (!body && !imageIds.length) return failure('EMPTY_INPUT', '请输入内容或添加图片', input.requestId, session.id);
+    if (input.signal?.aborted) return failure('CANCELLED', '请求已取消', input.requestId, session.id);
+    const requestId = text(input.requestId, id('primary'));
+    const userId = id('message');
+    const references = [];
+    for (const imageId of imageIds) {
+      const reference = imageRepository.attachToConversation(session.id, imageId, { source: 'upload', messageId: userId, sent: true, pending: false });
+      if (!reference) return failure('IMAGE_NOT_FOUND', `无法读取附图：${imageId}`, requestId, session.id);
+      references.push(reference);
+    }
+    if (references.length) imageRepository.markSent(session.id, references.map(row => row.refId));
+    const previous = history(session);
+    const user = { id: userId, role: 'user', text: body, imageIds, reasoning: '', toolCalls: [], transcript: [], artifacts: [], events: [], activity: [], result: null, status: 'done', createdAt: Date.now() };
+    session.messages.push(user);
     const liveSnapshot = append('assistant', '', { status: 'streaming' }, session.id);
     const live = session.messages.find(message => message.id === liveSnapshot.id);
-    input.onStart?.({ user, assistant: liveSnapshot });
+    const controller = new AbortController();
+    const job = { id: requestId, sessionId: session.id, session, live, controller, invalidated: false };
+    active = job; state.busy = true; state.status = 'running'; state.jobId = requestId; state.lastError = '';
+    const callerAbort = () => cancel(requestId);
+    input.signal?.addEventListener?.('abort', callerAbort, { once: true });
+    const current = { role: 'user', content: [body || '请查看附图。', references.length ? `Attached imageIds: ${references.map(row => row.imageId).join(', ')}` : ''].filter(Boolean).join('\n\n') };
+    observe(input.onStart, { user: clone(user), assistant: clone(live), requestId, sessionId: session.id });
+    const onEvent = event => {
+      if (!writable(job)) return;
+      live.events.push(clone(event)); if (live.events.length > 256) live.events.shift(); live.activity = clone(live.events);
+      const output = event?.result?.data || event?.result;
+      if (Array.isArray(output?.artifacts)) { for (const artifact of output.artifacts) if (!live.artifacts.some(item => item.imageId === artifact.imageId)) live.artifacts.push(clone(artifact)); live.imageIds = ids([...live.imageIds, ...live.artifacts.map(item => item.imageId)]); }
+      persist(); observe(input.onEvent, clone(event)); observe(input.onToolEvent, clone(event));
+    };
     try {
-      const result = await runtime.runPrimary({
-        requestId,
-        sessionId: session.id,
-        messages,
-        input: { text: input.text, imageIds: input.imageIds, images: input.images, sessionId: session.id },
-        config: { ...ai.getConfig(), ...(isObject(config) ? config : {}) },
-        signal: controller.signal,
-        onEvent: input.onToolEvent,
-        onToolCall: events => input.onToolEvent?.({ type: 'complete', name: events?.[0]?.name, result: events?.[0]?.result })
+      const result = await runtime.runPrimary({ requestId, sessionId: session.id, messageId: live.id, messages: [...previous, current], config: publicRequestConfig(config), signal: controller.signal,
+        onDelta: (delta, reasoning = '') => { if (!writable(job)) return; if (typeof delta === 'string') live.text += delta; if (typeof reasoning === 'string') live.reasoning += reasoning; persist(); observe(input.onDelta, live.text, live.reasoning, clone(live)); },
+        onEvent,
+        onToolCall: traces => { if (!writable(job)) return; for (const trace of array(traces)) { const index = live.toolCalls.findIndex(row => row.id === trace.id); if (index < 0) live.toolCalls.push(clone(trace)); else live.toolCalls[index] = clone(trace); } persist(); }
       });
-      const payload = isObject(result?.data) ? result.data : {};
-      if (!result.ok) {
-        live.role = 'error'; live.status = 'error'; live.text = result.error?.message || 'AI 请求失败'; live.result = clone(result); state.lastError = live.text;
-        input.onDelta?.(live.text, '', clone(live)); storageWrite();
-        return { ok: false, status: 'error', text: live.text, error: result.error, requestId, sessionId: session.id };
-      }
-      live.text = text(payload.text || result.text); live.reasoning = text(payload.reasoning); live.toolCalls = clone(payload.toolCalls || result.toolCalls || []);
-      live.result = clone(payload); live.status = 'done'; storageWrite();
-      input.onDelta?.(live.text, live.reasoning, clone(live));
-      return { ok: true, ...payload, text: live.text, reasoning: live.reasoning, requestId, sessionId: session.id };
-    } catch (error) {
-      live.role = 'error'; live.status = 'error'; live.text = text(error?.message, 'AI 请求失败'); live.result = { ok: false, error: live.text }; state.lastError = live.text; storageWrite();
-      return { ok: false, status: 'error', text: live.text, error: error?.code || 'AI_ERROR', requestId, sessionId: session.id };
+      if (!writable(job)) return { ...failure('CANCELLED', '请求已取消', requestId, session.id), data: cancelledPayload(job) };
+      const payload = object(result.data) ? result.data : object(result.partial) ? result.partial : {};
+      applyPayload(job, payload);
+      const error = result.ok ? null : errorShape(result.error);
+      live.status = result.ok ? 'done' : error.code === 'CANCELLED' ? 'cancelled' : error.code === 'TIMEOUT' ? 'timeout' : 'error';
+      live.result = { ...clone(payload), ok: result.ok, error, usage: clone(result.usage) };
+      if (!live.text && error) live.text = error.message;
+      session.updatedAt = Date.now(); state.lastError = error?.message || ''; state.status = result.ok ? 'idle' : live.status; persist(); observe(input.onDelta, live.text, live.reasoning, clone(live));
+      return { ...result, ...payload, ok: result.ok, error, data: clone(payload), text: live.text, status: live.status, requestId, sessionId: session.id };
+    } catch (cause) {
+      if (!writable(job)) return { ...failure('CANCELLED', '请求已取消', requestId, session.id), data: cancelledPayload(job) };
+      const error = errorShape(cause); live.status = error.code === 'CANCELLED' ? 'cancelled' : 'error'; if (!live.text) live.text = error.message;
+      live.result = { ...cancelledPayload(job), ok: false, error }; state.lastError = error.message; state.status = live.status; persist();
+      return { ...failure(error.code, error.message, requestId, session.id), data: cancelledPayload(job) };
     } finally {
-      if (activeJob?.id === requestId) activeJob = null;
-      state.busy = false; state.status = state.lastError ? 'error' : 'idle'; state.jobId = '';
+      input.signal?.removeEventListener?.('abort', callerAbort);
+      if (active === job) { active = null; state.busy = false; state.jobId = ''; }
     }
   }
+  function messageLocation(value, sessionId = state.currentId) { const session = sessionById(sessionId); if (!session) return null; const index = typeof value === 'number' ? value : session.messages.findIndex(row => row.id === value); return index >= 0 && session.messages[index] ? { session, index, message: session.messages[index] } : null; }
+  function editMessage(value, nextText, sessionId) { const found = messageLocation(value, sessionId); if (!found) return null; if (active?.sessionId === found.session.id) cancel(); found.message.text = typeof nextText === 'string' ? nextText : ''; found.message.transcript = []; found.session.updatedAt = Date.now(); persist(); return clone(found.message); }
+  function deleteMessage(value, sessionId) { const found = messageLocation(value, sessionId); if (!found) return false; if (active?.sessionId === found.session.id) cancel(); found.session.messages.splice(found.index, 1); found.session.updatedAt = Date.now(); persist(); return true; }
+  async function rerunFromMessage(value, inputPatch = {}, config = {}, sessionId = state.currentId) {
+    if (active) return failure('BUSY', '当前请求仍在处理中', active.id, active.sessionId);
+    const found = messageLocation(value, sessionId); if (!found || found.session.id !== state.currentId) return failure('MESSAGE_NOT_FOUND', '没有找到要重新执行的消息');
+    let index = found.index; while (index >= 0 && found.session.messages[index].role !== 'user') index -= 1; if (index < 0) return failure('MESSAGE_NOT_FOUND', '没有找到对应的用户消息');
+    const user = clone(found.session.messages[index]); const body = inputPatch.text === undefined ? user.text : inputPatch.text; const imageIds = inputPatch.imageIds === undefined ? user.imageIds : ids(inputPatch.imageIds);
+    if (!text(body) && !imageIds.length) return failure('EMPTY_INPUT', '请输入内容或添加图片');
+    found.session.messages.splice(index); persist(); return runPrimaryWithRuntime({ ...inputPatch, text: body, imageIds, sessionId: found.session.id }, config);
+  }
+  function setSettings(value = {}) { const result = settings.setForm(value); ai.setConfig(settings.primaryProfile()); visionAi.setConfig(settings.visionProfile()); calls.invalidateCapabilities?.(); return result; }
+  function resetSettings(group) { settings.reset(group); return settings.getForm(); }
   const api = {
-    state, ai, prompts: clone(prompts), prompt: (key) => prompt(key), parseReply,
-    run: runPrimaryWithRuntime,
-    runtime,
-    primaryTools,
-    listModels: config => ai.listModels(config),
-    listVisionModels: config => visionAi.listModels(config),
-    testConnection: config => runtime.runPrimary({ requestId: uid('test', sequence), messages: [{ role: 'user', content: 'ping' }], config: { ...(config || {}), maxRounds: 1 } }),
-    runVision: (input, context = {}) => runtime.callTool('vision.processOne', input, context),
-    selectCandidate: chooseCandidate,
-    chooseCandidate,
-    getCapabilities: () => calls?.getCapabilities?.() || null,
-    refreshCapabilities: options2 => calls?.refreshCapabilities?.(options2) || Promise.resolve(null),
-    newSession,
-    currentSession: () => sessionClone(currentSession()), sessions: () => state.sessions.map(sessionClone),
-    getSettings: () => clone(state.settings), setSettings(value = {}) { if (isObject(value)) state.settings = normaliseSettings(mergeSettingsPatch(state.settings, value)); ai.configure?.({ base: state.settings.base, model: state.settings.model, key: state.settings.key, temperature: state.settings.temperature, timeoutMs: state.settings.timeoutMs }); visionAi.configure?.(visionProfile()); calls?.invalidateCapabilities?.(); saveBusinessState(); return clone(state.settings); }, updateSettings(value = {}) { return api.setSettings(value); },
-    listFavorites: () => state.favorites.map(clone), getFavorites: () => state.favorites.map(clone), setFavorites(value) { state.favorites = Array.isArray(value) ? value.map(clone) : []; saveBusinessState(); return api.listFavorites(); }, addFavorite(value) { const item = isObject(value) ? clone(value) : { id: uid('favorite', sequence), name: text(value, '未命名收藏') }; item.id = text(item.id, uid('favorite', sequence)); state.favorites.push(item); saveBusinessState(); return clone(item); }, removeFavorite(id) { const index = state.favorites.findIndex(item => item.id === text(id)); if (index < 0) return false; state.favorites.splice(index, 1); saveBusinessState(); return true; },
-    snapshot: () => ({ ...clone(state), sessions: state.sessions.map(sessionClone), config: ai.getConfig(), visionConfig: visionClient().getConfig(), settings: clone(state.settings), favorites: state.favorites.map(clone) }),
-    calls,
-    visionService: calls?.visionService || null,
-    visionAi: visionClient(),
-     switchSession(id) {
-       if (!sessionById(id)) return false;
-       if (activeJob) {
-         try { activeJob.controller?.abort?.(); } catch { /* best effort */ }
-         state.status = 'cancelled';
-       }
-       state.currentId = id;
-       return true;
-     },
-    renameSession(id, title) { const session = sessionById(id); if (!session) return false; session.title = text(title, session.title); session.updatedAt = Date.now(); storageWrite(); return clone(session); },
-    imageRepository,
-    visionTempStore,
-    deleteSession(id, options = {}) { const target = id || state.currentId; if (!sessionById(target)) return false; const result = imageRepository.deleteSession(target, { retainImages: options.retainImages === true }); state.currentId = state.sessions[0]?.id || ''; storageWrite(); return result; },
-    clearSession(id) { const target = id || state.currentId; if (!sessionById(target)) return false; imageRepository.clearSessionContent(target); return clone(sessionById(target)); },
-    append: (role, value, extra, sessionId) => append(role, value, extra, sessionId),
-    editMessage,
-    deleteMessage,
-    rerunFromMessage,
-    regenerateMessage: rerunFromMessage,
-    exportSessions: () => JSON.stringify(state.sessions.map(sessionClone), null, 2),
-    importSessions(value, replace = false) {
-      let parsed = value;
-      try { if (typeof value === 'string') parsed = JSON.parse(value); } catch { return false; }
-      const incoming = Array.isArray(parsed) ? parsed : parsed?.sessions;
-      if (!Array.isArray(incoming)) return false;
-      if (replace) { state.sessions = []; state.currentId = ''; }
-      const usedSessionIds = new Set(state.sessions.map(item => text(item.id)).filter(Boolean));
-      const usedMessageIds = new Set(state.sessions.flatMap(item => list(item.messages).map(message => text(message?.id)).filter(Boolean)));
-      const normalised = normaliseSessionList(incoming, usedSessionIds, usedMessageIds);
-      state.sessions.push(...normalised.sessions);
-      if (!state.currentId) state.currentId = state.sessions[0]?.id || '';
-      storageWrite();
-      return api.sessions();
-    },
-    cancel(jobId) { if (runtime && runtime.cancel(jobId || state.jobId)) { state.status = 'cancelled'; return true; } if (!activeJob || (jobId && activeJob.id !== jobId)) return false; activeJob.controller.abort(); state.status = 'cancelled'; return true; }, stop(jobId) { return api.cancel(jobId); },
-    destroy() { api.cancel(); state.sessions.length = 0; }
+    run: runPrimaryWithRuntime, runtime, primaryTools, imageRepository, visionTempStore, calls, parseReply,
+    getSettings: settings.getForm, getCanonicalSettings: settings.snapshot, setSettings, updateSettings: setSettings, resetSettings,
+    getPrimaryConfig: settings.primaryProfile, getVisionConfig: visionConfig,
+    listModels: config => ai.listModels({ ...settings.primaryProfile(), ...publicRequestConfig(config) }), listVisionModels: config => visionAi.listModels({ ...settings.visionProfile(), ...publicRequestConfig(config) }),
+    testConnection: config => runtime.runPrimary({ requestId: id('connection'), messages: [{ role: 'user', content: 'Please reply OK.' }], config: { ...publicRequestConfig(config), stream: false } }),
+    runVision: (input, context = {}) => runtime.runSubAgent('vision', { input, ...context, sessionId: context.sessionId || state.currentId }),
+    getCapabilities: () => calls.getCapabilities?.() || null, refreshCapabilities: value => calls.refreshCapabilities?.(value) || Promise.resolve(null),
+    newSession, currentSession: () => clone(currentSession()), sessions: () => clone(state.sessions), snapshot: () => ({ ...clone(state), settings: settings.getForm(), config: settings.primaryProfile(), visionConfig: visionConfig(), favorites: clone(favorites) }),
+    switchSession(sessionId) { if (!sessionById(sessionId)) return false; if (sessionId !== state.currentId) cancel(); state.currentId = sessionId; persist(); return true; },
+    renameSession(sessionId, title) { const session = sessionById(sessionId); if (!session) return false; session.title = text(title, session.title); session.updatedAt = Date.now(); persist(); return clone(session); },
+    deleteSession(sessionId = state.currentId, value = {}) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); const result = imageRepository.deleteSession(sessionId, { retainImages: value.retainImages === true }); if (!sessionById()) state.currentId = state.sessions[0]?.id || ''; if (!state.sessions.length) newSession(); else persist(); return result; },
+    clearSession(sessionId = state.currentId) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); imageRepository.clearSessionContent(sessionId); persist(); return clone(sessionById(sessionId)); },
+    append, editMessage, deleteMessage, rerunFromMessage, regenerateMessage: rerunFromMessage,
+    exportSessions: () => JSON.stringify(sessionBundle(), null, 2),
+    importSessions(value, replace = false) { const incoming = incomingBundle(value); if (!incoming) return false; cancel(); const usedSessions = new Set(replace ? [] : state.sessions.map(row => row.id)); const usedMessages = new Set(replace ? [] : state.sessions.flatMap(row => row.messages.map(message => message.id))); const normalized = incoming.sessions.map(row => normalizeSession(row, usedSessions, usedMessages)); state.sessions = replace ? normalized : [...state.sessions, ...normalized]; if (replace || !sessionById()) state.currentId = state.sessions[0]?.id || ''; for (const session of normalized) imageRepository.reconcileSessionMessages(session.id); imageRepository.reconcileSessions(); if (!state.sessions.length) newSession(); else persist(); return clone(state.sessions); },
+    listFavorites: () => clone(favorites), getFavorites: () => clone(favorites), setFavorites(value) { favorites = array(value).map(clone); write('rewrite_favorites', favorites); return clone(favorites); }, addFavorite(value) { const item = object(value) ? clone(value) : { name: text(value, '未命名收藏') }; item.id = text(item.id, id('favorite')); favorites.push(item); write('rewrite_favorites', favorites); return clone(item); }, removeFavorite(favoriteId) { const index = favorites.findIndex(row => row.id === favoriteId); if (index < 0) return false; favorites.splice(index, 1); write('rewrite_favorites', favorites); return true; },
+    cancel, stop: cancel, destroy() { cancel(); destroyed = true; }
   };
-  return api;
+  return Object.freeze(api);
 }
 
-module.exports = { PROMPT_FILES, createAssistant, readPrompts, parseReply, splitThink, splitNegative, contentParts, normaliseCompletion, createComfy };
+module.exports = { SESSION_FORMAT, SESSION_VERSION, createAssistant };

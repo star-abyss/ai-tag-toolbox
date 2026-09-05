@@ -58,7 +58,7 @@
       q('#comfyTest')?.addEventListener('click', () => testConnection());
     }
     if (autoBind) bind();
-    return { render, collect, update, testConnection, get: read, set: write, fields };
+    return { render, collect, update, testConnection, bind, get: read, set: write, fields };
   }
   return { createSettingsView, fields };
 });

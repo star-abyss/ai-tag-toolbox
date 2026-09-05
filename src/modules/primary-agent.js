@@ -1,0 +1,34 @@
+'use strict';
+
+const DEFAULT_PRIMARY_PROMPT = '你是 AI 绘画 Tag 工具箱的主 AI。根据用户要求使用固定工具完成查询、识图、翻译、Tag 生成和 ComfyUI 出图。图片只能通过消息提供的真实 imageId 或会话图片工具读取。';
+const PUBLIC_CONFIG_KEYS = Object.freeze(['base', 'model', 'key', 'temperature', 'timeoutMs', 'maxTokens', 'stream']);
+const RUNTIME_CONFIG_KEYS = Object.freeze(['signal', 'tools', 'tool_choice', 'onDelta', 'onEvent']);
+function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function publicRequestConfig(value = {}) {
+  if (!object(value)) return {};
+  const result = {};
+  for (const key of PUBLIC_CONFIG_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    const item = value[key];
+    if (['base', 'model', 'key'].includes(key) && typeof item === 'string') result[key] = item.trim();
+    else if (key === 'stream' && typeof item === 'boolean') result[key] = item;
+    else if (['temperature', 'timeoutMs', 'maxTokens'].includes(key) && item != null && item !== '' && Number.isFinite(Number(item))) result[key] = Number(item);
+  }
+  return result;
+}
+function createPrimaryAgent(options = {}) {
+  const client = options.client;
+  const prompts = options.prompts;
+  function getPrompt() {
+    if (typeof prompts?.composePrimary === 'function') return prompts.composePrimary();
+    return prompts?.getEffective?.('primary') || prompts?.get?.('primary') || DEFAULT_PRIMARY_PROMPT;
+  }
+  async function complete(messages, request = {}) {
+    const config = { ...publicRequestConfig(options.getSettings?.()?.primaryApi), ...publicRequestConfig(request) };
+    for (const key of RUNTIME_CONFIG_KEYS) if (Object.prototype.hasOwnProperty.call(request, key)) config[key] = request[key];
+    return client.complete(messages, config);
+  }
+  return Object.freeze({ complete, getPrompt });
+}
+
+module.exports = { createPrimaryAgent, publicRequestConfig, DEFAULT_PRIMARY_PROMPT };

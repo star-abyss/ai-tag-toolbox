@@ -23,7 +23,7 @@
     function cancel(requestId = state.requestId) { const result = runtime?.cancel?.(requestId) ?? api?.cancel?.(requestId) ?? false; render({ requestId, status: 'cancelled' }); notify?.('已取消'); return result; }
     function bind() { (q('[data-agent-cancel]') || q('#talkStopBtn'))?.addEventListener('click', () => cancel()); }
     if (autoBind) bind();
-    return { render, status, cancel, getState: () => ({ ...state }) };
+    return { render, status, cancel, bind, getState: () => ({ ...state }) };
   }
   return { createAgentStatusView };
 });

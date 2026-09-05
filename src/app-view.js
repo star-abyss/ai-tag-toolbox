@@ -95,12 +95,36 @@
       clearTimeout(notify.timer);
       notify.timer = setTimeout(() => el.classList.remove("show"), 1800);
     };
+    function download(filename, value, type = "application/json") {
+      const content = typeof value === "string" ? value : JSON.stringify(value ?? "", null, 2);
+      const link = doc.createElement("a");
+      link.href = URL.createObjectURL(new Blob([content], { type }));
+      link.download = str(filename, "download.json");
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 500);
+      return link.download;
+    }
+    async function readJson(file) {
+      const raw = await readText(file);
+      try { return JSON.parse(raw); } catch (error) { throw new Error(`JSON 文件无效：${error.message || error}`); }
+    }
+    function confirm(message, onConfirm, options = {}) {
+      const modal = $("#cfmModal");
+      if (!modal) { if (global.confirm?.(message)) onConfirm?.(options.retainImages === true); return; }
+      ui.confirmAction = onConfirm;
+      put("#cfmText", message);
+      const retain = $("#cfmRetainImagesWrap");
+      const retainCheck = $("#cfmRetainImages");
+      if (retain) retain.hidden = options.retainImages !== true;
+      if (retainCheck) retainCheck.checked = options.retainImages === true;
+      modal.classList.add("show");
+    }
     const viewFactories = global.AppViews || {};
     const views = {
-      conversation: viewFactories.conversation?.createConversationView?.({ document: doc, api: assistant, runtime, repository: imageRepository, notify, preferences, autoBind: false }),
-      gallery: viewFactories.gallery?.createGalleryView?.({ document: doc, repository: imageRepository, images, preferences, notify, autoBind: false }),
+      conversation: viewFactories.conversation?.createConversationView?.({ document: doc, api: assistant, runtime, repository: imageRepository, images, notify, preferences, autoBind: false, bindControls: false }),
+      gallery: viewFactories.gallery?.createGalleryView?.({ document: doc, repository: imageRepository, images, preferences, notify, autoBind: false, bindToolbar: false, onVision: item => { if (item?.imageId) { visionTempStore?.setLibraryReference?.(item.imageId); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true); } }, onConversation: () => route("ai") }),
       settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, autoBind: false }),
-      prompt: viewFactories.prompt?.createPromptView?.({ document: doc, prompts, notify, autoBind: false }),
+      prompt: viewFactories.prompt?.createPromptView?.({ document: doc, prompts, notify, download, autoBind: false }),
       agentStatus: viewFactories.agentStatus?.createAgentStatusView?.({ document: doc, runtime, api: assistant, notify, autoBind: false }),
     };
     const show = (selector, yes) => {
@@ -1335,8 +1359,10 @@
       return item;
     }
     function cancelVisionRequest(restoreControls = false) {
+      const activeRequestId = ui.visionRequestId;
       ui.visionRequestId += 1;
       ui.visionAbort?.abort?.();
+      runtime?.cancel?.(activeRequestId);
       ui.visionAbort = null;
       ui.visionBusy = false;
       if (restoreControls) {
@@ -1365,7 +1391,7 @@
       let result = null;
       try {
         result = runtime?.callTool
-          ? await runtime.callTool("vision.processOne", { imageId, mode: "metadata" }, { caller: "ui", sessionId: currentTalkSessionId(), signal: controller.signal })
+          ? await runtime.callTool("vision.processOne", { imageId, mode: "metadata" }, { caller: "ui", sessionId: currentTalkSessionId(), requestId })
           : { ok: true, data: await Promise.resolve(visionTempStore?.get?.(imageId)?.metadata || images?.metadata?.(imageId) || {}) };
       } catch (error) {
         result = { ok: false, error: error?.message || String(error) };
@@ -1609,7 +1635,7 @@
       ui.visionAbort = controller;
       ui.visionBusy = true;
       try {
-        const result = await runtime?.callTool?.("vision.processOne", { imageId, mode: "local", model: modelId }, { caller: "ui", sessionId: currentTalkSessionId(), signal: controller.signal });
+        const result = await runtime?.callTool?.("vision.processOne", { imageId, mode: "local", model: modelId }, { caller: "ui", sessionId: currentTalkSessionId(), requestId });
         if (!result) throw new Error("统一 Agent Runtime 不可用");
         if (requestId !== ui.visionRequestId || imageId !== currentVisionId()) return result;
         ui.visionResult = result?.data || result?.analysis || null;
@@ -1655,7 +1681,7 @@
       try {
         const capabilities = await assistant?.refreshCapabilities?.({ force: true }) || assistant?.getCapabilities?.() || {};
         if (capabilities.vision && capabilities.vision.ai !== true) throw new Error(capabilities.vision.aiError || "请先配置支持图片输入的独立识图 API");
-        const result = await runtime?.callTool?.("vision.processOne", { imageId, mode: "ai", instruction: "请按图片中可见内容进行详细描述：主体、人物外观、服装、姿势表情、构图视角、场景物体、光影色彩与画风；以精炼绘图 Tag 为主，如实包含可见 NSFW 内容，只输出结果。", includeLocalTags: true }, { caller: "ui", sessionId: currentTalkSessionId(), signal: controller.signal });
+        const result = await runtime?.callTool?.("vision.processOne", { imageId, mode: "ai", instruction: "请按图片中可见内容进行详细描述：主体、人物外观、服装、姿势表情、构图视角、场景物体、光影色彩与画风；以精炼绘图 Tag 为主，如实包含可见 NSFW 内容，只输出结果。", includeLocalTags: true }, { caller: "ui", sessionId: currentTalkSessionId(), requestId });
         if (!result) throw new Error("统一 Agent Runtime 不可用");
         if (ui.visionRequestId === requestId) {
           ui.visionResult = result?.data || null;
@@ -3196,7 +3222,7 @@
         try {
           const imageId = currentVisionId();
           if (!imageId) return notify("请先选择一张图片");
-          const result = await assistant.runVision({ imageId, mode: "ai", instruction: "请只回复 OK，确认当前模型支持图片输入。" }, { caller: "ui", signal: new AbortController().signal });
+          const result = await assistant.runVision({ imageId, mode: "ai", instruction: "请只回复 OK，确认当前模型支持图片输入。" }, { caller: "ui", requestId: `vision-test-${Date.now()}` });
           notify(result?.ok === false ? result.error || result.text || "当前模型不支持图片输入" : "识图 API 图片测试成功");
         } catch (error) { notify(error?.message || String(error)); }
       });
@@ -3250,7 +3276,7 @@
         loadSettings();
       });
       $("#cfmNo")?.addEventListener("click", () => { ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); });
-      $("#cfmYes")?.addEventListener("click", () => { const action = ui.confirmAction; ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); action?.(); });
+      $("#cfmYes")?.addEventListener("click", () => { const action = ui.confirmAction; const retain = Boolean($("#cfmRetainImages")?.checked); ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); action?.(retain); });
       $("#translateDirection")?.addEventListener("change", () => {
         clearTimeout(ui.translateRefsTimer);
         ui.translateRefsTimer = setTimeout(renderTranslationRefs, 80);
@@ -3580,6 +3606,11 @@
         preferences.get("rewrite_theme", "light"),
       );
       applyTheme(theme);
+      views.conversation?.bind?.();
+      views.gallery?.bind?.();
+      views.settings?.bind?.();
+      views.prompt?.bind?.();
+      views.agentStatus?.bind?.();
       views.prompt?.render();
       bind();
       resizeTalkInput();

@@ -15,7 +15,7 @@
     if (typeof error === 'string') return { code: 'REQUEST_FAILED', message: error };
     return { code: text(error.code, 'REQUEST_FAILED'), message: text(error.message, text(error.error, '请求失败')) };
   };
-  function createConversationView({ document, api, runtime, notify, preferences, onRoute, autoBind = true } = {}) {
+  function createConversationView({ document, api, runtime, repository, images, notify, preferences, onRoute, autoBind = true, bindControls = true } = {}) {
     const doc = document || (typeof globalThis !== 'undefined' ? globalThis.document : null);
     const state = { requestId: '', pending: false, columns: 'two' };
     const q = selector => doc?.querySelector?.(selector);
@@ -26,6 +26,11 @@
       try { return api?.currentSession?.() || sessions()[0] || null; } catch { return sessions()[0] || null; }
     };
     const getSettings = () => { try { return api?.getSettings?.() || {}; } catch { return {}; } };
+    const imageFor = id => {
+      try {
+        return repository?.get?.(id) || images?.get?.(id) || api?.imageRepository?.get?.(id) || api?.images?.get?.(id) || null;
+      } catch { return null; }
+    };
     const savePreference = (key, value) => { try { preferences?.set?.(key, value); } catch { /* optional */ } };
     const readPreference = (key, fallback) => { try { return preferences?.get?.(key, fallback) ?? fallback; } catch { return fallback; } };
     function renderSessions() {
@@ -48,6 +53,28 @@
         row.append(title, del); host.appendChild(row);
       });
     }
+    function renderText(host, value) {
+      host.replaceChildren();
+      const raw = String(value || '');
+      if (!raw) return;
+      raw.split(/\n{2,}/).forEach(block => {
+        const line = block.trim();
+        if (!line) return;
+        if (/^```/.test(line)) {
+          const pre = doc.createElement('pre'); pre.className = 'codepre'; pre.textContent = line.replace(/^```\w*\n?/, '').replace(/```$/, ''); host.appendChild(pre); return;
+        }
+        const heading = line.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) { const el = doc.createElement(`h${heading[1].length}`); el.className = 'md-heading'; el.textContent = heading[2]; host.appendChild(el); return; }
+        const list = line.split('\n').filter(item => /^\s*[-*]\s+/.test(item));
+        if (list.length === line.split('\n').length && list.length) {
+          const ul = doc.createElement('ul'); ul.className = 'md-list'; list.forEach(item => { const li = doc.createElement('li'); li.textContent = item.replace(/^\s*[-*]\s+/, ''); ul.appendChild(li); }); host.appendChild(ul); return;
+        }
+        const p = doc.createElement('p'); p.className = 'md-p';
+        const parts = line.split(/(`[^`]+`)/g);
+        parts.forEach(part => { if (part.startsWith('`') && part.endsWith('`')) { const code = doc.createElement('code'); code.className = 'md-inline-code'; code.textContent = part.slice(1, -1); p.appendChild(code); } else p.appendChild(doc.createTextNode(part)); });
+        host.appendChild(p);
+      });
+    }
     function renderMessages(snapshot = {}) {
       const host = q('[data-conversation-view]') || q('#talkConv');
       if (!host) return;
@@ -64,8 +91,13 @@
         row.className = `cmsg ${message.role === 'assistant' ? 'ai' : message.role === 'error' ? 'err' : message.role === 'system' ? 'sys' : 'user'}`;
         row.dataset.messageId = text(message.id);
         const body = doc.createElement('div'); body.className = 'body';
-        body.textContent = text(message.text, message.status === 'streaming' ? '🤔 AI 正在思考…' : '');
+        renderText(body, text(message.text, message.status === 'streaming' ? '🤔 AI 正在思考…' : ''));
         row.appendChild(body);
+        if (Array.isArray(message.imageIds) && message.imageIds.length) {
+          const images = doc.createElement('div'); images.className = 'imgs';
+          message.imageIds.forEach((id, index) => { const asset = imageFor(id); const src = asset?.thumbnailDataUrl || asset?.dataUrl || asset?.viewUrl || ''; if (!src) return; const img = doc.createElement('img'); img.src = src; img.alt = `图片${index + 1}`; img.loading = 'lazy'; images.appendChild(img); });
+          if (images.childElementCount) row.appendChild(images);
+        }
         if (message.error || message.status === 'error') {
           const error = doc.createElement('small'); error.className = 'message-error';
           error.textContent = safeError(message.error).message; row.appendChild(error);
@@ -149,6 +181,7 @@
         if (action === 'edit-message') { const value = doc.defaultView?.prompt?.('编辑消息', text(message.text)); if (value?.trim()) { api?.editMessage?.(message.id, value.trim()); render(); } }
         if (action === 'retry-message') { const previous = current()?.messages?.slice(0, current().messages.indexOf(message)).reverse().find(item => item.role === 'user'); if (previous) await send({ text: previous.text, imageIds: previous.imageIds || [] }, getSettings()); }
       });
+      if (!bindControls) return;
       const input = q('#talkIn'); const button = q('#talkSendBtn'); const stop = q('#talkStopBtn');
       button?.addEventListener('click', () => send({ text: input?.value || '', imageIds: [] }, getSettings()));
       stop?.addEventListener('click', () => cancel());

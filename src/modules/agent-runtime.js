@@ -39,6 +39,35 @@ function normalizeCall(call, usedIds) {
   return { id, name, args, native: { id, type: 'function', function: { name: nativeName(name), arguments: JSON.stringify(args) } } };
 }
 function outputText(response) { const value = response?.data ?? response; if (typeof value === 'string') return value; return typeof value?.text === 'string' ? value.text : typeof value?.choices?.[0]?.message?.content === 'string' ? value.choices[0].message.content : ''; }
+function publicConfig(value) {
+  if (!object(value)) return {};
+  const output = {};
+  for (const key of ['base', 'model', 'key', 'temperature', 'timeoutMs', 'maxTokens', 'stream']) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    if (['base', 'model', 'key'].includes(key) && typeof value[key] === 'string') output[key] = value[key].trim();
+    else if (key === 'stream' && typeof value[key] === 'boolean') output[key] = value[key];
+    else if (['temperature', 'timeoutMs', 'maxTokens'].includes(key) && value[key] != null && Number.isFinite(Number(value[key]))) output[key] = Number(value[key]);
+  }
+  return output;
+}
+function historyMessage(item) {
+  if (!object(item) || !['user', 'assistant', 'tool'].includes(item.role)) return null;
+  const message = { role: item.role };
+  if (item.role === 'tool') {
+    if (!text(item.tool_call_id)) return null;
+    message.tool_call_id = text(item.tool_call_id);
+    message.content = typeof item.content === 'string' ? item.content : typeof item.text === 'string' ? item.text : JSON.stringify(clone(item.content ?? ''));
+    return message;
+  }
+  message.content = typeof item.content === 'string' || item.content === null ? item.content : typeof item.text === 'string' ? item.text : '';
+  if (item.role === 'assistant' && Array.isArray(item.tool_calls)) {
+    const calls = item.tool_calls.filter(call => text(call?.id) && text(call?.function?.name || call?.name)).map(call => ({
+      id: text(call.id), type: 'function', function: { name: nativeName(canonicalName(call.function?.name || call.name)), arguments: typeof call.function?.arguments === 'string' ? call.function.arguments : JSON.stringify(call.function?.arguments ?? call.arguments ?? {}) }
+    }));
+    if (calls.length) message.tool_calls = calls;
+  }
+  return message;
+}
 
 function createAgentRuntime(options = {}) {
   const client = options.primaryClient || options.ai;
@@ -64,6 +93,10 @@ function createAgentRuntime(options = {}) {
     if (context.signal.aborted || !active.has(context.requestId)) return;
     const event = { ...clone(payload), type, requestId: context.requestId, rootRequestId: context.rootRequestId, at: Date.now() };
     context.events.push(event); if (context.events.length > 256) context.events.shift();
+    if (context.parentContext && context.parentContext !== context) {
+      context.parentContext.events.push(event);
+      if (context.parentContext.events.length > 256) context.parentContext.events.shift();
+    }
     statuses.update(context.requestId, { event });
     try { context.onEvent?.(event); } catch { /* observers are optional */ }
   }
@@ -73,7 +106,7 @@ function createAgentRuntime(options = {}) {
     const handle = requests.begin(parentId ? undefined : request.requestId, { kind, parentRequestId: parentId, rootRequestId: parent?.rootRequestId, timeoutMs: request.timeoutMs || timeoutMs, signal: request.signal || parent?.signal });
     const id = handle.requestId; const rootId = parent?.rootRequestId || id;
     if (!parent) limiter.begin(rootId, getSettings()?.limits || {});
-    const context = { requestId: id, parentRequestId: parentId, rootRequestId: rootId, signal: handle.signal, sessionId: request.sessionId || parent?.sessionId, messageId: request.messageId || parent?.messageId, events: [], onEvent: request.onEvent };
+    const context = { requestId: id, parentRequestId: parentId, rootRequestId: rootId, signal: handle.signal, sessionId: request.sessionId || parent?.sessionId, messageId: request.messageId || parent?.messageId, settings: parent?.settings || clone(getSettings() || {}), events: [], onEvent: request.onEvent, parentContext: parent || null, partial: null };
     active.set(id, context);
     try {
       const data = await race(() => work(context), handle.signal);
@@ -83,7 +116,7 @@ function createAgentRuntime(options = {}) {
     } catch (cause) {
       const state = requests.get(id); const error = errorShape(state?.error || cause, '请求失败');
       if (!state?.endedAt) requests.fail(id, error);
-      const result = resultError(error, id); result.usage = limiter.snapshot(rootId); return result;
+      const result = resultError(error, id); result.data = context.partial || null; result.usage = limiter.snapshot(rootId); return result;
     } finally { active.delete(id); if (!parent) limiter.end(rootId); }
   }
   async function runSubAgent(name, request = {}) {
@@ -122,23 +155,36 @@ function createAgentRuntime(options = {}) {
       if (typeof client?.complete !== 'function') throw reject('PRIMARY_UNAVAILABLE', '主 AI 服务不可用');
       const prompt = typeof options.getPrimaryPrompt === 'function' ? text(await options.getPrimaryPrompt()) : text(options.primaryPrompt, '你是 AI 绘画 Tag 工具箱的主 AI，使用固定工具完成用户任务。');
       if (!prompt) throw reject('PROMPT_INVALID', '主 AI 提示词为空');
-      const history = (Array.isArray(request.messages) ? request.messages : []).filter(item => ['user', 'assistant'].includes(item?.role)).map(item => ({ role: item.role, content: typeof item.content === 'string' ? item.content : typeof item.text === 'string' ? item.text : '' })).filter(item => item.content);
+      const history = (Array.isArray(request.messages) ? request.messages : []).map(historyMessage).filter(Boolean).filter(item => item.role === 'tool' || item.content || item.tool_calls?.length);
       if (!history.length && typeof request.input?.text === 'string') history.push({ role: 'user', content: request.input.text });
-      const messages = [{ role: 'system', content: prompt }, ...history]; const toolCalls = []; const artifacts = []; const usedIds = new Set(); let round = 0;
+      const messages = [{ role: 'system', content: prompt }, ...history]; const transcript = []; const toolCalls = []; const artifacts = []; const usedIds = new Set(); let round = 0;
+      const partial = () => ({ text: '', reasoning: '', toolCalls: toolCalls.slice(), events: context.events.slice(), artifacts: artifacts.map(clone), imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript: transcript.map(clone) });
+      context.partial = partial();
       while (true) {
         limiter.consume(context.rootRequestId, 'round'); round += 1; emit(context, 'round.start', { round });
-        const response = await race(() => client.complete(messages, { ...(request.config || {}), signal: context.signal, tools: schemas(), tool_choice: 'auto', onDelta: (delta, reasoning = '') => { emit(context, 'delta', { text: typeof delta === 'string' ? delta : '', reasoning: typeof reasoning === 'string' ? reasoning : '' }); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } } }), context.signal);
+        const settings = getSettings() || {};
+        const primaryConfig = { ...publicConfig(settings.primaryApi), ...publicConfig(request.config), signal: context.signal, tools: schemas(), tool_choice: 'auto', onDelta: (delta, reasoning = '') => { emit(context, 'delta', { text: typeof delta === 'string' ? delta : '', reasoning: typeof reasoning === 'string' ? reasoning : '' }); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } }, onEvent: event => emit(context, event?.type || 'event', event || {}) };
+        const response = await race(() => client.complete(messages, primaryConfig), context.signal);
         unwrap(response); limiter.add(context.rootRequestId, response?.usage); const calls = responseCalls(response).map(call => normalizeCall(call, usedIds));
         const responseText = outputText(response);
-        if (!calls.length) { if (!responseText.trim()) throw reject('OUTPUT_INVALID', '主 AI 返回为空'); emit(context, 'round.complete', { round }); return { text: responseText, reasoning: typeof response?.reasoning === 'string' ? response.reasoning : '', toolCalls, events: context.events.slice(), artifacts, imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))] }; }
-        messages.push({ role: 'assistant', content: responseText || null, tool_calls: calls.map(call => call.native) });
+        if (!calls.length) {
+          if (!responseText.trim()) throw reject('OUTPUT_INVALID', '主 AI 返回为空');
+          const finalMessage = { role: 'assistant', content: responseText };
+          messages.push(finalMessage); transcript.push(clone(finalMessage));
+          emit(context, 'round.complete', { round });
+          const data = { text: responseText, reasoning: typeof response?.reasoning === 'string' ? response.reasoning : '', toolCalls, events: context.events.slice(), artifacts, imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript };
+          context.partial = data; return data;
+        }
+        const assistantMessage = { role: 'assistant', content: responseText || null, tool_calls: calls.map(call => call.native) };
+        messages.push(assistantMessage); transcript.push(clone(assistantMessage)); context.partial = partial();
         for (const call of calls) {
-          const outcome = await callTool(call.name, call.args, { parentRequestId: context.requestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: event => { context.events.push(event); if (context.events.length > 256) context.events.shift(); try { request.onEvent?.(event); } catch {} } });
+          const outcome = await callTool(call.name, call.args, { parentRequestId: context.requestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: event => { try { request.onEvent?.(event); } catch {} } });
           const trace = { id: call.id, name: call.name, arguments: call.args, requestId: outcome.requestId, ok: outcome.ok, result: outcome.data, error: outcome.error }; toolCalls.push(trace);
           if (Array.isArray(outcome.data?.artifacts)) for (const artifact of outcome.data.artifacts) if (!artifacts.some(item => item.imageId === artifact.imageId)) artifacts.push(clone(artifact));
           try { request.onToolCall?.([trace]); } catch {}
+          const toolMessage = { role: 'tool', tool_call_id: call.id, content: JSON.stringify(outcome.ok ? outcome.data : outcome.error) };
+          messages.push(toolMessage); transcript.push(clone(toolMessage)); context.partial = partial();
           if (!outcome.ok) throw outcome.error;
-          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(outcome.data) });
         }
         emit(context, 'round.complete', { round });
       }

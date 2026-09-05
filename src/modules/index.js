@@ -18,5 +18,8 @@ module.exports = {
   ...require('./status-manager'),
   ...require('./agent-runtime'),
   ...require('./fixed-subagents'),
-  ...require('./primary-tools')
+  ...require('./primary-tools'),
+  ...require('./settings'),
+  ...require('./ai-client'),
+  ...require('./primary-agent')
 };

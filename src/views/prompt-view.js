@@ -10,7 +10,7 @@
   const LEGACY_IDS = { primary: '#aiSys', vision: '#aiVision', translation: '#translationPrompt', generateTags: '#genTask' };
   const labels = { primary: '主 AI', vision: '识图子代理', translation: '翻译子代理', generateTags: '文生图 Tag 子代理' };
   const text = (value, fallback = '') => value == null || value === '' ? fallback : String(value);
-  function createPromptView({ document, prompts, notify, download, autoBind = true } = {}) {
+    function createPromptView({ document, prompts, notify, download, autoBind = true } = {}) {
     const doc = document || (typeof globalThis !== 'undefined' ? globalThis.document : null);
     const q = selector => doc?.querySelector?.(selector);
     const slotKey = key => key === 'main' ? 'primary' : key === 'generate' ? 'generateTags' : key;
@@ -28,7 +28,8 @@
       const add = doc.createElement('button'); add.type = 'button'; add.className = 'abtn btn btn-secondary'; add.dataset.action = 'prompt-add'; add.textContent = '新增提示词'; host.appendChild(add);
       panel.appendChild(host); return host;
     }
-    function render(snapshot = snapshot()) {
+    function render(nextSnapshot) {
+      const currentSnapshot = nextSnapshot || snapshot();
       INTERNAL.forEach(key => { const config = LEGACY_IDS[key]; const el = config && q(config); if (el) el.value = get(key); const enabled = item(key)?.enabled !== false; const check = q(`${config}Enabled`); if (check) check.checked = enabled; });
       const host = ensureCustomHost(); const list = host?.querySelector?.('[data-custom-prompt-list]');
       if (list) {
@@ -42,11 +43,17 @@
           line.append(name, area, save, remove); list.appendChild(line);
         });
       }
-      return snapshot;
+      return currentSnapshot;
     }
     function saveInternal(key, value) { const result = set(key, value); render(); return result; }
     function exportBundle() {
-      try { const value = prompts?.exportBundle?.() || JSON.stringify(snapshot(), null, 2); download?.('ai-tag-prompts.json', value); return value; } catch (error) { notify?.(error.message || String(error)); return ''; }
+      try {
+        const value = prompts?.exportBundle?.() || snapshot();
+        const serialized = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+        if (download) download('ai-tag-prompts.json', serialized);
+        else { const link = doc.createElement('a'); link.href = URL.createObjectURL(new Blob([serialized], { type: 'application/json' })); link.download = 'ai-tag-prompts.json'; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 500); }
+        return value;
+      } catch (error) { notify?.(error.message || String(error)); return ''; }
     }
     async function importBundle(value) {
       try { const parsed = typeof value === 'string' ? JSON.parse(value) : value; const result = prompts?.importBundle?.(parsed); render(); return result; } catch (error) { notify?.(error.message || String(error)); return { ok: false, error: { code: 'PROMPT_IMPORT_FAILED', message: error.message || String(error) } }; }
@@ -54,6 +61,10 @@
     function bind() {
       INTERNAL.forEach(key => { const el = q(LEGACY_IDS[key]); el?.addEventListener('change', () => saveInternal(key, el.value)); const check = q(`${LEGACY_IDS[key]}Enabled`); check?.addEventListener('change', () => { prompts?.setEnabled?.(key, check.checked); render(); }); });
       q('#promptModReset')?.addEventListener('click', () => { INTERNAL.forEach(key => prompts?.reset?.(key)); render(); });
+      INTERNAL.forEach(key => q(`${LEGACY_IDS[key]}Reset`)?.addEventListener('click', () => { prompts?.reset?.(key); render(); }));
+      q('#pcolExport')?.addEventListener('click', () => exportBundle());
+      q('#pcolImport')?.addEventListener('click', () => q('#pcolFile')?.click());
+      q('#pcolFile')?.addEventListener('change', event => { const file = event.target.files?.[0]; if (!file) return; file.text().then(importBundle).catch(error => notify?.(error.message || String(error))).finally(() => { event.target.value = ''; }); });
       const host = ensureCustomHost();
       host?.addEventListener('click', event => {
         const action = event.target.closest?.('[data-action]')?.dataset.action;
@@ -65,7 +76,7 @@
       });
     }
     if (autoBind) bind();
-    return { render, get, set, reset: key => prompts?.reset?.(slotKey(key)), keys: () => { try { return prompts?.keys?.() || INTERNAL; } catch { return INTERNAL.slice(); } }, snapshot, exportBundle, importBundle };
+    return { render, bind, get, set, reset: key => prompts?.reset?.(slotKey(key)), keys: () => { try { return prompts?.keys?.() || INTERNAL; } catch { return INTERNAL.slice(); } }, snapshot, exportBundle, importBundle };
   }
   return { createPromptView, INTERNAL };
 });

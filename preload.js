@@ -96,7 +96,7 @@ try {
   primaryTools = assistant.primaryTools || null;
 } catch (error) {
   // 标签模块加载失败时仍让页面打开，便于人工看到错误并继续迭代。
-  console.warn('[V1.4.194] 业务模块加载失败：', error && error.message ? error.message : error);
+  console.warn('[V1.4.195] 业务模块加载失败：', error && error.message ? error.message : error);
 }
 
 function safeImageId(value) {
@@ -304,11 +304,11 @@ contextBridge.exposeInMainWorld('AppModules', {
     meta: prompts.meta,
     metadata: prompts.metadata,
     appendices: prompts.appendices,
+    exportBundle: prompts.exportBundle,
+    importBundle: prompts.importBundle,
     snapshot: prompts.snapshot
   } : null,
   calls: assistant?.calls ? { getCapabilities: assistant.calls.getCapabilities, refreshCapabilities: assistant.calls.refreshCapabilities, invalidateCapabilities: assistant.calls.invalidateCapabilities } : null,
-  vision,
-  visionService: assistant?.visionService ? { processOne: input => assistant.visionService.processOne(visionInputForRenderer(input)), available: assistant.visionService.available } : null,
   comfy: comfy ? {
     check: async () => Boolean((await runtime?.callTool?.('comfy.status', {}, { caller: 'ui' }))?.data?.connected),
     setBase: value => assistant?.setSettings?.({ comfyBase: value }),
@@ -316,5 +316,5 @@ contextBridge.exposeInMainWorld('AppModules', {
     importApiWorkflow: comfy.importApiWorkflow
   } : null,
   locales: localePacks,
-  version: '1.4.194'
+  version: '1.4.195'
 });

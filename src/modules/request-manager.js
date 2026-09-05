@@ -30,7 +30,11 @@ function createRequestManager(options = {}) {
     const controller = new AbortController();
     const row = { requestId: id, parentRequestId: String(config.parentRequestId || ''), rootRequestId: String(config.rootRequestId || id), kind: config.kind || 'request', status: 'running', timeoutMs: Math.max(1, Number(config.timeoutMs) || defaultTimeoutMs), startedAt: Date.now(), endedAt: 0, error: null, timer: null, externalSignal: config.signal || null, externalAbort: null, controller, signal: controller.signal };
     records.set(id, row);
-    row.externalAbort = () => finish(id, 'cancelled', { code: 'CANCELLED', message: '请求已取消', retryable: false });
+    row.externalAbort = () => {
+      const reason = row.externalSignal?.reason;
+      const timedOut = reason?.code === 'TIMEOUT' || reason?.name === 'TimeoutError';
+      finish(id, timedOut ? 'timeout' : 'cancelled', { code: timedOut ? 'TIMEOUT' : 'CANCELLED', message: timedOut ? '请求超时' : '请求已取消', retryable: timedOut });
+    };
     if (!row.externalSignal?.aborted) row.externalSignal?.addEventListener('abort', row.externalAbort, { once: true });
     row.timer = setTimeout(() => finish(id, 'timeout', { code: 'TIMEOUT', message: '请求超时', retryable: true }), row.timeoutMs);
     emit(row, 'started');

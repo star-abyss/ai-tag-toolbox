@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
-    <title>AI 绘画 Tag 工具箱 V1.4.194 · Danbooru 标签选择器</title>
+    <title>AI 绘画 Tag 工具箱 V1.4.195 · Danbooru 标签选择器</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
@@ -604,7 +604,7 @@
               <span data-i18n="ui.prompt.main"></span> <span class="pcsub" data-i18n="ui.prompt.mainSub"></span>
             </summary>
             <div class="pcbody">
-              <div class="presetbar">
+              <div class="presetbar legacy-prompt-compat" hidden>
                 <span style="font-size: 13px; color: var(--muted)" data-i18n="ui.prompt.preset"></span>
                 <select id="presetSel" class="wbselect"></select>
                 <button class="abtn ghost btn btn-ghost" id="presetSave" data-i18n="ui.prompt.savePreset"></button>
@@ -637,7 +637,7 @@
                 <div class="pmod-mods"></div>
                 <div class="form"><textarea id="genTask" rows="9"></textarea></div>
               </details>
-              <details class="pmod-lead" data-special="quality">
+              <details class="pmod-lead legacy-prompt-compat" data-special="quality" hidden>
                 <summary>
                   <span data-i18n="ui.prompt.quality"></span>
                   <span class="pcsub" data-i18n="ui.prompt.qualitySub"></span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="qpEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
@@ -661,7 +661,7 @@
                 <summary><span data-i18n="ui.translation.title">翻译子代理</span><span class="pcsub">固定翻译提示词</span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="translationPromptEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label></summary>
                 <div class="pmod-mods"></div><div class="form"><textarea id="translationPrompt" rows="6" placeholder="翻译子代理提示词"></textarea></div>
               </details>
-              <details class="pmod-lead" data-special="system">
+              <details class="pmod-lead legacy-prompt-compat" data-special="system" hidden>
                 <summary>
                   <span data-i18n="ui.prompt.system"></span> <span class="pcsub" data-i18n="ui.prompt.systemSub"></span
                   ><span style="flex: 1"></span>

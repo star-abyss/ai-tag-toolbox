@@ -43,6 +43,10 @@ function text(value, fallback = '') {
   return result || fallback;
 }
 
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function clone(value) {
   if (Array.isArray(value)) return value.map(clone);
   if (value && typeof value === 'object') {
@@ -315,7 +319,15 @@ function createPrompts(options = {}) {
     appendices,
     exportBundle,
     importBundle,
-    snapshot: () => ({ values: Object.fromEntries(keys().map(key => [key, get(key)])), defaults: clone(defaults), state: clone(state), metadata: Object.fromEntries(keys().map(key => [key, meta(key)])), appendices: appendices() })
+    snapshot: () => ({
+      values: Object.fromEntries(keys().map(key => [key, get(key)])),
+      internal: Object.fromEntries(['primary', 'vision', 'translation', 'generateTags'].map(key => [key, { text: get(key), enabled: enabled(key) }])),
+      external: Object.values(state.custom).map(item => clone(item)),
+      defaults: clone(defaults),
+      state: clone(state),
+      metadata: Object.fromEntries(keys().map(key => [key, meta(key)])),
+      appendices: appendices()
+    })
   };
 
   load();
