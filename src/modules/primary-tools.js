@@ -1,120 +1,147 @@
 'use strict';
 
-const TOOL_NAMES = Object.freeze([
-  'tags.search',
-  'conversation.listImages',
-  'vision.processOne',
-  'translation.translate',
-  'agent.generateTags',
-  'comfy.status',
-  'comfy.validateWorkflow',
-  'comfy.render'
-]);
-
-function text(value, fallback = '') { const result = value == null ? '' : String(value).trim(); return result || fallback; }
+const { SCHEMAS, OUTPUT_SCHEMAS } = require('./fixed-subagents');
+const { assertValid } = require('./schema');
+const { errorShape, resultOk, resultError } = require('./error-manager');
+const TOOL_NAMES = Object.freeze(['tags.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
+const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
+function text(value) { return typeof value === 'string' ? value.trim() : ''; }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
-function clone(value) {
-  if (Array.isArray(value)) return value.map(clone);
-  if (object(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clone(item)]));
-  return value;
-}
+function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
 function schema(properties, required = []) { return { type: 'object', additionalProperties: false, properties, required }; }
-function settingsGroup(settings, key) { return object(settings?.[key]) ? settings[key] : settings || {}; }
-function positiveTags(args) { return Array.isArray(args?.positiveTags) ? args.positiveTags.map(text).filter(Boolean) : text(args?.positiveTags); }
-function negativeTags(args) { return Array.isArray(args?.negativeTags) ? args.negativeTags.map(text).filter(Boolean) : text(args?.negativeTags || args?.negative); }
-
+const string = { type: 'string' };
+const nonempty = { type: 'string', minLength: 1, maxLength: 1000 };
+const tagArray = { type: 'array', items: nonempty, maxItems: 256 };
+const tagSchema = schema({ en: nonempty, zh: string, aliases: { type: 'array', items: string, maxItems: 64 }, category: string, subcategory: string, nsfw: { type: 'boolean' }, confidence: { type: 'number' } }, ['en']);
+const imageSchema = schema({ imageId: nonempty, refId: string, slotNo: { type: 'integer', minimum: 0 }, displayTitle: string, source: string, messageId: string, pending: { type: 'boolean' }, sent: { type: 'boolean' }, final: { type: 'boolean' }, width: { type: 'number', minimum: 0 }, height: { type: 'number', minimum: 0 }, hasBuiltinTags: { type: 'boolean' } }, ['imageId']);
+const workflowSchema = schema({ ready: { type: 'boolean' }, error: string }, ['ready', 'error']);
+const statusSchema = schema({ enabled: { type: 'boolean' }, connected: { type: 'boolean' }, workflowReady: { type: 'boolean' }, render: { type: 'boolean' }, error: string }, ['enabled', 'connected', 'workflowReady', 'render', 'error']);
+const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty } }, ['artifacts', 'imageIds']);
 const DEFINITIONS = Object.freeze({
-  'tags.search': { description: '查询标签库，返回公开的标签匹配结果。', parameters: schema({ query: { type: 'string' }, category: { type: 'string' }, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['query']) },
-  'conversation.listImages': { description: '读取当前会话关联的图片引用和元数据。', parameters: schema({ includePending: { type: 'boolean' }, includeDeleted: { type: 'boolean' } }) },
-  'vision.processOne': { description: '对当前会话中的一张图片执行统一识图。', parameters: schema({ imageId: { type: 'string' }, mode: { type: 'string', enum: ['metadata', 'local', 'ai'] }, model: { type: 'string' }, instruction: { type: 'string' } }, ['imageId', 'mode']) },
-  'translation.translate': { description: '调用固定翻译子代理翻译文本。', parameters: schema({ text: { type: 'string' }, direction: { type: 'string', enum: ['auto', 'zh-en', 'en-zh'] }, includeAdult: { type: 'boolean' } }, ['text']) },
-  'agent.generateTags': { description: '调用固定文生图 Tag 子代理生成正向 Tag。', parameters: schema({ requirements: { type: 'string' }, description: { type: 'string' }, imageId: { type: 'string' }, positiveTags: { type: 'array', items: { type: 'string' } }, referenceTags: { type: 'array', items: { type: 'string' } }, generateNegativeTags: { type: 'boolean' } }, ['requirements']) },
-  'comfy.status': { description: '读取 ComfyUI 当前连接和工作流状态。', parameters: schema({}) },
-  'comfy.validateWorkflow': { description: '检查当前 ComfyUI API 工作流是否有效。', parameters: schema({}) },
-  'comfy.render': { description: '使用用户当前 ComfyUI 设置按 Tag 出图。绘图参数由设置提供。', parameters: schema({ positiveTags: { type: 'array', items: { type: 'string' } }, negativeTags: { type: 'array', items: { type: 'string' } } }, ['positiveTags']) }
+  'tags.search': { description: '查询标签库，返回标签及释义。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, category: string, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 200, items: tagSchema } }, ['items']) },
+  'conversation.listImages': { description: '读取当前会话的真实 imageId、显示编号和图片元数据。', parameters: schema({ includePending: { type: 'boolean' }, includeDeleted: { type: 'boolean' } }), outputSchema: schema({ items: { type: 'array', items: imageSchema }, pendingIds: { type: 'array', items: string } }, ['items', 'pendingIds']) },
+  'vision.processOne': { description: '对当前会话中的单个 imageId 进行 metadata/local/ai 识图。', parameters: SCHEMAS.vision, outputSchema: OUTPUT_SCHEMAS?.vision },
+  'translation.translate': { description: '固定翻译子代理；source 为 ai 或 local。', parameters: SCHEMAS.translation, outputSchema: OUTPUT_SCHEMAS?.translation },
+  'agent.generateTags': { description: '使用 Vision AI，根据要求、已有 Tag、参考 Tag 和可选 imageId 生成英文绘图 Tag。', parameters: SCHEMAS.generateTags, outputSchema: OUTPUT_SCHEMAS?.generateTags },
+  'comfy.status': { description: '读取 ComfyUI 连接、启用和工作流状态。', parameters: schema({}), outputSchema: statusSchema },
+  'comfy.validateWorkflow': { description: '检查用户当前 API 工作流是否可用。', parameters: schema({}), outputSchema: workflowSchema },
+  'comfy.render': { description: '按正向 Tag 和可选负向 Tag 出图；宽高、Steps、CFG、Seed、Sampler、Scheduler、batchCount 由用户设置决定。', parameters: schema({ positiveTags: { ...tagArray, minItems: 1 }, negativeTags: tagArray }, ['positiveTags']), outputSchema: renderSchema }
 });
 
+function failure(code, message) { return Object.assign(new Error(message), { code }); }
+function check(schemaValue, value, code) { try { return assertValid(schemaValue || {}, value); } catch (error) { error.code = code; throw error; } }
+function unwrap(value) { if (value?.ok === false) throw errorShape(value); return value?.ok === true && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value; }
+function publicTag(row) {
+  const value = object(row?.tag) ? row.tag : row;
+  const item = { en: text(value?.en || value?.tag || value?.name || (typeof value === 'string' ? value : '')) };
+  for (const key of ['zh', 'category', 'subcategory']) if (typeof value?.[key] === 'string') item[key] = value[key];
+  if (Array.isArray(value?.aliases)) item.aliases = value.aliases.filter(v => typeof v === 'string').slice(0, 64);
+  if (typeof value?.nsfw === 'boolean') item.nsfw = value.nsfw;
+  if (typeof value?.confidence === 'number' && Number.isFinite(value.confidence)) item.confidence = value.confidence;
+  return item;
+}
+function publicImage(value) {
+  const result = { imageId: text(value?.imageId || value?.id) };
+  for (const key of ['refId', 'displayTitle', 'source', 'messageId']) if (typeof value?.[key] === 'string') result[key] = value[key];
+  for (const key of ['slotNo', 'width', 'height']) if (Number.isFinite(value?.[key])) result[key] = value[key];
+  for (const key of ['pending', 'sent', 'final', 'hasBuiltinTags']) if (typeof value?.[key] === 'boolean') result[key] = value[key];
+  return result;
+}
+
 function createPrimaryTools(options = {}) {
-  const tags = options.tags || null;
-  const imageRepository = options.imageRepository || options.imagesRepository || null;
-  const runtime = options.runtime || null;
-  const comfy = options.comfy || null;
   const getSettings = typeof options.getSettings === 'function' ? options.getSettings : () => ({});
-
-  const callSubagent = (name, args, context) => {
-    if (!runtime || typeof runtime.runSubAgent !== 'function') return { ok: false, error: { code: 'SUBAGENT_UNAVAILABLE', message: `${name} 子代理不可用` } };
-    return runtime.runSubAgent(name, { input: clone(args), signal: context?.signal, requestId: context?.requestId, timeoutMs: context?.timeoutMs });
-  };
-
+  const getRuntime = typeof options.runtime === 'function' ? options.runtime : () => options.runtime;
+  const repository = options.imageRepository || options.imagesRepository;
+  const images = options.images;
+  const comfy = options.comfy;
+  function currentComfy() { return getSettings()?.comfy || {}; }
+  function guardSignal(context) { if (context.signal?.aborted) throw context.signal.reason || failure('CANCELLED', '请求已取消'); }
+  function syncComfy(settings) { if (settings.base && typeof comfy?.setBase === 'function') comfy.setBase(settings.base); }
+  async function subagent(name, args, context) {
+    const runtime = getRuntime(); if (typeof runtime?.runSubAgent !== 'function') throw failure('SUBAGENT_UNAVAILABLE', '子代理运行器不可用');
+    return runtime.runSubAgent(name, { input: args, parentRequestId: context.requestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: context.onEvent });
+  }
+  async function renderedImages(raw, context) {
+    const value = unwrap(raw);
+    let rows = Array.isArray(value) ? value.slice() : Array.isArray(value?.artifacts) ? value.artifacts.slice() : Array.isArray(value?.images) ? value.images.slice() : value?.artifact ? [value.artifact] : value ? [value] : [];
+    const promptId = text(value?.promptId || rows[0]?.promptId);
+    if (promptId && typeof comfy.result === 'function' && typeof comfy.fetchImage === 'function') {
+      const result = await comfy.result(promptId, { signal: context.signal }); guardSignal(context);
+      if (result?.status === 'error') throw failure('COMFY_FAILED', text(result.error) || 'ComfyUI 出图失败');
+      const known = new Set(rows.filter(item => item?.dataUrl || item?.bytes).map(item => [item.filename, item.subfolder || '', item.type || 'output'].join('|')));
+      for (const output of result?.outputs || []) for (const file of output.files || []) {
+        const key = [file.filename, file.subfolder || '', file.type || 'output'].join('|');
+        if (known.has(key)) continue;
+        known.add(key); rows.push(await comfy.fetchImage(file, context.signal)); guardSignal(context);
+      }
+    }
+    rows = rows.filter(item => item && (item.dataUrl || item.bytes || item.imageId || item.id));
+    if (!rows.length) throw failure('OUTPUT_INVALID', 'ComfyUI 未返回图片');
+    if (typeof images?.add !== 'function' || typeof repository?.attachToConversation !== 'function') throw failure('IMAGE_STORE_UNAVAILABLE', '图片仓库不可用');
+    const artifacts = [];
+    for (const row of rows) {
+      guardSignal(context);
+      const known = text(row.imageId || row.id); let stored = known && images.get?.(known);
+      if (!stored) stored = await images.add({ ...row, source: 'comfy' }, { source: 'comfy' });
+      guardSignal(context);
+      const imageId = text(stored?.imageId || stored?.id); if (!imageId) throw failure('OUTPUT_INVALID', '无法登记 ComfyUI 图片');
+      const reference = await repository.attachToConversation(context.sessionId, imageId, { source: 'comfy', messageId: context.messageId, pending: false, sent: true });
+      if (!reference) throw failure('IMAGE_ATTACH_FAILED', '无法将图片关联到当前会话');
+      const artifact = publicImage({ ...stored, ...reference, imageId });
+      if (!artifacts.some(item => item.imageId === imageId)) artifacts.push(artifact);
+    }
+    return { artifacts, imageIds: artifacts.map(item => item.imageId) };
+  }
   const handlers = {
-    'tags.search': async (args = {}) => {
-      if (!tags || typeof tags.search !== 'function') throw Object.assign(new Error('Tag 模块不可用'), { code: 'TOOL_UNAVAILABLE' });
-      return { items: tags.search(text(args.query), { category: text(args.category), includeAdult: args.includeAdult === true, limit: Math.min(200, Math.max(1, Number(args.limit) || 50)) }) };
+    'tags.search': async args => {
+      if (typeof options.tags?.search !== 'function') throw failure('TOOL_UNAVAILABLE', 'Tag 模块不可用');
+      const rows = await options.tags.search(args.query, { category: args.category, includeAdult: args.includeAdult === true, limit: args.limit || 50 });
+      if (!Array.isArray(rows)) throw failure('OUTPUT_INVALID', '标签查询返回格式无效');
+      return { items: rows.slice(0, args.limit || 50).map(publicTag) };
     },
-    'conversation.listImages': async (args = {}, context = {}) => {
-      const sessionId = text(context.sessionId);
-      if (!sessionId) throw Object.assign(new Error('当前会话不可用'), { code: 'SESSION_REQUIRED' });
-      if (!imageRepository || typeof imageRepository.listConversation !== 'function') throw Object.assign(new Error('图片仓库不可用'), { code: 'TOOL_UNAVAILABLE' });
-      return imageRepository.listConversation(sessionId, { includePending: args.includePending !== false, includeDeleted: args.includeDeleted === true });
+    'conversation.listImages': async (args, context) => {
+      if (!context.sessionId) throw failure('SESSION_REQUIRED', '当前会话不可用');
+      if (typeof repository?.listConversation !== 'function') throw failure('TOOL_UNAVAILABLE', '图片仓库不可用');
+      const value = await repository.listConversation(context.sessionId, { includePending: args.includePending !== false, includeDeleted: args.includeDeleted === true });
+      if (!Array.isArray(value?.items)) throw failure('OUTPUT_INVALID', '会话图片返回格式无效');
+      return { items: value.items.map(publicImage), pendingIds: Array.isArray(value.pendingIds) ? value.pendingIds.filter(id => typeof id === 'string') : [] };
     },
-    'vision.processOne': (args, context = {}) => callSubagent('vision', args, context),
-    'translation.translate': (args, context = {}) => callSubagent('translation', args, context),
-    'agent.generateTags': (args, context = {}) => callSubagent('generateTags', args, context),
-    'comfy.status': async (_args = {}, context = {}) => {
-      if (!comfy || typeof comfy.status !== 'function') throw Object.assign(new Error('ComfyUI 连接器不可用'), { code: 'TOOL_UNAVAILABLE' });
-      const settings = settingsGroup(getSettings(), 'comfy');
-      return comfy.status({ enabled: settings.enabled !== false && settings.comfyOn !== false, workflow: settings.workflow || settings.comfyWorkflow, signal: context.signal });
+    'vision.processOne': (args, context) => subagent('vision', args, context),
+    'translation.translate': (args, context) => subagent('translation', args, context),
+    'agent.generateTags': (args, context) => subagent('generateTags', args, context),
+    'comfy.status': async (_args, context) => {
+      if (typeof comfy?.status !== 'function') throw failure('TOOL_UNAVAILABLE', 'ComfyUI 连接器不可用');
+      const settings = currentComfy(); syncComfy(settings);
+      const value = unwrap(await comfy.status({ enabled: settings.enabled === true, workflow: settings.workflow, signal: context.signal }));
+      return { enabled: settings.enabled === true, connected: value?.connected === true, workflowReady: value?.workflowReady === true, render: value?.render === true, error: text(value?.error) };
     },
-    'comfy.validateWorkflow': async () => {
-      const settings = settingsGroup(getSettings(), 'comfy');
-      const workflow = settings.workflow || settings.comfyWorkflow || comfy?.workflow;
-      if (typeof comfy?.workflowStatus === 'function') return comfy.workflowStatus(workflow);
-      if (typeof comfy?.validateWorkflow === 'function') return comfy.validateWorkflow(workflow);
-      return { ready: Boolean(workflow), error: workflow ? '' : '尚未设置 ComfyUI 工作流' };
+    'comfy.validateWorkflow': async (_args, context) => {
+      const settings = currentComfy(); const method = comfy?.workflowStatus || comfy?.validateWorkflow;
+      if (typeof method !== 'function') throw failure('TOOL_UNAVAILABLE', 'ComfyUI 工作流检查不可用');
+      guardSignal(context); const value = unwrap(await method.call(comfy, settings.workflow));
+      if (typeof value?.ready !== 'boolean') throw failure('OUTPUT_INVALID', '工作流检查返回格式无效');
+      return { ready: value.ready, error: text(value.error) };
     },
-    'comfy.render': async (args = {}, context = {}) => {
-      if (!comfy || typeof comfy.render !== 'function') throw Object.assign(new Error('ComfyUI 连接器不可用'), { code: 'TOOL_UNAVAILABLE' });
-      const settings = settingsGroup(getSettings(), 'comfy');
-      const positive = positiveTags(args);
-      if (!positive || (Array.isArray(positive) && !positive.length)) throw Object.assign(new Error('至少需要一个正向 Tag'), { code: 'INVALID_INPUT' });
-      const negative = negativeTags(args);
-      const result = await comfy.render({
-        prompt: Array.isArray(positive) ? positive.join(', ') : positive,
-        negative: Array.isArray(negative) ? negative.join(', ') : negative,
-        width: Number(settings.width || settings.comfyW) || 768,
-        height: Number(settings.height || settings.comfyH) || 1024,
-        steps: Number(settings.steps || settings.comfySteps) || 25,
-        cfg: Number(settings.cfg ?? settings.comfyCfg) || 7,
-        seed: settings.seed == null ? undefined : Number(settings.seed),
-        sampler: text(settings.sampler || settings.comfySampler),
-        scheduler: text(settings.scheduler || settings.comfyScheduler),
-        batchCount: Math.max(1, Math.min(16, Number(settings.batchCount) || 1)),
-        workflow: settings.workflow || settings.comfyWorkflow,
-        signal: context.signal,
-        onProgress: value => context.onEvent?.({ type: 'progress', tool: 'comfy.render', queue: value })
-      });
-      return { artifact: result?.artifact || result };
+    'comfy.render': async (args, context) => {
+      if (!context.sessionId) throw failure('SESSION_REQUIRED', '当前会话不可用');
+      if (typeof comfy?.render !== 'function') throw failure('TOOL_UNAVAILABLE', 'ComfyUI 连接器不可用');
+      const settings = currentComfy(); if (settings.enabled !== true) throw failure('COMFY_DISABLED', 'ComfyUI 未启用'); syncComfy(settings);
+      const negative = args.negativeTags === undefined ? (Array.isArray(settings.negativeTags) ? settings.negativeTags : text(settings.negativeTags).split(/[,，\n]+/).filter(Boolean)) : args.negativeTags;
+      const raw = await comfy.render({ prompt: args.positiveTags.join(', '), negative: negative.join(', '), width: settings.width, height: settings.height, steps: settings.steps, cfg: settings.cfg, seed: settings.seed, sampler: settings.sampler, scheduler: settings.scheduler, batchCount: settings.batchCount, workflow: settings.workflow, signal: context.signal, onProgress: value => { if (!context.signal?.aborted) context.onEvent?.({ type: 'progress', tool: 'comfy.render', queue: typeof value === 'number' ? value : undefined }); } });
+      guardSignal(context); return renderedImages(raw, context);
     }
   };
-
+  const resolve = value => { const name = NATIVE_NAMES.get(value) || value; return TOOL_NAMES.includes(name) ? { name, ...clone(DEFINITIONS[name]), handler: handlers[name] } : null; };
   const list = () => TOOL_NAMES.map(name => ({ name, ...clone(DEFINITIONS[name]) }));
-  const openAiTools = () => list().map(item => ({ type: 'function', function: { name: item.name, description: item.description, parameters: item.parameters } }));
-  const resolve = name => TOOL_NAMES.includes(name) ? { name, ...DEFINITIONS[name], handler: handlers[name] } : null;
-  const call = async (name, args = {}, context = {}) => {
-    const tool = resolve(name);
-    if (!tool) return { ok: false, error: { code: 'TOOL_UNAVAILABLE', message: `工具不可用：${text(name)}` } };
+  async function call(name, args = {}, context = {}) {
+    const entry = resolve(name); if (!entry) return resultError({ code: 'TOOL_UNAVAILABLE', message: `工具不可用：${name}` }, context.requestId);
     try {
-      const value = await tool.handler(clone(args), context);
-      if (value?.ok === false && value.error) return value;
-      // Runtime subagents already return the standard {ok, data} envelope;
-      // keep one envelope at the public tool boundary instead of nesting it.
-      if (value?.ok === true && Object.prototype.hasOwnProperty.call(value, 'data')) return { ok: true, data: value.data };
-      return { ok: true, data: value };
-    } catch (cause) {
-      return { ok: false, error: { code: cause?.code || 'TOOL_FAILED', message: text(cause?.message, '工具调用失败'), retryable: false } };
-    }
-  };
-  return Object.freeze({ names: () => TOOL_NAMES.slice(), list, schemas: list, openAiTools, resolve, call, has: name => TOOL_NAMES.includes(name) });
+      check(entry.parameters, args, 'INVALID_INPUT'); guardSignal(context);
+      const value = await entry.handler(clone(args), context); const data = unwrap(value); check(entry.outputSchema, data, 'OUTPUT_INVALID');
+      return resultOk(data, value?.requestId || context.requestId, value?.usage);
+    } catch (error) { return resultError(error, context.requestId); }
+  }
+  return Object.freeze({ names: () => TOOL_NAMES.slice(), list, schemas: list, openAiTools: () => list().map(item => ({ type: 'function', function: { name: item.name.replace('.', '_'), description: item.description, parameters: item.parameters } })), resolve, call, has: name => Boolean(resolve(name)) });
 }
 
 module.exports = { TOOL_NAMES, DEFINITIONS, createPrimaryTools };

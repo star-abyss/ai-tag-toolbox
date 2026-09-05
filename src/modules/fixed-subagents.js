@@ -1,228 +1,51 @@
 'use strict';
 
-// Fixed subagents are deliberately small adapters around the existing domain
-// services. They never receive conversation history or a tool registry.
+const { assertValid } = require('./schema');
 
 const SUBAGENT_NAMES = Object.freeze(['vision', 'translation', 'generateTags']);
-
-function text(value, fallback = '') {
-  const result = value == null ? '' : String(value).trim();
-  return result || fallback;
-}
-
-function object(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function list(value) {
-  if (Array.isArray(value)) return value.map(item => text(item)).filter(Boolean);
-  if (value == null || value === '') return [];
-  return String(value).split(/[,，、;；|\n]+/).map(item => text(item)).filter(Boolean);
-}
-
-function clone(value) {
-  if (Array.isArray(value)) return value.map(clone);
-  if (object(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clone(item)]));
-  return value;
-}
-
-function error(code, message) {
-  const result = new Error(message);
-  result.code = code;
-  return result;
-}
-
-function unwrap(result) {
-  if (result && result.ok === true && Object.prototype.hasOwnProperty.call(result, 'data')) return result.data;
-  return result;
-}
-
-function promptFor(prompts, key, fallback) {
-  if (!prompts) return fallback;
-  try {
-    if (typeof prompts.get === 'function') return text(prompts.get(key), fallback);
-    if (typeof prompts.read === 'function') return text(prompts.read(key), fallback);
-    if (typeof prompts.item === 'function') return text(prompts.item(key)?.text, fallback);
-    if (object(prompts) && prompts[key] != null) return text(prompts[key], fallback);
-  } catch { /* a prompt override must not break a subagent */ }
-  return fallback;
-}
-
 const SCHEMAS = Object.freeze({
-  vision: Object.freeze({
-    type: 'object',
-    additionalProperties: false,
-    required: ['imageId', 'mode'],
-    properties: {
-      imageId: { type: 'string', minLength: 1 },
-      mode: { type: 'string', enum: ['metadata', 'local', 'ai'] },
-      model: { type: 'string' },
-      instruction: { type: 'string' },
-      includeLocalTags: { type: 'boolean' },
-      hasBuiltinTags: { type: 'boolean' }
-    }
-  }),
-  translation: Object.freeze({
-    type: 'object',
-    additionalProperties: false,
-    required: ['text'],
-    properties: {
-      text: { type: 'string', minLength: 1, maxLength: 16000 },
-      direction: { type: 'string', enum: ['auto', 'zh-en', 'en-zh'] },
-      includeAdult: { type: 'boolean' }
-    }
-  }),
-  generateTags: Object.freeze({
-    type: 'object',
-    additionalProperties: false,
-    required: ['requirements'],
-    properties: {
-      requirements: { type: 'string', minLength: 1, maxLength: 16000 },
-      description: { type: 'string', maxLength: 16000 },
-      imageId: { type: 'string' },
-      positiveTags: { type: 'array', items: { type: 'string' }, maxItems: 256 },
-      referenceTags: { type: 'array', items: { type: 'string' }, maxItems: 256 },
-      generateNegativeTags: { type: 'boolean' }
-    }
-  })
+  vision: { type: 'object', additionalProperties: false, required: ['imageId', 'mode'], properties: { imageId: { type: 'string', minLength: 1 }, mode: { type: 'string', enum: ['metadata', 'local', 'ai'] }, model: { type: 'string' }, instruction: { type: 'string' }, includeLocalTags: { type: 'boolean' }, hasBuiltinTags: { type: 'boolean' } } },
+  translation: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', minLength: 1, maxLength: 16000 }, direction: { type: 'string', enum: ['auto', 'zh-en', 'en-zh'] }, includeAdult: { type: 'boolean' }, source: { type: 'string', enum: ['ai', 'local'] } } },
+  generateTags: { type: 'object', additionalProperties: false, required: ['requirements'], properties: { requirements: { type: 'string', minLength: 1, maxLength: 16000 }, description: { type: 'string', maxLength: 16000 }, imageId: { type: 'string', minLength: 1 }, positiveTags: { type: 'array', maxItems: 256, items: { type: 'string' } }, referenceTags: { type: 'array', maxItems: 256, items: { type: 'string' } }, generateNegativeTags: { type: 'boolean' } } }
+});
+const OUTPUT_SCHEMAS = Object.freeze({
+  vision: { type: 'object' },
+  translation: { type: 'object', required: ['text'], properties: { text: { type: 'string', minLength: 1 }, direction: { type: 'string' }, source: { type: 'string' } } },
+  generateTags: { type: 'object', required: ['positiveTags'], properties: { positiveTags: { type: 'array', minItems: 1, items: { type: 'string' } }, negativeTags: { type: 'array', items: { type: 'string' } } } }
 });
 
-function validateInput(schema, input) {
-  const value = object(input) ? input : {};
-  for (const key of schema.required || []) if (!text(value[key]) && !(Array.isArray(value[key]) && value[key].length)) {
-    throw error('INVALID_INPUT', `缺少参数：${key}`);
-  }
-  for (const [key, rule] of Object.entries(schema.properties || {})) {
-    if (value[key] == null) continue;
-    if (rule.type === 'string' && typeof value[key] !== 'string') throw error('INVALID_INPUT', `参数 ${key} 必须是文本`);
-    if (rule.type === 'array' && !Array.isArray(value[key])) throw error('INVALID_INPUT', `参数 ${key} 必须是数组`);
-    if (rule.enum && !rule.enum.includes(value[key])) throw error('INVALID_INPUT', `参数 ${key} 的值无效`);
-    if (rule.maxLength && String(value[key]).length > rule.maxLength) throw error('INVALID_INPUT', `参数 ${key} 超过长度限制`);
-  }
-  return value;
-}
-
-function normalizeTag(value) {
-  return text(value).replace(/^(?:[-*]\s+|\d+[.)]\s+)/, '').replace(/^['"`]+|['"`]+$/g, '').trim();
-}
-
-function parseTags(value) {
-  if (Array.isArray(value)) return value.flatMap(item => parseTags(item));
-  if (object(value)) return parseTags(value.positiveTags || value.tags || value.text || value.content || '');
-  if (typeof value === 'string' && /^\s*[{"[]/.test(value)) {
-    try { return parseTags(JSON.parse(value)); } catch { /* parse as delimited text */ }
-  }
-  return String(value || '').split(/[,，、;；|\n]+/).map(normalizeTag).filter(Boolean);
-}
-
-function normalizeGeneratedTags(result, request, allowNegative) {
-  const source = unwrap(result);
-  let payload = source;
-  if (object(source) && Array.isArray(source.choices)) {
-    payload = source.choices[0]?.message?.content ?? source.choices[0]?.text ?? source;
-  }
-  if (typeof payload === 'string') {
-    try { payload = JSON.parse(payload.replace(/^```(?:json)?\s*|\s*```$/gi, '')); } catch { /* parse as a tag list below */ }
-  }
-  payload = object(payload) ? payload : { positiveTags: parseTags(payload) };
-  const positiveTags = [...new Set(parseTags(payload.positiveTags || payload.tags || payload.text))].slice(0, 256);
-  const output = { positiveTags };
-  if (allowNegative) output.negativeTags = [...new Set(parseTags(payload.negativeTags || payload.negative || ''))].slice(0, 256);
-  if (payload.reasoning && typeof payload.reasoning === 'string') output.reasoning = '';
-  return output;
+function text(value, fallback = '') { const result = value == null ? '' : String(value).trim(); return result || fallback; }
+function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function clone(value) { if (value == null || typeof value !== 'object') return value; if (Array.isArray(value)) return value.map(clone); const output = {}; for (const [key, item] of Object.entries(value)) if (typeof item !== 'function' && key !== 'signal') output[key] = clone(item); return output; }
+function unwrap(value) { return value && value.ok === true && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value; }
+function failure(code, message) { const error = new Error(message); error.code = code; return error; }
+function promptFor(prompts, key, fallback) { try { if (typeof prompts === 'function') return text(prompts(key), fallback); if (prompts?.getEffective) return text(prompts.getEffective(key), fallback); if (prompts?.get) return text(prompts.get(key), fallback); if (prompts?.read) return text(prompts.read(key), fallback); if (prompts && prompts[key] != null) return text(prompts[key], fallback); } catch { /* use fallback */ } return fallback; }
+function responseText(value) { if (typeof value === 'string') return value.trim(); if (!value || typeof value !== 'object') return ''; if (value.text != null) return text(value.text); const choice = value.choices?.[0]; const content = choice?.message?.content ?? choice?.text ?? value.output_text; return Array.isArray(content) ? content.map(item => item?.text || item?.content || '').join('') : text(content); }
+function parseList(value) { if (Array.isArray(value)) return value.flatMap(parseList); return String(value == null ? '' : value).split(/[,，、;；|\n]+/).map(item => item.trim().replace(/^(?:[-*]\s+|\d+[.)]\s+)/, '').replace(/^['"`]+|['"`]+$/g, '')).filter(Boolean); }
+function parseTags(value, allowNegative) {
+  let payload = unwrap(value);
+  if (object(payload) && Array.isArray(payload.choices)) return parseTags(responseText(payload), allowNegative);
+  if (object(payload) && payload.positiveTags === undefined && payload.tags === undefined && typeof payload.text === 'string') return parseTags(payload.text, allowNegative);
+  if (typeof payload === 'string') { const source = payload.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, '').trim(); if (!source) throw failure('OUTPUT_INVALID', 'Tag 子代理返回为空'); try { payload = JSON.parse(source); } catch { throw failure('OUTPUT_INVALID', 'Tag 子代理必须返回有效 JSON'); } }
+  if (!object(payload)) throw failure('OUTPUT_INVALID', 'Tag 子代理返回格式无效');
+  const positiveTags = [...new Set(parseList(payload.positiveTags ?? payload.tags))].slice(0, 256); if (!positiveTags.length) throw failure('OUTPUT_INVALID', 'Tag 子代理未返回正向 Tag');
+  const result = { positiveTags }; if (allowNegative && payload.negativeTags !== undefined) result.negativeTags = [...new Set(parseList(payload.negativeTags))].slice(0, 256); return result;
 }
 
 function createFixedSubagents(options = {}) {
-  const visionOption = options.vision || options.visionService || null;
-  const vision = typeof visionOption === 'function' ? { processOne: visionOption } : visionOption;
-  const translationOption = options.translation || null;
-  const translation = typeof translationOption === 'function' ? { translate: translationOption } : translationOption;
-  const aiOption = options.ai || options.visionAI || options.primaryClient || null;
-  const ai = typeof aiOption === 'function' ? { complete: aiOption } : aiOption;
+  const vision = typeof options.vision === 'function' ? { processOne: options.vision } : options.vision || options.visionService || null;
+  const translation = typeof options.translation === 'function' ? { translate: options.translation } : options.translation || null;
+  const primaryAI = typeof options.primaryClient === 'function' ? { complete: options.primaryClient } : options.primaryClient || options.ai || null;
+  const visionAI = typeof options.visionAI === 'function' ? { complete: options.visionAI } : options.visionAI || options.ai || null;
   const prompts = options.prompts || null;
   const getSettings = typeof options.getSettings === 'function' ? options.getSettings : () => ({});
-
-  const visionEntry = {
-    name: 'vision',
-    description: '固定单图识图子代理，不带会话上下文。',
-    systemPrompt: promptFor(prompts, 'vision', '你是单图识图子代理，只根据一张图片输出可见内容和绘图 Tag。'),
-    inputSchema: SCHEMAS.vision,
-    outputSchema: { type: 'object' },
-    timeoutMs: 120000,
-    options: Object.freeze({ stream: false, reasoning_effort: 'none', enable_thinking: false, thinking: { type: 'disabled' } }),
-    async run(input, context = {}) {
-      const request = validateInput(SCHEMAS.vision, input);
-      if (!vision || typeof vision.processOne !== 'function') throw error('SUBAGENT_UNAVAILABLE', 'Vision 子代理不可用');
-      const result = await vision.processOne({ ...clone(request), signal: context.signal, sessionId: undefined, refId: undefined, onDelta: undefined, onEvent: undefined, stream: false });
-      if (result?.ok === false) throw Object.assign(new Error(result.error || '识图失败'), { code: result.code || 'VISION_FAILED' });
-      return unwrap(result);
-    }
-  };
-
-  const translationEntry = {
-    name: 'translation',
-    description: '固定文本翻译子代理，不带会话上下文。',
-    systemPrompt: promptFor(prompts, 'translation', '你是固定翻译子代理，只返回翻译结果和方向。'),
-    inputSchema: SCHEMAS.translation,
-    outputSchema: { type: 'object', required: ['text'] },
-    timeoutMs: 60000,
-    options: Object.freeze({ stream: false, reasoning_effort: 'none', enable_thinking: false, thinking: { type: 'disabled' } }),
-    async run(input, context = {}) {
-      const request = validateInput(SCHEMAS.translation, input);
-      if (!translation && !(ai && typeof ai.complete === 'function')) throw error('SUBAGENT_UNAVAILABLE', '翻译子代理不可用');
-      if (!translation && ai && typeof ai.complete === 'function') {
-        const prompt = `${translationEntry.systemPrompt}\n方向：${request.direction || 'auto'}\n文本：${request.text}`;
-        const direct = await ai.complete([{ role: 'system', content: translationEntry.systemPrompt }, { role: 'user', content: prompt }], { ...translationEntry.options, signal: context.signal });
-        if (direct?.ok === false) throw Object.assign(new Error(direct.error || '翻译失败'), { code: direct.code || 'TRANSLATION_FAILED' });
-        const output = unwrap(direct) || {};
-        return { text: text(output.text || output.translation || direct.text), direction: text(output.direction, request.direction || 'auto'), references: [], source: 'ai' };
-      }
-      const extra = { signal: context.signal, includeAdult: request.includeAdult === true, ...translationEntry.options };
-      const method = typeof translation.translateWithAI === 'function' && (translation.ai || ai)
-        ? translation.translateWithAI
-        : typeof translation.translateWithModel === 'function'
-          ? translation.translateWithModel
-          : translation.translate || translation.run;
-      if (typeof method !== 'function') throw error('SUBAGENT_UNAVAILABLE', '翻译接口不可用');
-      const result = await method.call(translation, request.text, request.direction, extra);
-      if (result?.ok === false) throw Object.assign(new Error(result.error || '翻译失败'), { code: result.code || 'TRANSLATION_FAILED' });
-      const output = unwrap(result) || {};
-      return { text: text(output.text, text(output.translation, '')), direction: text(output.direction, request.direction || 'auto'), references: Array.isArray(output.references) ? clone(output.references) : [], source: text(output.source, 'model') };
-    }
-  };
-
-  const generateTagsEntry = {
-    name: 'generateTags',
-    description: '固定文生图 Tag 子代理，只返回结构化正向 Tag。',
-    systemPrompt: promptFor(prompts, 'generateTags', '你是文生图 Tag 子代理。根据要求生成精炼、可直接用于绘图的英文正向 Tag。只返回 JSON：{"positiveTags": string[], "negativeTags"?: string[]}。'),
-    inputSchema: SCHEMAS.generateTags,
-    outputSchema: { type: 'object', required: ['positiveTags'], properties: { positiveTags: { type: 'array', items: { type: 'string' } }, negativeTags: { type: 'array', items: { type: 'string' } } } },
-    timeoutMs: 120000,
-    options: Object.freeze({ stream: false, reasoning_effort: 'none', enable_thinking: false, thinking: { type: 'disabled' } }),
-    async run(input, context = {}) {
-      const request = validateInput(SCHEMAS.generateTags, input);
-      const settings = getSettings() || {};
-      const allowNegative = request.generateNegativeTags === true || settings.generateNegativeTags === true || settings.limits?.generateNegativeTags === true;
-      const prompt = [generateTagsEntry.systemPrompt, `要求：${request.requirements}`, request.description ? `图片描述：${request.description}` : '', request.positiveTags?.length ? `已有正向 Tag：${request.positiveTags.join(', ')}` : '', request.referenceTags?.length ? `参考 Tag：${request.referenceTags.join(', ')}` : '', allowNegative ? '可额外返回 negativeTags。' : '不要返回 negativeTags。'].filter(Boolean).join('\n');
-      let result;
-      if (ai && typeof ai.complete === 'function') {
-        result = await ai.complete([{ role: 'system', content: generateTagsEntry.systemPrompt }, { role: 'user', content: prompt }], { ...generateTagsEntry.options, signal: context.signal });
-      } else if (ai && typeof ai.generateTags === 'function') {
-        result = await ai.generateTags({ ...request, prompt, signal: context.signal, ...generateTagsEntry.options });
-      } else {
-        // A deterministic fallback keeps the tool useful when no model is configured.
-        result = { positiveTags: [...list(request.positiveTags), ...list(request.referenceTags), ...parseTags(request.requirements)].slice(0, 256) };
-      }
-      if (result?.ok === false) throw Object.assign(new Error(result.error || 'Tag 生成失败'), { code: result.code || 'GENERATE_TAGS_FAILED' });
-      let payload = unwrap(result);
-      if (typeof payload === 'string') {
-        try { payload = JSON.parse(payload.replace(/^```(?:json)?\s*|\s*```$/gi, '')); } catch { /* parse as a tag list below */ }
-      }
-      return normalizeGeneratedTags(payload, request, allowNegative);
-    }
-  };
-
-  return Object.freeze({ vision: visionEntry, translation: translationEntry, generateTags: generateTagsEntry, names: () => SUBAGENT_NAMES.slice(), resolve: name => Object.prototype.hasOwnProperty.call({ vision: visionEntry, translation: translationEntry, generateTags: generateTagsEntry }, name) ? ({ vision: visionEntry, translation: translationEntry, generateTags: generateTagsEntry })[name] : null });
+  const resolveImage = typeof options.resolveImage === 'function' ? options.resolveImage : null;
+  const noThinking = Object.freeze({ stream: false, reasoning_effort: 'none', enable_thinking: false, thinking: { type: 'disabled' } });
+  const entries = {};
+  entries.vision = { name: 'vision', description: '固定单图识图子代理，不带会话上下文。', getSystemPrompt: () => promptFor(prompts, 'vision', '你是单图识图子代理，只根据一张图片输出可见内容和绘图 Tag。'), systemPrompt: promptFor(prompts, 'vision', '你是单图识图子代理，只根据一张图片输出可见内容和绘图 Tag。'), inputSchema: SCHEMAS.vision, outputSchema: { type: 'object' }, timeoutMs: 120000, options: noThinking, async run(input, context = {}) { assertValid(SCHEMAS.vision, input); if (!vision?.processOne) throw failure('SUBAGENT_UNAVAILABLE', 'Vision 子代理不可用'); const result = await vision.processOne({ ...clone(input), signal: context.signal, sessionId: context.sessionId, onDelta: undefined, onEvent: undefined, stream: false }); if (result?.ok === false) throw failure(result.code || 'VISION_FAILED', result.error || '识图失败'); return unwrap(result); } };
+  entries.translation = { name: 'translation', description: '固定文本翻译子代理，不带会话上下文。', getSystemPrompt: () => promptFor(prompts, 'translation', '你是固定翻译子代理，只返回翻译结果和方向。'), systemPrompt: promptFor(prompts, 'translation', '你是固定翻译子代理，只返回翻译结果和方向。'), inputSchema: SCHEMAS.translation, outputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' }, direction: { type: 'string' }, source: { type: 'string' } } }, timeoutMs: 60000, options: noThinking, async run(input, context = {}) { assertValid(SCHEMAS.translation, input); const system = promptFor(prompts, 'translation', '你是固定翻译子代理，只返回翻译结果和方向。'); const local = input.source === 'local' || (!input.source && Boolean(translation?.translateLocal || translation?.translateWithModel || translation?.translate)); let result; let source; if (local && translation) { const method = translation.translateLocal || translation.translateWithModel || translation.translate || translation.run; if (typeof method === 'function') { result = await method.call(translation, input.text, input.direction, { signal: context.signal, includeAdult: input.includeAdult === true, ...noThinking }); source = 'local'; } } if (result == null) { if (!primaryAI?.complete) throw failure('SUBAGENT_UNAVAILABLE', '翻译 AI 不可用'); result = await primaryAI.complete([{ role: 'system', content: system }, { role: 'user', content: input.text }], { ...noThinking, signal: context.signal, onDelta: (delta, reasoning) => context.onEvent?.({ type: 'delta', text: typeof delta === 'string' ? delta : '', reasoning: typeof reasoning === 'string' ? reasoning : '' }) }); source = 'ai'; } if (result?.ok === false) throw failure(result.code || 'TRANSLATION_FAILED', result.error || '翻译失败'); const value = unwrap(result); const translated = text(value?.text || value?.translation || responseText(value)); if (!translated) throw failure('OUTPUT_INVALID', '翻译子代理返回为空'); return { text: translated, direction: text(value?.direction, input.direction || 'auto'), source, references: Array.isArray(value?.references) ? clone(value.references).map(item => ({ en: text(item?.en), zh: text(item?.zh || item?.zhPrimary), category: text(item?.category) })) : [] }; } };
+  entries.generateTags = { name: 'generateTags', description: '固定文生图 Tag 子代理，只返回结构化正向 Tag。', getSystemPrompt: () => promptFor(prompts, 'generateTags', '你是文生图 Tag 子代理。只返回 JSON。'), systemPrompt: promptFor(prompts, 'generateTags', '你是文生图 Tag 子代理。只返回 JSON。'), inputSchema: SCHEMAS.generateTags, outputSchema: { type: 'object', required: ['positiveTags'], properties: { positiveTags: { type: 'array' }, negativeTags: { type: 'array' } } }, timeoutMs: 120000, options: noThinking, async run(input, context = {}) { assertValid(SCHEMAS.generateTags, input); const settings = getSettings() || {}; const allowNegative = settings.generateNegativeTags === true && input.generateNegativeTags === true; const system = promptFor(prompts, 'generateTags', '你是文生图 Tag 子代理。只返回 JSON。'); const content = [{ type: 'text', text: ['要求：' + input.requirements, input.description ? '图片描述：' + input.description : '', input.positiveTags?.length ? '已有正向 Tag：' + input.positiveTags.join(', ') : '', input.referenceTags?.length ? '参考 Tag：' + input.referenceTags.join(', ') : '', allowNegative ? '可返回 negativeTags。' : '不要返回 negativeTags。'].filter(Boolean).join('\n') }]; if (input.imageId) { if (!resolveImage) throw failure('IMAGE_RESOLVER_UNAVAILABLE', '未配置受控图片解析器'); const image = await resolveImage(input.imageId, context); if (!image) throw failure('IMAGE_NOT_FOUND', '未找到图片：' + input.imageId); const url = text(image.dataUrl || image.url || image.src || image.previewUrl || image.viewUrl); if (!url) throw failure('IMAGE_DATA_UNAVAILABLE', '无法读取图片：' + input.imageId); content.push({ type: 'image_url', image_url: { url } }); } if (!visionAI?.complete) throw failure('SUBAGENT_UNAVAILABLE', 'Vision AI 不可用'); const result = await visionAI.complete([{ role: 'system', content: system }, { role: 'user', content }], { ...noThinking, signal: context.signal }); if (result?.ok === false) throw failure(result.code || 'GENERATE_TAGS_FAILED', result.error || 'Tag 生成失败'); return parseTags(result, allowNegative); } };
+  return Object.freeze({ ...entries, names: () => SUBAGENT_NAMES.slice(), resolve: name => entries[name] || null, list: () => SUBAGENT_NAMES.map(name => entries[name]) });
 }
 
-module.exports = { SUBAGENT_NAMES, SCHEMAS, createFixedSubagents };
+module.exports = { SUBAGENT_NAMES, SCHEMAS, OUTPUT_SCHEMAS, createFixedSubagents };

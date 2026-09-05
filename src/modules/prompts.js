@@ -12,52 +12,30 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const PROMPT_FILES = Object.freeze({
-  main: '01-内部主提示词-MAIN_PROMPT.txt',
-  generate: '02-生成Tag任务-GEN_TASK.txt',
-  chat: '03-自由对话任务-CHAT_TASK.txt',
+  primary: '10-主AI固定提示词-PRIMARY_AGENT.txt',
   vision: '04-识图描述提示词-DEFAULT_VISION_PROMPT.txt',
-  comfy: '05-ComfyUI提示词协议.txt',
-  quality: '06-默认质量前缀-DEFAULT_QP.txt',
-  appendices: '07-默认附录提示词.txt',
   translation: '08-固定翻译子代理-TRANSLATION_AGENT.txt',
   generateTags: '09-固定生成Tag子代理-GENERATE_TAGS_AGENT.txt'
 });
 
 const PROMPT_ALIASES = Object.freeze({
-  system: 'main',
-  mainPrompt: 'main',
-  gen: 'generate',
-  generation: 'generate',
-  task: 'generate',
-  freeChat: 'chat',
+  system: 'primary',
+  main: 'primary',
+  mainPrompt: 'primary',
+  gen: 'generateTags',
+  generate: 'generateTags',
+  generation: 'generateTags',
+  task: 'generateTags',
   defaultVision: 'vision',
   image: 'vision',
-  comfyui: 'comfy',
-  qualityPrefix: 'quality',
-  defaultQuality: 'quality',
-  appendix: 'appendices'
+  generateTagsPrompt: 'generateTags'
 });
 
 const PROMPT_META = Object.freeze({
-  main: { label: '内部主提示词', kind: 'system', role: 'system', mode: 'all', editable: true, editableOverride: true, deletable: false },
-  generate: { label: '生成 Tag 任务', kind: 'task', role: 'system', mode: 'generate', editable: false, editableOverride: false, deletable: false },
-  chat: { label: '自由对话任务', kind: 'task', role: 'system', mode: 'chat', editable: false, editableOverride: false, deletable: false },
-  vision: { label: '识图描述提示词', kind: 'task', role: 'system', mode: 'vision', editable: true, editableOverride: true, deletable: false },
-  comfy: { label: 'ComfyUI 提示词协议', kind: 'protocol', role: 'system', mode: 'comfy', editable: false, editableOverride: false, deletable: false },
-  quality: { label: '默认质量前缀', kind: 'prefix', role: 'system', mode: 'generate', editable: true, editableOverride: true, deletable: false },
-  appendices: { label: '默认附录提示词', kind: 'appendix-set', role: 'system', mode: 'optional', editable: false, editableOverride: false, deletable: false },
+  primary: { label: '主 AI 固定提示词', kind: 'fixed-agent', role: 'system', editable: true, editableOverride: true, deletable: false },
+  vision: { label: '识图子代理提示词', kind: 'fixed-subagent', role: 'system', editable: true, editableOverride: true, deletable: false },
   translation: { label: '翻译子代理提示词', kind: 'fixed-subagent', role: 'system', editable: true, editableOverride: true, deletable: false },
   generateTags: { label: '文生图 Tag 子代理提示词', kind: 'fixed-subagent', role: 'system', editable: true, editableOverride: true, deletable: false }
-});
-
-const MODE_KEYS = Object.freeze({
-  generate: ['main', 'generate', 'quality'],
-  gen: ['main', 'generate', 'quality'],
-  chat: ['main', 'chat'],
-  vision: ['vision'],
-  recreate: ['main', 'vision', 'quality'],
-  comfy: ['main', 'comfy', 'quality'],
-  comfyIteration: ['main', 'comfy', 'quality']
 });
 
 function text(value, fallback = '') {
@@ -280,26 +258,7 @@ function createPrompts(options = {}) {
     return parseAppendices(get('appendices'));
   }
 
-  function compose(modeOrParts = 'generate', composeOptions = {}) {
-    let parts;
-    if (Array.isArray(modeOrParts)) parts = modeOrParts;
-    else if (modeOrParts && typeof modeOrParts === 'object') {
-      composeOptions = modeOrParts;
-      parts = composeOptions.parts || MODE_KEYS[composeOptions.mode || 'generate'];
-    } else {
-      parts = MODE_KEYS[modeOrParts] || [modeOrParts];
-    }
-    const output = normalisePartList(parts).map(part => get(part)).filter(Boolean);
-    const selected = composeOptions.appendices || composeOptions.appendix;
-    if (selected != null) {
-      const all = appendices();
-      const wanted = selected === true ? all : normalisePartList(selected);
-      const chosen = all.filter(item => wanted === all || wanted.some(value => String(value) === String(item.index) || value === item.id));
-      output.push(...chosen.map(item => item.text).filter(Boolean));
-    }
-    if (composeOptions.extra) output.push(text(composeOptions.extra));
-    return output.filter(Boolean).join('\n\n');
-  }
+
 
   const api = {
     dir,
@@ -324,7 +283,6 @@ function createPrompts(options = {}) {
     meta,
     metadata: meta,
     appendices,
-    compose,
     snapshot: () => ({ values: Object.fromEntries(keys().map(key => [key, get(key)])), defaults: clone(defaults), state: clone(state), metadata: Object.fromEntries(keys().map(key => [key, meta(key)])), appendices: appendices() })
   };
 
@@ -336,7 +294,6 @@ module.exports = {
   PROMPT_FILES,
   PROMPT_ALIASES,
   PROMPT_META,
-  MODE_KEYS,
   parseAppendices,
   createPrompts
 };

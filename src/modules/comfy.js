@@ -220,7 +220,8 @@ function workflowParams(params = {}) {
     cfg: hasOwn(params, 'cfg') ? params.cfg : undefined,
     sampler: hasOwn(params, 'sampler') ? params.sampler : undefined,
     scheduler: hasOwn(params, 'scheduler') ? params.scheduler : undefined,
-    ckpt: hasOwn(params, 'ckpt') ? params.ckpt : hasOwn(params, 'model') ? params.model : undefined
+    ckpt: hasOwn(params, 'ckpt') ? params.ckpt : hasOwn(params, 'model') ? params.model : undefined,
+    batchCount: hasOwn(params, 'batchCount') ? params.batchCount : hasOwn(params, 'batch_size') ? params.batch_size : undefined
   };
 }
 
@@ -318,6 +319,18 @@ function applyWorkflowOverrides(workflow, params = {}) {
       if (!binding) throw new Error('ComfyUI 工作流无法覆盖高度：未找到与采样器连接的 latent height 输入');
       setBinding(binding, numericOverride(values.height, 'height'));
       changed.push('height');
+    }
+  }
+
+  if (provided(values.batchCount)) {
+    const latentId = linkedNodeId(inputs.latent_image) || linkedNodeId(inputs.latent) || linkedNodeId(inputs.samples);
+    const latent = latentId == null ? null : workflow?.[latentId];
+    const batch = latent?.inputs && Object.prototype.hasOwnProperty.call(latent.inputs, 'batch_size') ? latent.inputs.batch_size : undefined;
+    if (latent && batch !== undefined) {
+      latent.inputs.batch_size = numericOverride(values.batchCount, 'batchCount');
+      changed.push('batchCount');
+    } else {
+      throw new Error('ComfyUI 工作流无法覆盖批量数量：未找到与采样器连接的 latent batch_size 输入');
     }
   }
 

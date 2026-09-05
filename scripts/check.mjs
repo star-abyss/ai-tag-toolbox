@@ -12,9 +12,9 @@ function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function ok(value, message) { assert.equal(Boolean(value), true, message); }
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-assert.equal(packageJson.version, '1.4.193', 'package version must be 1.4.193');
-assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.193/);
-assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.193/);
+assert.equal(packageJson.version, '1.4.194', 'package version must be 1.4.194');
+assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.194/);
+assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.194/);
 
 for (const name of ['createAgentRuntime', 'createRequestManager', 'createStatusManager', 'createFixedSubagents', 'createPrimaryTools']) {
   assert.equal(typeof modules[name], 'function', `${name} export missing`);
@@ -98,7 +98,8 @@ ok(!Object.prototype.hasOwnProperty.call(tagsResult.data, 'negativeTags'), 'nega
 const comfyCalls = [];
 const primaryTools = modules.createPrimaryTools({
   tags: { search: query => [{ en: query }] },
-  imageRepository: { listConversation: () => ({ items: [] }) },
+  imageRepository: { listConversation: () => ({ items: [] }), attachToConversation: async (_sessionId, imageId) => ({ refId: `ref-${imageId}`, imageId }) },
+  images: { get: () => null, add: async value => ({ id: value.id || 'render-1', ...value }) },
   runtime: subRuntime,
   comfy: {
     status: async args => ({ connected: true, args }),
@@ -123,11 +124,12 @@ const appView = fs.readFileSync(path.join(root, 'src', 'app-view.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8');
 const assistantSource = fs.readFileSync(path.join(root, 'src', 'modules', 'assistant.js'), 'utf8');
 const runtimeSource = fs.readFileSync(path.join(root, 'src', 'modules', 'agent-runtime.js'), 'utf8');
+const limiterSource = fs.readFileSync(path.join(root, 'src', 'modules', 'usage-limiter.js'), 'utf8');
 assert.doesNotMatch(html, /data-mode="draw"/);
 assert.doesNotMatch(appView, /input\.mode\s*=|input\.task\s*=/);
 assert.match(assistantSource, /run:\s*runPrimaryWithRuntime/);
 assert.doesNotMatch(assistantSource, /createAiRunner|runner\.run/);
-assert.match(runtimeSource, /COMFY_CALL_LIMIT/);
+assert.match(limiterSource, /COMFY_CALL_LIMIT/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /createCallServer|migrateLegacyData|agentWriteEnabled/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), /migrateLegacyUserData|config-migration/);
 

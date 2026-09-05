@@ -10,6 +10,7 @@ function clone(value) {
 
 function createStatusManager(options = {}) {
   const statuses = new Map();
+  const maxRecords = Math.max(1, Number(options.maxRecords) || 256);
   const listeners = new Set();
   if (typeof options.onStatus === 'function') listeners.add(options.onStatus);
 
@@ -20,6 +21,7 @@ function createStatusManager(options = {}) {
     const previous = statuses.get(id) || { requestId: id, status: 'idle', updatedAt: Date.now() };
     const next = { ...previous, ...clone(patch), requestId: id, updatedAt: Date.now() };
     statuses.set(id, next);
+    for (const [key, value] of statuses) { if (statuses.size <= maxRecords) break; if (value.endedAt) statuses.delete(key); }
     return emit(next);
   }
   function start(requestId, patch = {}) { return update(requestId, { ...patch, status: 'running', startedAt: patch.startedAt || Date.now() }); }

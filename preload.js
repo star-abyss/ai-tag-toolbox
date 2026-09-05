@@ -18,6 +18,7 @@ let translationRunner = null;
 let modulesRef = null;
 let runtime = null;
 let primaryTools = null;
+let translationProxyTarget = null;
 const localePacks = {};
 
 try {
@@ -70,12 +71,19 @@ try {
       return { ok: true, text: String(first?.translation_text || first?.translation || first?.text || ''), direction, model: modelId };
     }
   };
+  translationProxyTarget = {
+    service: null,
+    translateLocal: (...args) => translationProxyTarget?.service?.translateLocal?.(...args),
+    translateWithModel: (...args) => translationProxyTarget?.service?.translateWithModel?.(...args),
+    translate: (...args) => translationProxyTarget?.service?.translate?.(...args)
+  };
   comfy = modules.createComfy ? modules.createComfy({ base: 'http://127.0.0.1:8188' }) : null;
   assistant = modules.createAssistant({
     tags,
     images,
     vision,
     comfy,
+    translation: translationProxyTarget,
     storage,
     promptDir: path.join(assetDir, '提示词素材'),
     promptSource: prompts || undefined
@@ -83,11 +91,12 @@ try {
   // Translation only needs the generic AiService, so it can be assembled
   // after Assistant without introducing a reverse dependency.
   translation = modules.createTranslation({ tags, runner: translationRunner, ai: assistant.ai });
+  translationProxyTarget.service = translation;
   runtime = assistant.runtime || null;
   primaryTools = assistant.primaryTools || null;
 } catch (error) {
   // 标签模块加载失败时仍让页面打开，便于人工看到错误并继续迭代。
-  console.warn('[V1.4.193] 业务模块加载失败：', error && error.message ? error.message : error);
+  console.warn('[V1.4.194] 业务模块加载失败：', error && error.message ? error.message : error);
 }
 
 function safeImageId(value) {
@@ -224,6 +233,11 @@ contextBridge.exposeInMainWorld('AppModules', {
     getBytes: value => assistant.visionTempStore.getBytes(visionInputForRenderer(typeof value === 'object' ? value : { imageId: value }))
   } : null,
   translation,
+  preferences: storage ? {
+    get: (key, fallback = null) => storage.get(key, fallback),
+    set: (key, value) => storage.set(key, value),
+    remove: key => storage.remove(key)
+  } : null,
   assistant: assistant ? {
     run: runForRenderer,
     getCapabilities: assistant.getCapabilities,
@@ -278,7 +292,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     ai: assistant.ai ? { listModels: assistant.listModels, getConfig: assistant.ai.getConfig } : null,
     visionAi: assistant.visionAi ? { listModels: assistant.listVisionModels, getConfig: assistant.visionAi.getConfig } : null,
     visionService: assistant.visionService ? { processOne: input => assistant.visionService.processOne(visionInputForRenderer(input)), available: assistant.visionService.available } : null,
-    calls: assistant.calls ? { call: callForRenderer, list: assistant.calls.list, listAvailable: assistant.calls.listAvailable, listAgent: assistant.calls.listAgent, agentNames: assistant.calls.agentNames, schemas: assistant.calls.schemas, schemasAvailable: assistant.calls.schemasAvailable, schemasAgent: assistant.calls.schemasAgent, openAiTools: assistant.calls.openAiTools, openAiToolsAvailable: assistant.calls.openAiToolsAvailable, openAiToolsAgent: assistant.calls.openAiToolsAgent, getCapabilities: assistant.calls.getCapabilities, refreshCapabilities: assistant.calls.refreshCapabilities, invalidateCapabilities: assistant.calls.invalidateCapabilities, describe: assistant.calls.describe } : null
+    calls: assistant.calls ? { call: callForRenderer, getCapabilities: assistant.calls.getCapabilities, refreshCapabilities: assistant.calls.refreshCapabilities, invalidateCapabilities: assistant.calls.invalidateCapabilities } : null
   } : null,
   runtime: runtime ? {
     runPrimary: runtime.runPrimary,
@@ -313,36 +327,15 @@ contextBridge.exposeInMainWorld('AppModules', {
     compose: prompts.compose,
     snapshot: prompts.snapshot
   } : null,
-  calls: assistant?.calls ? { call: callForRenderer, list: assistant.calls.list, listAvailable: assistant.calls.listAvailable, listAgent: assistant.calls.listAgent, agentNames: assistant.calls.agentNames, schemas: assistant.calls.schemas, schemasAvailable: assistant.calls.schemasAvailable, schemasAgent: assistant.calls.schemasAgent, openAiTools: assistant.calls.openAiTools, openAiToolsAvailable: assistant.calls.openAiToolsAvailable, openAiToolsAgent: assistant.calls.openAiToolsAgent, getCapabilities: assistant.calls.getCapabilities, refreshCapabilities: assistant.calls.refreshCapabilities, invalidateCapabilities: assistant.calls.invalidateCapabilities, describe: assistant.calls.describe } : null,
+  calls: assistant?.calls ? { call: callForRenderer, getCapabilities: assistant.calls.getCapabilities, refreshCapabilities: assistant.calls.refreshCapabilities, invalidateCapabilities: assistant.calls.invalidateCapabilities } : null,
   vision,
   visionService: assistant?.visionService ? { processOne: input => assistant.visionService.processOne(visionInputForRenderer(input)), available: assistant.visionService.available } : null,
-  storage: storage ? {
-    get: (...args) => storage.get(...args),
-    set: (...args) => storage.set(...args),
-    load: (...args) => storage.load(...args),
-    save: (...args) => storage.save(...args),
-    remove: (...args) => storage.remove(...args),
-    has: (...args) => storage.has(...args),
-    keys: (...args) => storage.keys(...args),
-    clear: (...args) => storage.clear(...args),
-    putBlob: (...args) => storage.putBlob(...args),
-    getBlob: (...args) => storage.getBlob(...args),
-    removeBlob: (...args) => storage.removeBlob(...args)
-  } : null,
   comfy: comfy ? {
-    check: comfy.check,
-    status: comfy.status,
-    list: comfy.list,
-    render: comfy.render,
-    fetchImage: comfy.fetchImage,
-    setBase: comfy.setBase,
-    setWorkflow: comfy.setWorkflow,
-    buildWorkflow: comfy.buildWorkflow,
-    parseWorkflow: comfy.parseWorkflow,
-    importApiWorkflow: comfy.importApiWorkflow,
-    workflowStatus: comfy.workflowStatus,
-    workflowReady: comfy.workflowReady
+    check: async () => Boolean((await runtime?.callTool?.('comfy.status', {}, { caller: 'ui' }))?.data?.connected),
+    setBase: value => assistant?.setSettings?.({ comfyBase: value }),
+    setWorkflow: value => assistant?.setSettings?.({ comfyWorkflow: value }),
+    importApiWorkflow: comfy.importApiWorkflow
   } : null,
   locales: localePacks,
-  version: '1.4.193'
+  version: '1.4.194'
 });

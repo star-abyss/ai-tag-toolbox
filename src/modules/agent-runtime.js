@@ -1,197 +1,150 @@
 'use strict';
 
-const { createRequestManager, errorShape } = require('./request-manager');
+const { createRequestManager, newRequestId } = require('./request-manager');
 const { createStatusManager } = require('./status-manager');
+const { createUsageLimiter } = require('./usage-limiter');
+const { errorShape, resultOk, resultError } = require('./error-manager');
+const { assertValid } = require('./schema');
 
-function text(value, fallback = '') { const result = value == null ? '' : String(value).trim(); return result || fallback; }
+const TOOL_NAMES = Object.freeze(['tags.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
+const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
+function text(value, fallback = '') { const output = value == null ? '' : String(value).trim(); return output || fallback; }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
-function clone(value) {
-  if (value == null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(clone);
-  const output = {};
-  for (const [key, item] of Object.entries(value)) if (typeof item !== 'function' && key !== 'signal') output[key] = clone(item);
-  return output;
-}
-function resultOk(data, requestId, usage) { return { ok: true, data: data == null ? null : data, error: null, requestId, usage: usage || null }; }
-function resultError(error, requestId, fallback = '请求失败') { return { ok: false, data: null, error: errorShape(error, fallback), requestId, usage: null }; }
-function responseData(response) {
-  if (!object(response)) return response;
-  if (response.data !== undefined) return response.data;
-  if (response.text !== undefined || response.reasoning !== undefined) return { text: response.text || '', reasoning: response.reasoning || '', toolCalls: response.toolCalls || response.tool_calls || [] };
-  return response;
-}
-function toolCalls(response) {
-  const rows = response?.toolCalls || response?.tool_calls || response?.calls || [];
-  return Array.isArray(rows) ? rows : rows ? [rows] : [];
-}
-function callName(call) { return text(call?.name || call?.tool || call?.function?.name); }
-function callArgs(call) {
-  const raw = call?.arguments ?? call?.args ?? call?.function?.arguments ?? {};
-  if (object(raw)) return raw;
-  try { const parsed = JSON.parse(String(raw || '{}')); return object(parsed) ? parsed : {}; } catch { return {}; }
-}
-function raceWithSignal(value, signal) {
-  if (!signal) return Promise.resolve(value);
-  if (signal.aborted) return Promise.reject(Object.assign(new Error('请求已取消'), { code: 'CANCELLED' }));
-  return new Promise((resolve, reject) => {
+function clone(value) { if (Array.isArray(value)) return value.map(clone); if (object(value)) return Object.fromEntries(Object.entries(value).filter(([, v]) => typeof v !== 'function').map(([k, v]) => [k, clone(v)])); return value; }
+function canonicalName(name) { return NATIVE_NAMES.get(String(name)) || String(name); }
+function nativeName(name) { return String(name).replace('.', '_'); }
+function reject(code, message) { return Object.assign(new Error(message), { code }); }
+function assertSchema(schema, value, code) { try { assertValid(schema || {}, value); } catch (error) { error.code = code; throw error; } }
+function unwrap(value) { if (value?.ok === false) throw errorShape(value); return value?.ok === true && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value; }
+function race(invoke, signal) {
+  if (signal.aborted) return Promise.reject(signal.reason || reject('CANCELLED', '请求已取消'));
+  return new Promise((resolve, rejectPromise) => {
     let settled = false;
-    const abort = () => {
-      if (settled) return;
-      settled = true;
-      reject(Object.assign(new Error('请求已取消'), { code: 'CANCELLED' }));
-    };
+    const finish = (callback, value) => { if (settled) return; settled = true; signal.removeEventListener('abort', abort); callback(value); };
+    const abort = () => finish(rejectPromise, signal.reason || reject('CANCELLED', '请求已取消'));
     signal.addEventListener('abort', abort, { once: true });
-    Promise.resolve(value).then(result => {
-      if (settled) return;
-      settled = true;
-      signal.removeEventListener('abort', abort);
-      resolve(result);
-    }, error => {
-      if (settled) return;
-      settled = true;
-      signal.removeEventListener('abort', abort);
-      reject(error);
-    });
+    Promise.resolve().then(() => { if (signal.aborted) throw signal.reason || reject('CANCELLED', '请求已取消'); return invoke(); }).then(value => finish(resolve, value), error => finish(rejectPromise, error));
   });
 }
+function responseCalls(response) { const value = response?.toolCalls || response?.tool_calls || response?.data?.toolCalls || response?.choices?.[0]?.message?.tool_calls || []; if (!Array.isArray(value)) throw reject('OUTPUT_INVALID', '主 AI 工具调用格式无效'); return value; }
+function normalizeCall(call, usedIds) {
+  const name = canonicalName(call?.function?.name || call?.name || '');
+  if (!TOOL_NAMES.includes(name)) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
+  let args = call?.function?.arguments ?? call?.arguments ?? {};
+  if (typeof args === 'string') { try { args = JSON.parse(args); } catch { throw reject('INVALID_INPUT', `工具 ${name} 的参数不是有效 JSON`); } }
+  if (!object(args)) throw reject('INVALID_INPUT', `工具 ${name} 的参数必须是对象`);
+  const id = text(call?.id, newRequestId('call'));
+  if (usedIds.has(id)) throw reject('OUTPUT_INVALID', '主 AI 返回了重复的 tool_call_id');
+  usedIds.add(id);
+  return { id, name, args, native: { id, type: 'function', function: { name: nativeName(name), arguments: JSON.stringify(args) } } };
+}
+function outputText(response) { const value = response?.data ?? response; if (typeof value === 'string') return value; return typeof value?.text === 'string' ? value.text : typeof value?.choices?.[0]?.message?.content === 'string' ? value.choices[0].message.content : ''; }
 
 function createAgentRuntime(options = {}) {
-  const primaryClient = options.primaryClient || options.ai || null;
-  const tools = options.tools || {};
-  const subagents = options.subagents || {};
-  const allowedTools = Array.isArray(options.primaryToolNames || options.allowedTools)
-    ? new Set((options.primaryToolNames || options.allowedTools).map(String))
-    : null;
+  const client = options.primaryClient || options.ai;
   const getSettings = typeof options.getSettings === 'function' ? options.getSettings : () => ({});
-  const status = options.statusManager || createStatusManager({ onStatus: options.onStatus });
-  const requests = options.requestManager || createRequestManager({ onChange: event => {
-    const item = event.request;
-    if (!item) return;
-    if (item.status === 'running') status.start(item.requestId, item);
-    else if (item.status === 'timeout') status.timeout(item.requestId, item);
-    else if (item.status === 'cancelled') status.cancel(item.requestId, item);
-    else if (item.status === 'error') status.fail(item.requestId, item.error, item);
-    else if (item.status === 'completed') status.complete(item.requestId, item);
-  }});
-  const limit = () => Math.max(1, Math.min(100, Number(getSettings()?.limits?.maxComfyCalls ?? getSettings()?.maxComfyCalls) || Number(options.maxComfyCalls) || 3));
-  const callCounts = new Map();
-
-  function findTool(name) {
-    if (tools && typeof tools.resolve === 'function') return tools.resolve(name);
-    if (tools && typeof tools.get === 'function') return tools.get(name);
-    return tools?.[name] || null;
+  const getTools = typeof options.tools === 'function' ? options.tools : () => options.tools || {};
+  const getSubagents = typeof options.subagents === 'function' ? options.subagents : () => options.subagents || {};
+  const statuses = options.statusManager || createStatusManager({ onStatus: options.onStatus, maxRecords: options.maxRecords });
+  const requests = options.requestManager || createRequestManager({ maxRecords: options.maxRecords });
+  requests.subscribe(event => {
+    const row = event.request;
+    if (row.status === 'running') statuses.start(row.requestId, row);
+    else if (row.status === 'completed') statuses.complete(row.requestId, row);
+    else if (row.status === 'timeout') statuses.timeout(row.requestId, row);
+    else if (row.status === 'cancelled') statuses.cancel(row.requestId, row);
+    else if (row.status === 'error') statuses.fail(row.requestId, row.error, row);
+  });
+  const limiter = options.usageLimiter || createUsageLimiter();
+  const active = new Map();
+  function registryTool(name) { const registry = getTools() || {}; return typeof registry.resolve === 'function' ? registry.resolve(name) : registry[name] || null; }
+  function listTools() { return TOOL_NAMES.map(name => { const entry = registryTool(name); return entry ? { name, description: entry.description || '', parameters: clone(entry.parameters || entry.inputSchema || { type: 'object', additionalProperties: false }) } : null; }).filter(Boolean); }
+  function schemas() { return listTools().map(entry => ({ type: 'function', function: { name: nativeName(entry.name), description: entry.description, parameters: entry.parameters } })); }
+  function emit(context, type, payload = {}) {
+    if (context.signal.aborted || !active.has(context.requestId)) return;
+    const event = { ...clone(payload), type, requestId: context.requestId, rootRequestId: context.rootRequestId, at: Date.now() };
+    context.events.push(event); if (context.events.length > 256) context.events.shift();
+    statuses.update(context.requestId, { event });
+    try { context.onEvent?.(event); } catch { /* observers are optional */ }
   }
-  function toolList() {
-    if (typeof tools.list === 'function') return tools.list();
-    if (typeof tools.openAiTools === 'function') return tools.openAiTools();
-    return Object.entries(tools || {}).filter(([, value]) => typeof value === 'function' || value?.handler).map(([name, value]) => ({ name, ...(value?.definition || {}) }));
-  }
-  function toolSchemas() {
-    const source = typeof tools.openAiTools === 'function' ? tools.openAiTools() : toolList();
-    return allowedTools ? source.filter(item => {
-      const name = String(item.name || item.function?.name || '');
-      return allowedTools.has(name) || allowedTools.has(name.replace(/_/g, '.'));
-    }) : source;
-  }
-
-  async function callTool(name, args = {}, context = {}) {
-    const requestId = text(context.requestId, `tool_${Date.now().toString(36)}`);
-    if (allowedTools && !allowedTools.has(String(name)) && !allowedTools.has(String(name).replace(/_/g, '.'))) {
-      return resultError({ code: 'TOOL_UNAVAILABLE', message: `工具不可用：${text(name)}` }, requestId);
-    }
-    const definition = findTool(name);
-    if (!definition) return resultError({ code: 'TOOL_UNAVAILABLE', message: `工具不可用：${text(name)}` }, requestId);
-    if (context.signal?.aborted) return resultError({ code: 'CANCELLED', message: '请求已取消' }, requestId);
-    if (name === 'comfy.render') {
-      const used = Number(callCounts.get(requestId) || 0);
-      if (used >= limit()) return resultError({ code: 'COMFY_CALL_LIMIT', message: `ComfyUI 调用次数超过限制（${limit()}）` }, requestId);
-      callCounts.set(requestId, used + 1);
-    }
+  async function execute(kind, request, timeoutMs, work) {
+    const parentId = text(request.parentRequestId || (active.has(request.requestId) ? request.requestId : ''));
+    const parent = active.get(parentId);
+    const handle = requests.begin(parentId ? undefined : request.requestId, { kind, parentRequestId: parentId, rootRequestId: parent?.rootRequestId, timeoutMs: request.timeoutMs || timeoutMs, signal: request.signal || parent?.signal });
+    const id = handle.requestId; const rootId = parent?.rootRequestId || id;
+    if (!parent) limiter.begin(rootId, getSettings()?.limits || {});
+    const context = { requestId: id, parentRequestId: parentId, rootRequestId: rootId, signal: handle.signal, sessionId: request.sessionId || parent?.sessionId, messageId: request.messageId || parent?.messageId, events: [], onEvent: request.onEvent };
+    active.set(id, context);
     try {
-      let value;
-      if (typeof tools.call === 'function') value = await tools.call(name, clone(args), { ...context, requestId, signal: context.signal });
-      else if (typeof definition === 'function') value = await definition(clone(args), { ...context, requestId, signal: context.signal });
-      else if (typeof definition.handler === 'function') value = await definition.handler(clone(args), { ...context, requestId, signal: context.signal });
-      else return resultError({ code: 'TOOL_UNAVAILABLE', message: `工具不可用：${text(name)}` }, requestId);
-      if (value?.ok === false) return resultError(value.error || value, requestId);
-      return resultOk(value?.data !== undefined ? value.data : value, requestId, value?.usage);
-    } catch (error) { return resultError(error, requestId, '工具调用失败'); }
+      const data = await race(() => work(context), handle.signal);
+      if (handle.signal.aborted) throw handle.signal.reason;
+      requests.complete(id);
+      return resultOk(data, id, limiter.snapshot(rootId));
+    } catch (cause) {
+      const state = requests.get(id); const error = errorShape(state?.error || cause, '请求失败');
+      if (!state?.endedAt) requests.fail(id, error);
+      const result = resultError(error, id); result.usage = limiter.snapshot(rootId); return result;
+    } finally { active.delete(id); if (!parent) limiter.end(rootId); }
   }
-
   async function runSubAgent(name, request = {}) {
-    const id = text(request.requestId, `sub_${String(name)}_${Date.now().toString(36)}`);
-    const entry = subagents?.[name] || (typeof subagents.resolve === 'function' ? subagents.resolve(name) : null);
-    if (!entry) return resultError({ code: 'SUBAGENT_UNAVAILABLE', message: `子代理不可用：${text(name)}` }, id);
-    const handle = requests.begin(id, { kind: `subagent:${name}`, timeoutMs: request.timeoutMs || entry.timeoutMs, signal: request.signal });
-    status.start(id, { kind: `subagent:${name}` });
-    try {
-      const input = clone(request.input !== undefined ? request.input : request);
-      delete input.requestId; delete input.timeoutMs; delete input.signal; delete input.tools; delete input.messages;
+    const registry = getSubagents() || {}; const entry = typeof registry.resolve === 'function' ? registry.resolve(name) : registry[name];
+    return execute(`subagent:${name}`, request, entry?.timeoutMs || 120000, async context => {
+      if (!['vision', 'translation', 'generateTags'].includes(name) || !entry) throw reject('SUBAGENT_UNAVAILABLE', `子代理不可用：${name}`);
+      const input = request.input !== undefined ? clone(request.input) : Object.fromEntries(Object.entries(request).filter(([key]) => !['requestId', 'parentRequestId', 'signal', 'timeoutMs', 'sessionId', 'messageId', 'onEvent'].includes(key)));
+      assertSchema(entry.inputSchema || { type: 'object' }, input, 'INVALID_INPUT');
       const run = typeof entry === 'function' ? entry : entry.run || entry.execute;
-      if (typeof run !== 'function') throw Object.assign(new Error('子代理执行器不可用'), { code: 'SUBAGENT_UNAVAILABLE' });
-      const value = await raceWithSignal(run(input, { requestId: id, signal: handle.signal, settings: clone(getSettings()) }), handle.signal);
-      if (handle.signal.aborted) throw Object.assign(new Error('请求已取消'), { code: 'CANCELLED' });
-      requests.complete(id); return resultOk(value?.data !== undefined ? value.data : value, id, value?.usage);
-    } catch (error) {
-      const requestState = requests.get(id);
-      const failure = requestState?.status === 'timeout'
-        ? { code: 'TIMEOUT', message: '请求超时', retryable: true }
-        : requestState?.status === 'cancelled'
-          ? { code: 'CANCELLED', message: '请求已取消', retryable: false }
-          : errorShape(error, '子代理请求失败');
-      requests.fail(id, failure); return resultError(failure, id, '子代理请求失败');
-    }
+      if (typeof run !== 'function') throw reject('SUBAGENT_UNAVAILABLE', '子代理执行器不可用');
+      limiter.consume(context.rootRequestId, 'subagent');
+      emit(context, 'subagent.start', { name });
+      const value = await run(input, { requestId: context.requestId, parentRequestId: context.parentRequestId, rootRequestId: context.rootRequestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: event => emit(context, event?.type || 'event', event || {}) });
+      const data = unwrap(value); assertSchema(entry.outputSchema || { type: 'object' }, data, 'OUTPUT_INVALID');
+      limiter.add(context.rootRequestId, value?.usage); emit(context, 'subagent.complete', { name }); return data;
+    });
   }
-
+  async function callTool(rawName, args = {}, request = {}) {
+    const name = canonicalName(rawName);
+    return execute(`tool:${name}`, request, name === 'comfy.render' ? 600000 : 120000, async context => {
+      if (!TOOL_NAMES.includes(name)) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
+      const entry = registryTool(name); if (!entry) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
+      assertSchema(entry.parameters || entry.inputSchema || { type: 'object' }, args, 'INVALID_INPUT');
+      limiter.consume(context.rootRequestId, name === 'comfy.render' ? 'comfy' : 'tool');
+      emit(context, 'tool.start', { name, args });
+      const registry = getTools();
+      const childContext = { ...context, onEvent: event => emit(context, event.type || 'progress', event) };
+      const value = typeof registry.call === 'function' ? await registry.call(name, clone(args), childContext) : typeof entry === 'function' ? await entry(clone(args), childContext) : await entry.handler(clone(args), childContext);
+      const data = unwrap(value); assertSchema(entry.outputSchema || {}, data, 'OUTPUT_INVALID');
+      if (!value?.requestId) limiter.add(context.rootRequestId, value?.usage);
+      emit(context, 'tool.complete', { name, result: data }); return data;
+    });
+  }
   async function runPrimary(request = {}) {
-    const id = text(request.requestId, `primary_${Date.now().toString(36)}`);
-    const handle = requests.begin(id, { kind: 'primary', timeoutMs: request.timeoutMs || getSettings()?.limits?.primaryTimeoutMs || options.timeoutMs, signal: request.signal });
-    status.start(id, { kind: 'primary' });
-    if (!primaryClient || typeof primaryClient.complete !== 'function') {
-      const failure = resultError({ code: 'PRIMARY_UNAVAILABLE', message: '主 AI 服务不可用' }, id);
-      requests.fail(id, failure.error); return failure;
-    }
-    const maxRounds = Math.max(1, Math.min(32, Number(request.maxRounds || getSettings()?.limits?.maxToolRounds) || 8));
-    let comfyCalls = 0; let messages = Array.isArray(request.messages) ? request.messages.map(clone) : [];
-    if (!messages.length && request.input?.text) messages = [{ role: 'user', content: String(request.input.text) }];
-    try {
-      for (let round = 0; round < maxRounds; round += 1) {
-        if (handle.signal.aborted) throw Object.assign(new Error('请求已取消'), { code: 'CANCELLED' });
-        const config = { ...(request.config || {}), signal: handle.signal, tools: toolSchemas(), tool_choice: request.toolChoice || undefined };
-        const response = await raceWithSignal(primaryClient.complete(messages, config), handle.signal);
-        if (response?.ok === false) throw response.error || response;
-        const calls = toolCalls(response);
-        if (!calls.length) { requests.complete(id); return resultOk(responseData(response), id, response?.usage); }
-        const outputs = [];
-        for (const call of calls.slice(0, 1)) {
-          const name = callName(call);
-          if (name === 'comfy.render' || name === 'comfy_render') {
-            comfyCalls += 1;
-          }
-          const outcome = await callTool(name, callArgs(call), { requestId: id, signal: handle.signal, sessionId: request.sessionId, caller: 'primary' });
+    return execute('primary', request, getSettings()?.limits?.primaryTimeoutMs || options.timeoutMs || 120000, async context => {
+      if (typeof client?.complete !== 'function') throw reject('PRIMARY_UNAVAILABLE', '主 AI 服务不可用');
+      const prompt = typeof options.getPrimaryPrompt === 'function' ? text(await options.getPrimaryPrompt()) : text(options.primaryPrompt, '你是 AI 绘画 Tag 工具箱的主 AI，使用固定工具完成用户任务。');
+      if (!prompt) throw reject('PROMPT_INVALID', '主 AI 提示词为空');
+      const history = (Array.isArray(request.messages) ? request.messages : []).filter(item => ['user', 'assistant'].includes(item?.role)).map(item => ({ role: item.role, content: typeof item.content === 'string' ? item.content : typeof item.text === 'string' ? item.text : '' })).filter(item => item.content);
+      if (!history.length && typeof request.input?.text === 'string') history.push({ role: 'user', content: request.input.text });
+      const messages = [{ role: 'system', content: prompt }, ...history]; const toolCalls = []; const artifacts = []; const usedIds = new Set(); let round = 0;
+      while (true) {
+        limiter.consume(context.rootRequestId, 'round'); round += 1; emit(context, 'round.start', { round });
+        const response = await race(() => client.complete(messages, { ...(request.config || {}), signal: context.signal, tools: schemas(), tool_choice: 'auto', onDelta: (delta, reasoning = '') => { emit(context, 'delta', { text: typeof delta === 'string' ? delta : '', reasoning: typeof reasoning === 'string' ? reasoning : '' }); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } } }), context.signal);
+        unwrap(response); limiter.add(context.rootRequestId, response?.usage); const calls = responseCalls(response).map(call => normalizeCall(call, usedIds));
+        const responseText = outputText(response);
+        if (!calls.length) { if (!responseText.trim()) throw reject('OUTPUT_INVALID', '主 AI 返回为空'); emit(context, 'round.complete', { round }); return { text: responseText, reasoning: typeof response?.reasoning === 'string' ? response.reasoning : '', toolCalls, events: context.events.slice(), artifacts, imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))] }; }
+        messages.push({ role: 'assistant', content: responseText || null, tool_calls: calls.map(call => call.native) });
+        for (const call of calls) {
+          const outcome = await callTool(call.name, call.args, { parentRequestId: context.requestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: event => { context.events.push(event); if (context.events.length > 256) context.events.shift(); try { request.onEvent?.(event); } catch {} } });
+          const trace = { id: call.id, name: call.name, arguments: call.args, requestId: outcome.requestId, ok: outcome.ok, result: outcome.data, error: outcome.error }; toolCalls.push(trace);
+          if (Array.isArray(outcome.data?.artifacts)) for (const artifact of outcome.data.artifacts) if (!artifacts.some(item => item.imageId === artifact.imageId)) artifacts.push(clone(artifact));
+          try { request.onToolCall?.([trace]); } catch {}
           if (!outcome.ok) throw outcome.error;
-          outputs.push({ name, result: outcome.data });
-          messages.push({ role: 'assistant', content: response.text || '', tool_calls: [clone(call)] });
-          messages.push({ role: 'tool', name, content: JSON.stringify(outcome.data ?? {}) });
+          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(outcome.data) });
         }
-        if (typeof request.onToolCall === 'function') request.onToolCall(outputs);
+        emit(context, 'round.complete', { round });
       }
-      throw Object.assign(new Error('主 AI 工具回合超过限制'), { code: 'TOOL_ROUND_LIMIT' });
-    } catch (error) {
-      const requestState = requests.get(id);
-      const normalizedError = requestState?.status === 'timeout'
-        ? { code: 'TIMEOUT', message: '请求超时', retryable: true }
-        : requestState?.status === 'cancelled'
-          ? { code: 'CANCELLED', message: '请求已取消', retryable: false }
-          : errorShape(error, '主 AI 请求失败');
-      const failure = resultError(normalizedError, id, '主 AI 请求失败');
-      requestState?.status === 'timeout' ? status.timeout(id, { error: failure.error }) : requestState?.status === 'cancelled' ? status.cancel(id, { error: failure.error }) : requests.fail(id, failure.error);
-      if (!requests.get(id)?.endedAt) requests.fail(id, failure.error);
-      return failure;
-    }
+    });
   }
-
-  return { runPrimary, runSubAgent, callTool, cancel: requestId => requests.cancel(requestId), getStatus: requestId => status.get(requestId) || requests.get(requestId), getRequest: requestId => requests.get(requestId), listTools: toolList, status, requests };
+  return { runPrimary, runSubAgent, callTool, cancel: id => requests.cancel(id), getStatus: id => statuses.get(id) || requests.get(id), getRequest: id => requests.get(id), listTools, status: statuses, requests, usage: limiter };
 }
 
 module.exports = { createAgentRuntime, resultOk, resultError };

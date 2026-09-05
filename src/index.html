@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
-    <title>AI 绘画 Tag 工具箱 V1.4.193 · Danbooru 标签选择器</title>
+    <title>AI 绘画 Tag 工具箱 V1.4.194 · Danbooru 标签选择器</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
@@ -466,6 +466,10 @@
                 <div class="secret-status" id="agentStatus">固定工具就绪</div>
               </details>
               <div class="clhead comfyhead" data-i18n="ui.settings.comfyTitle"></div>
+              <div class="opts runtime-options">
+                <label class="opt"><input id="comfyOn" type="checkbox" /> 启用 ComfyUI 工具</label>
+                <label class="opt"><input id="generateNegativeTags" type="checkbox" /> 生成负面 Tag</label>
+              </div>
               <label
                 ><span data-i18n="ui.settings.comfyAddress"></span>
                 <input id="comfyBase" placeholder="http://127.0.0.1:8188" />
@@ -513,6 +517,9 @@
                   /></label>
                   <label class="opt">批量数量 <input id="batchCount" type="number" min="1" max="8" value="1" style="width: 64px" /></label>
                   <label class="opt">最大 ComfyUI 调用 <input id="maxComfyCalls" type="number" min="1" max="20" value="3" style="width: 64px" /></label>
+                  <label class="opt">Seed <input id="comfySeed" type="number" min="0" placeholder="随机" style="width: 110px" /></label>
+                  <label class="opt">Sampler <input id="comfySampler" type="text" value="euler" style="width: 100px" /></label>
+                  <label class="opt">Scheduler <input id="comfyScheduler" type="text" value="normal" style="width: 100px" /></label>
                 </div>
                 <div class="hint">
                   上传 / 拖入工作流（JSON 或含工作流的 PNG）后：自动识别标准采样器 / 提示词节点并注入
@@ -556,17 +563,16 @@
                     </div>
                     <div class="cstatus talk-status" id="talkStatus" aria-live="polite"></div>
                   </div>
-                  <div class="comfyconv talkconv" id="talkConv" data-image-context="conversation">
+                  <div class="comfyconv talkconv" id="talkConv" data-conversation-view="true" data-image-context="conversation">
                     <div class="cmsg sys">
                       <div class="body">
-                        选择上方模式，输入内容后按 Enter 或点「发送」。对话框中的图片只作为 AI 对话附件；识图模块可在主标签页或 AI 页面单独接收一张图片。
+                        输入内容后按 Enter 或点「发送」。主 AI 按需要调用固定工具；对话图片和单图识图分别管理。
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
               <div class="imgsrow talkimgs" id="talkPendingStrip" data-image-context="conversation" style="display: none"><div id="talkImgRow" class="pending-image-list"></div><button type="button" id="talkPendingClear" class="btn btn-icon" title="清空发送区草稿">❌</button></div>
-              <div class="tkmodebar" id="tkmodebar" hidden aria-hidden="true"></div>
               <div class="comfyin talkin" data-image-context="conversation">
                 <textarea
                   id="talkIn"
@@ -582,13 +588,13 @@
                 </div>
                 <input type="file" id="talkImgFile" accept="image/*" multiple hidden />
                 <div class="hint">
-                  · 🔍 识图模块一次只保留一张图片，不会进入 AI 对话；主标签页和 AI 页面共用同一张当前识图图片。<br />· 🎨 ComfyUI 迭代需先上传工作流，并在绘图模式左上角打开“ComfyUI 出图”。
+                  · 🔍 识图模块一次只保留一张图片，不会进入 AI 对话；主标签页和 AI 页面共用同一张当前识图图片。<br />· 🎨 在 API 设置中启用 ComfyUI 并配置工作流后，主 AI 可按需要调用出图工具。
                 </div>
               </div>
             </section>
           </div>
         </div>
-        <div id="tabPrompt" style="display: none">
+        <div id="tabPrompt" data-prompt-view="true" style="display: none">
           <div class="aitop slim2">
             <button class="abtn ghost backbtn btn btn-ghost" id="promptBack" data-i18n="ui.prompt.back"></button>
             <span style="font-weight: 700; font-size: 14px" data-i18n="ui.prompt.title"></span>
@@ -651,6 +657,10 @@
                   <textarea id="aiVision" rows="6"></textarea>
                 </div>
               </details>
+              <details class="pmod-lead" data-special="translation">
+                <summary><span data-i18n="ui.translation.title">翻译子代理</span><span class="pcsub">固定翻译提示词</span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="translationPromptEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label></summary>
+                <div class="pmod-mods"></div><div class="form"><textarea id="translationPrompt" rows="6" placeholder="翻译子代理提示词"></textarea></div>
+              </details>
               <details class="pmod-lead" data-special="system">
                 <summary>
                   <span data-i18n="ui.prompt.system"></span> <span class="pcsub" data-i18n="ui.prompt.systemSub"></span
@@ -663,7 +673,7 @@
             </div>
           </details>
 
-          <details id="worldBookCard" open class="promptcard">
+          <details id="worldBookCard" open class="promptcard legacy-prompt-compat" hidden>
             <summary data-i18n-title="ui.promptExtra.toggleTitle">
               <span data-i18n="ui.prompt.world"></span> <span class="pcsub" data-i18n="ui.prompt.worldSub"></span>
             </summary>
@@ -743,6 +753,11 @@
 
     <div class="toast" id="toast"></div>
 
+    <script src="views/conversation-view.js"></script>
+    <script src="views/gallery-view.js"></script>
+    <script src="views/settings-view.js"></script>
+    <script src="views/prompt-view.js"></script>
+    <script src="views/agent-status-view.js"></script>
     <script src="app-view.js"></script>
     <script src="app.js"></script>
   </body>

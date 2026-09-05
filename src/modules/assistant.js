@@ -22,48 +22,12 @@ const { createFixedSubagents } = require('./fixed-subagents');
 const { createPrimaryTools } = require('./primary-tools');
 
 const PROMPT_FILES = Object.freeze({
-  main: '01-内部主提示词-MAIN_PROMPT.txt',
-  generate: '02-生成Tag任务-GEN_TASK.txt',
-  chat: '03-自由对话任务-CHAT_TASK.txt',
+  primary: '10-主AI固定提示词-PRIMARY_AGENT.txt',
   vision: '04-识图描述提示词-DEFAULT_VISION_PROMPT.txt',
-  comfy: '05-ComfyUI提示词协议.txt',
-  quality: '06-默认质量前缀-DEFAULT_QP.txt',
-  appendices: '07-默认附录提示词.txt'
+  translation: '08-固定翻译子代理-TRANSLATION_AGENT.txt',
+  generateTags: '09-固定生成Tag子代理-GENERATE_TAGS_AGENT.txt'
 });
 
-// 旧会话只在恢复时做一次性映射；运行时只接受 assistant / draw 两种
-// 用户模式。Generate、Recreate、ComfyIteration 仍可作为 draw 的任务上下文。
-const LEGACY_MODE_MAP = Object.freeze({
-  assistant: 'assistant',
-  assist: 'assistant',
-  conversation: 'assistant',
-  chat: 'assistant',
-  draw: 'draw',
-  gen: 'draw',
-  generate: 'draw',
-  generation: 'draw',
-  rk: 'draw',
-  recreate: 'draw',
-  vision: 'draw',
-  comfy: 'draw',
-  comfyiteration: 'draw'
-});
-
-const NSFW_ALLOW = '【内容政策】用户已允许成人向内容。请按用户要求专业输出相关绘图 Tag，不要加入无关说教。';
-const NSFW_GUARD = '【内容政策】成人标签未开启；如果需求涉及成人内容，请提醒用户先开启成人标签。';
-const PROMPT_MODULES = Object.freeze(['assistant', 'draw']);
-const PROFILE_ALIASES = Object.freeze({ talk: 'assistant', chat: 'assistant', assist: 'assistant', assistant: 'assistant', gen: 'draw', generate: 'draw', generation: 'draw', rk: 'draw', recreate: 'draw', comfy: 'draw', comfyiteration: 'draw', draw: 'draw' });
-const DEFAULT_PROMPT_MODS = Object.freeze({
-  main: ['draw'],
-  generate: ['draw'],
-  quality: ['draw'],
-  vision: ['assistant', 'draw'],
-  comfy: ['draw']
-});
-
-const TOOL_GUIDANCE = `【Compact JSON 调用规则】
-需要查询 Tag、读取当前会话图片、识图、出图或设置会话图片标题时，只返回独立一行 JSON（或 json 代码块），根对象使用稳定的 call 字段：search、images、vision、render、title。只填写对应调用表声明的少量字段；不要返回原生 tool_calls/function_call，不要提交工作流、节点参数、本地路径、Data URL 或完整工具结果。
-search 只传 query 和可选 precision；vision 的 image 必须是当前会话编号、候选编号、唯一标题或当前临时图，一次只读一张；render 只传 prompt、negative、iterations、seed；title 只修改当前会话关联。调用结果会以短摘要回注，图片和工具数据由程序按需读取。`;
 const VISION_MODEL_HINT = /vision|[-_]?vl(?:[-_]|$)|gpt-4o|gpt-4\.1|qwen.*vl|llava|moondream|internvl|minicpm[-_]?v|pixtral|gemma.*vision|gemini|claude-3|claude.*sonnet|glm-4v|qvq|deepseek.*(?:vision|vl)|kimi.*vision/i;
 const TEXT_ONLY_MODEL_HINT = /deepseek-(?:chat|reasoner|v[23](?:\.\d+)?)(?:$|[-_:])|deepseek-v4-(?:flash|pro)(?![-_]vision)(?:$|[-_:])|gpt-3\.5|text-embedding|(?:^|\/)qwen(?:2(?:\.5)?|3)(?:$|[-_:])|(?:^|\/)llama3(?:$|[-_:])/i;
 
@@ -121,16 +85,6 @@ function messagesContainImage(messages) {
     if (Array.isArray(content) && content.some(part => part?.type === 'image_url' || part?.type === 'image')) return true;
     return Array.isArray(message?.images) && message.images.length > 0;
   });
-}
-
-function normalisePromptMods(value) {
-  const source = isObject(value) ? value : {};
-  const result = {};
-  Object.keys(DEFAULT_PROMPT_MODS).forEach((key) => {
-    const raw = Array.isArray(source[key]) ? source[key] : DEFAULT_PROMPT_MODS[key];
-    result[key] = [...new Set(raw.map(item => PROFILE_ALIASES[String(item).toLowerCase()] || String(item)).filter((item) => PROMPT_MODULES.includes(item)))];
-  });
-  return result;
 }
 
 function uid(prefix, sequence) {
@@ -920,6 +874,30 @@ function normaliseSettings(value = {}, options = {}) {
   };
 }
 
+function mergeSettingsPatch(current = {}, patch = {}) {
+  const base = isObject(current) ? current : {};
+  const next = isObject(patch) ? patch : {};
+  const merged = { ...base, ...clone(next) };
+  const primary = { ...(isObject(base.primaryApi) ? base.primaryApi : {}) };
+  const vision = { ...(isObject(base.visionApi) ? base.visionApi : {}) };
+  const comfy = { ...(isObject(base.comfy) ? base.comfy : {}) };
+  const limits = { ...(isObject(base.limits) ? base.limits : {}) };
+  const copy = (target, source, keys) => keys.forEach(key => { if (source[key] !== undefined) target[key] = source[key]; });
+  copy(primary, next, ['base', 'model', 'key', 'temperature', 'timeoutMs', 'maxTokens']);
+  [['visionInheritPrimary', 'inheritPrimary'], ['visionBase', 'base'], ['visionModel', 'model'], ['visionKey', 'key'], ['visionTemperature', 'temperature'], ['visionTimeoutMs', 'timeoutMs']].forEach(([from, to]) => { if (next[from] !== undefined) vision[to] = next[from]; });
+  [['comfyOn', 'enabled'], ['comfyBase', 'base'], ['comfyWorkflow', 'workflow'], ['comfyPos', 'positiveTags'], ['comfyNeg', 'negativeTags'], ['comfyW', 'width'], ['comfyH', 'height'], ['comfySteps', 'steps'], ['comfyCfg', 'cfg'], ['comfySeed', 'seed'], ['comfySampler', 'sampler'], ['comfyScheduler', 'scheduler'], ['batchCount', 'batchCount']].forEach(([from, to]) => { if (next[from] !== undefined) comfy[to] = next[from]; });
+  copy(limits, next, ['maxComfyCalls', 'maxToolRounds', 'maxToolCalls', 'primaryTimeoutMs']);
+  if (isObject(next.primaryApi)) Object.assign(primary, clone(next.primaryApi));
+  if (isObject(next.visionApi)) Object.assign(vision, clone(next.visionApi));
+  if (isObject(next.comfy)) Object.assign(comfy, clone(next.comfy));
+  if (isObject(next.limits)) Object.assign(limits, clone(next.limits));
+  merged.primaryApi = primary;
+  merged.visionApi = vision;
+  merged.comfy = comfy;
+  merged.limits = limits;
+  return merged;
+}
+
 function createAssistant(options = {}) {
   const tags = options.tags || null;
   const images = options.images || null;
@@ -982,13 +960,12 @@ function createAssistant(options = {}) {
   }
   function normalisePreset(value, index = 0) {
     const item = isObject(value) ? value : {};
-    return { id: text(item.id, `preset_${Date.now()}_${index}`), name: text(item.name, '未命名预设'), main: text(item.main || item.sysPrompt), generate: text(item.generate || item.genTask), vision: text(item.vision || item.visionPrompt), quality: text(item.quality || item.qualityPrefix), comfy: text(item.comfy), mods: normalisePromptMods(item.mods || item.promptMods) };
+    return { id: text(item.id, `preset_${Date.now()}_${index}`), name: text(item.name, '未命名预设'), primary: text(item.primary || item.main || item.sysPrompt), vision: text(item.vision || item.visionPrompt), translation: text(item.translation), generateTags: text(item.generateTags || item.generate || item.genTask) };
   }
   function normaliseWorld(value, index = 0) {
     const item = isObject(value) ? value : {};
     const entries = Array.isArray(item.entries) ? item.entries : Object.values(item.entries || {});
-    const normaliseProfiles = value => [...new Set(list(value).map(mod => PROFILE_ALIASES[String(mod).toLowerCase()] || String(mod)).filter(mod => PROMPT_MODULES.includes(mod)))];
-    return { id: text(item.id, `world_${Date.now()}_${index}`), name: text(item.name, '未命名世界书'), enabled: item.enabled !== false, mods: normaliseProfiles(item.mods), entries: entries.filter(isObject).map((entry, ei) => ({ id: text(entry.id, `entry_${Date.now()}_${ei}`), name: text(entry.name, '条目'), keys: text(entry.keys || entry.key), content: text(entry.content || entry.text), enabled: entry.enabled !== false, constant: Boolean(entry.constant), mods: normaliseProfiles(entry.mods) })) };
+    return { id: text(item.id, `world_${Date.now()}_${index}`), name: text(item.name, '未命名世界书'), enabled: item.enabled !== false, entries: entries.filter(isObject).map((entry, ei) => ({ id: text(entry.id, `entry_${Date.now()}_${ei}`), name: text(entry.name, '条目'), keys: text(entry.keys || entry.key), content: text(entry.content || entry.text), enabled: entry.enabled !== false, constant: Boolean(entry.constant) })) };
   }
   function restoreBusinessState() {
     const stored = readStored('rewrite_settings', {});
@@ -1163,55 +1140,6 @@ function createAssistant(options = {}) {
     }
     return text(prompts[key]);
   }
-  function compose(mode, input = {}, extra = {}) {
-    const profile = text(mode, 'draw').toLowerCase() === 'assistant' ? 'assistant' : 'draw';
-    const parts = [];
-    const overrides = isObject(input.promptOverrides) ? input.promptOverrides : {};
-    const promptFor = key => {
-      if (promptSource && typeof promptSource.enabled === 'function') {
-        try { if (!promptSource.enabled(key)) return ''; } catch { /* use normal prompt path */ }
-      }
-      return text(overrides[key] || input[`${key}Prompt`] || input[key]) || prompt(key);
-    };
-    const promptMods = normalisePromptMods(input.promptMods || overrides.mods);
-    const allows = key => Array.isArray(promptMods[key]) && promptMods[key].includes(profile);
-    const addPrompt = (key, value) => { if (allows(key) && text(value)) parts.push(text(value)); };
-    if (profile === 'draw') {
-      addPrompt('main', promptFor('main'));
-      addPrompt('generate', promptFor('generate'));
-      const qualityEnabled = !promptSource || typeof promptSource.enabled !== 'function' || promptSource.enabled('quality') !== false;
-      const quality = qualityEnabled ? text(input.qualityPrefix || input.quality || input.userQuality || prompt('quality')) : '';
-      const artist = text(input.artistPrompt || input.artist || input.stylePrompt);
-      if (quality && allows('quality')) parts.push(`【质量/画师前缀】\n${quality}${artist ? `, ${artist}` : ''}`);
-      else if (artist && allows('quality')) parts.push(`【画师前缀】\n${artist}`);
-    }
-    const userText = text(input.text || input.description || '').toLowerCase();
-    const worldMods = list(input.worldbookMods).map(value => PROFILE_ALIASES[String(value).toLowerCase()] || String(value)).filter(Boolean);
-    const worldbook = list(input.worldbookEntries || input.worldbook || input.worldBook)
-      .filter(entry => {
-        if (!isObject(entry)) return true;
-        if (entry.enabled === false) return false;
-        if (worldMods.length && !worldMods.includes(profile)) return false;
-        const entryMods = list(entry.mods).map(value => PROFILE_ALIASES[String(value).toLowerCase()] || String(value)).filter(Boolean);
-        if (entryMods.length && !entryMods.includes(profile)) return false;
-        if (entry.constant === true) return true;
-        const keys = list(entry.keys || entry.key).flatMap(value => String(value).split(/[\s,，、;；]+/)).map(value => text(value).toLowerCase()).filter(Boolean);
-        return !keys.length || keys.some(key => userText.includes(key));
-      })
-      .map(entry => text(entry && (entry.content || entry.text) || entry)).filter(Boolean);
-    if (worldbook.length) parts.push(`【世界书】\n${worldbook.join('\n\n')}`);
-    const candidates = candidateTags(input.text || input.description || '', input);
-    if (candidates.length) parts.push(`【标签候选${input.strict ? '（严格优先使用）' : ''}】\n${tagList(candidates)}`);
-    if (extra.localTags && extra.localTags.length) parts.push(`【本地识图 Tag】\n${tagList(extra.localTags)}`);
-    if (text(extra.imageReference || input.imageReference || input.imageRef)) parts.push(text(extra.imageReference || input.imageReference || input.imageRef));
-    if (input.nsfwEnabled === true) parts.push(NSFW_ALLOW); else if (input.nsfwEnabled === false) parts.push(NSFW_GUARD);
-    if (input.extraSystem) parts.push(text(input.extraSystem));
-    if (input.includeAppendices || input.appendices === true) {
-      const appendices = parseAppendixText(prompt('appendices')); const selected = input.appendices === true ? appendices : appendices.filter(entry => list(input.appendices).some(value => String(value) === String(entry.index) || value === entry.id));
-      if (selected.length) parts.push(`【附录】\n${selected.map(entry => entry.text).join('\n\n')}`);
-    }
-    return parts.filter(Boolean).join('\n\n');
-  }
   function sessionMessages(session) { return sanitiseApiMessages(list(session && session.messages).map((message) => messageForApi(message, resolveImage)).filter(Boolean)); }
   function normaliseInput(value) {
     const input = isObject(value) ? { ...value } : { text: value };
@@ -1277,7 +1205,7 @@ function createAssistant(options = {}) {
     };
     let result;
     try {
-      result = await runUnified(input, config);
+      result = await runPrimaryWithRuntime(input, config);
     } catch (error) {
       found.session.messages = previousMessages;
       found.session.updatedAt = Date.now();
@@ -1290,274 +1218,6 @@ function createAssistant(options = {}) {
       storageWrite();
     }
     return result;
-  }
-  async function withJob(mode, input, config, task) {
-    if (state.busy) return { ok: false, status: 'busy', text: '正在处理中，请先停止', mode };
-    const controller = typeof AbortController === 'function' ? new AbortController() : { signal: {}, abort() { this.signal.aborted = true; } }; const external = input && input.signal; const relay = () => controller.abort();
-    if (external?.aborted) return { ok: false, status: 'cancelled', text: '已停止', mode }; if (external && typeof external.addEventListener === 'function') external.addEventListener('abort', relay, { once: true });
-    const job = { id: uid('job', sequence), mode, controller, signal: controller.signal }; activeJob = job; state.busy = true; state.status = 'running'; state.jobId = job.id; state.lastMode = mode; state.lastError = '';
-    try { return await task(job); }
-    catch (error) { const cancelled = job.signal?.aborted || error?.code === 'CANCELLED'; const result = { ok: false, status: cancelled ? 'cancelled' : 'error', text: cancelled ? '已停止' : text(error && error.message, String(error)), error: error?.code || 'ERROR', mode }; state.lastError = cancelled ? '' : result.text; return result; }
-    finally { if (external && typeof external.removeEventListener === 'function') external.removeEventListener('abort', relay); if (activeJob === job) activeJob = null; state.busy = false; state.status = state.lastError ? 'error' : 'idle'; state.jobId = ''; }
-  }
-  async function runUnified(value, config = {}) {
-    const input = normaliseInput(value);
-    const mode = 'primary';
-    const task = 'primary';
-    return withJob(mode, input, config, async (job) => {
-      const session = sessionById(input.sessionId) || currentSession();
-      const repository = imageRepository;
-      const pendingRefs = input.pendingRefIds.length
-        ? input.pendingRefIds
-        : (repository?.pendingConversationReferences?.(session.id) || []).map(item => item.refId);
-      input.pendingRefIds = [...new Set(pendingRefs.map(String).filter(Boolean))];
-      input.imageRepository = repository;
-      input.visionTempStore = visionTempStore;
-      input.requestId = job.id;
-      input.sessionId = session.id;
-      // The only compact write exposed to the main Assistant is a
-      // conversation-scoped temporary title. Keep it enabled by default while
-      // still honoring an explicit false from callers; gallery/global writes
-      // remain unavailable through this adapter.
-      input.allowToolWrite = input.allowToolWrite !== false;
-      input.isCurrent = () => state.currentId === session.id && activeJob === job && !job.signal?.aborted;
-      input.resolveImage = input.resolveImage || (id => {
-        const resolved = resolveImage(id);
-        if (resolved && imageUrl(resolved)) return resolved;
-        try { return images?.preview?.(id) || resolved; } catch { return resolved; }
-      });
-      // The UI normally sends pending image IDs, but programmatic callers and
-      // restored sessions may provide only repository refs. Materialise just
-      // those refs for the current request; historical conversation images
-      // remain lightweight IDs and are not implicitly re-attached.
-      let conversationRows = [];
-      try {
-        const listed = repository?.listConversation?.(session.id, { includePending: true });
-        conversationRows = Array.isArray(listed) ? listed : (listed?.items || []);
-      } catch { /* optional repository */ }
-      // Programmatic callers may pass an explicit imageId before creating a
-      // ConversationImageRef. If it resolves through the controlled Images
-      // store, establish that relationship here; arbitrary paths/URLs never
-      // reach this branch. Gallery-owned assets remain shared references.
-      if (repository?.attachToConversation && input.imageIds.length) {
-        let galleryIds = new Set();
-        try {
-          const listedGallery = repository.listGallery?.({ order: 'oldest' });
-          const galleryRows = Array.isArray(listedGallery) ? listedGallery : (listedGallery?.items || []);
-          galleryIds = new Set(galleryRows.map(item => String(item.imageId || item.id)).filter(Boolean));
-        } catch { /* optional gallery adapter */ }
-        for (const value of input.imageIds) {
-          const id = text(value);
-          if (!id || conversationRows.some(row => String(row.imageId) === id || String(row.refId) === id)) continue;
-          const resolved = input.resolveImage(id);
-          if (!resolved || resolved.source === 'workflow') continue;
-          try {
-            // 随消息发送的图片在发出后进入对话区，但默认不勾选"待发送"——发送区
-            // 由用户（输入框草稿/对话区加入）单独控制。
-            const attached = repository.attachToConversation(session.id, id, { source: galleryIds.has(id) ? 'gallery' : 'upload', pending: false });
-            if (attached) conversationRows.push(attached);
-          } catch { /* malformed/unknown IDs remain rejected by the Runner */ }
-        }
-      }
-      const requestedRefs = new Set(input.pendingRefIds);
-      if (input.imageIds.length) for (const id of input.imageIds) {
-        const row = conversationRows.find(item => String(item.imageId) === String(id) || String(item.refId) === String(id));
-        if (row?.refId) requestedRefs.add(String(row.refId));
-      }
-      if (!input.imageIds.length) input.imageIds = conversationRows.filter(item => requestedRefs.has(String(item.refId))).map(item => item.imageId).filter(Boolean);
-      const materialised = input.imageIds.map(id => input.resolveImage(id)).filter(item => item && item.source !== 'workflow');
-      if (materialised.length) {
-        input.images = materialised;
-        input.imageIds = materialised.map(item => item.id || item.imageId).filter(Boolean);
-      } else if (input.imageIds.length) {
-        input.imageIds = [];
-      }
-      if (!input.text && !input.images.length) return { ok: false, status: 'empty', text: mode === 'draw' ? '请输入画面描述或添加图片' : '请输入内容或添加图片', mode };
-      const historyMessages = sessionMessages(session);
-      const analysis = input.images.length && input.autoLocalVision === true ? await analyseImages(input.images, input, job) : null;
-      input.imageReference = input.imageReference || imageReference(input.images, analysis);
-      input.comfyWorkflow = input.comfyWorkflow != null ? input.comfyWorkflow : (config.comfyWorkflow != null ? config.comfyWorkflow : state.settings.comfyWorkflow);
-      input.batchCount = Math.max(1, Math.min(8, Number(input.batchCount || config.batchCount || state.settings.batchCount || 1)));
-      // Bind Vision cache entries to the effective prompt text. This catches
-      // prompt-source edits even when callers do not provide an explicit
-      // numeric prompt version.
-      input.promptVersion = text(input.promptVersion || input.promptOverrides?.vision || prompt('vision'));
-      if (task === 'comfy') {
-        if (config.comfyBase || config.comfyUrl || config.url) comfy.setBase?.(config.comfyBase || config.comfyUrl || config.url);
-        if (input.comfyWorkflow != null) comfy.setWorkflow?.(input.comfyWorkflow);
-      }
-      const local = localTagsFor(analysis);
-      const systemParts = [];
-      if (mode === 'draw') {
-        systemParts.push(compose('generate', input, { localTags: local, imageReference: input.imageReference }));
-        if (task === 'comfy') {
-        const maxIterations = Math.max(1, Math.min(8, Number(config.batchCount || input.batchCount || state.settings.batchCount || 1)));
-          systemParts.push(`【ComfyUI 绘图任务（最多 ${maxIterations} 次渲染）】\n需要实际出图时返回独立 JSON：{"call":"render","prompt":"正向 Tag","negative":"可选负向 Tag"}；尺寸、步数、CFG、工作流等使用用户设置。每次返图都会成为一个候选结果，必须结合用户要求、参考图（如有）和返图质量判断是否继续。结束时如果已有候选，请在回复末尾写出唯一的“【最佳候选】candidate-N”（N 为实际生成轮次）；不要根据最后一张图片重新臆造提示词。返图后如需分析，返回 {"call":"vision","image":"candidate-N"}。`);
-        }
-      }
-      systemParts.push(TOOL_GUIDANCE);
-      const messages = [{ role: 'system', content: systemParts.filter(Boolean).join('\n\n') }, ...historyMessages];
-      const primaryVision = input.primaryVision == null
-        ? modelLooksVision(config.model || state.settings.model || '')
-        : Boolean(input.primaryVision);
-      const current = currentUserMessage(input, input.text || (mode === 'draw' ? '请生成绘图 Tag。' : '（附图）'), task === 'comfy' && !primaryVision ? [] : input.images);
-      if (current) messages.push(current);
-      append('user', input.text || '（附图）', { mode, task, imageIds: input.imageIds, imageReference: input.imageReference }, session.id);
-      const live = append('assistant', '', { mode, status: 'streaming' }, session.id);
-      const liveMessage = session.messages[session.messages.length - 1];
-      input.messageId = liveMessage.id;
-      let liveCandidates = candidateSnapshot(liveMessage.candidates);
-      let liveActivity = activitySnapshot(liveMessage.activity);
-      input.onStart?.({ user: session.messages[session.messages.length - 2], assistant: live });
-      // Do not write the whole session file for every streamed token. The
-      // session remains live in memory while the UI receives deltas and is
-      // persisted once when the request finishes (or fails).
-      const emit = (content, reasoning) => {
-        // Draw replies are rendered from the parsed prompt below. Keeping the
-        // raw protocol text in the message body makes the same thinking and
-        // final prompt appear twice in the UI while the request is streaming.
-        if (content && mode !== 'draw') liveMessage.text += String(content);
-        if (reasoning) liveMessage.reasoning += String(reasoning);
-        liveMessage.status = 'streaming';
-        input.onDelta?.(content, reasoning, clone(liveMessage));
-      };
-      const onToolEvent = event => {
-        if (input.isCurrent && !input.isCurrent()) return;
-        const eventType = text(event?.type);
-        if (['ai-start', 'ai-complete', 'start', 'complete', 'event', 'candidate-ready', 'candidate-evaluated', 'candidate-recommended', 'tool-required', 'tool-choice-fallback'].includes(eventType)) {
-          if (eventType === 'ai-complete') {
-            const current = [...liveActivity].reverse().find(item => item.type === 'thinking' && item.status === 'running' && (!event.round || item.round === Number(event.round)));
-            if (current) {
-              current.status = event.result?.ok === false ? 'error' : 'done';
-              current.message = text(event.result?.error || event.result?.text);
-            }
-          } else if (eventType === 'candidate-evaluated' && event.candidateId) {
-            liveCandidates = Array.isArray(event.candidates)
-              ? candidateSnapshot(event.candidates)
-              : evaluateCandidate(liveCandidates, event.candidateId, event.summary);
-            liveMessage.candidates = candidateSnapshot(liveCandidates);
-            liveMessage.result = { ...(liveMessage.result || {}), candidates: candidateSnapshot(liveCandidates) };
-          } else if (eventType === 'complete') {
-            const current = [...liveActivity].reverse().find(item => item.name === text(event.name) && item.status === 'running');
-            if (current) {
-              current.status = event.result?.ok === false ? 'error' : 'done';
-              current.message = text(event.result?.error || event.result?.text);
-            }
-          } else if (eventType === 'event' && event.event?.type === 'progress') {
-            const current = [...liveActivity].reverse().find(item => item.name === text(event.name) && item.status === 'running');
-            if (current) current.message = `队列 ${Number(event.event.queue) || 0}`;
-          } else if (eventType !== 'event') {
-            const item = {
-              id: `${eventType}-${Date.now()}-${liveActivity.length}`,
-              type: eventType === 'ai-start' ? 'thinking' : eventType === 'candidate-ready' ? 'candidate' : eventType === 'candidate-evaluated' ? 'evaluation' : eventType === 'candidate-recommended' ? 'recommendation' : eventType === 'start' ? 'tool' : 'event',
-              name: text(event.name),
-              round: Number(event.round) || 0,
-              iteration: Number(event.iteration || event.candidate?.iteration) || 0,
-              status: eventType === 'start' ? 'running' : eventType === 'ai-start' ? 'running' : 'done',
-              message: text(event.message || event.summary || event.error || event.result?.error),
-              candidateId: text(event.candidateId || event.candidate?.id),
-              createdAt: Date.now()
-            };
-            liveActivity = [...liveActivity, item].slice(-80);
-          }
-          liveMessage.activity = activitySnapshot(liveActivity);
-          if (eventType === 'candidate-ready' || eventType === 'candidate-evaluated' || eventType === 'candidate-recommended' || eventType === 'complete') storageWrite();
-        }
-        if (event?.type === 'candidate-ready' && event.candidate) {
-          liveCandidates = addCandidate(liveCandidates, event.candidate);
-          const generatedImageId = text(event.candidate.imageId);
-          if (generatedImageId && event.repositoryAttached !== true) imageRepository?.attachToConversation?.(session.id, generatedImageId, {
-            source: 'comfy',
-            messageId: liveMessage.id,
-            candidateId: text(event.candidate.id)
-          });
-          liveMessage.candidates = candidateSnapshot(liveCandidates);
-          liveMessage.imageIds = [...new Set(liveCandidates.map(item => text(item.imageId)).filter(Boolean))];
-          liveMessage.result = { ...(liveMessage.result || {}), candidates: candidateSnapshot(liveCandidates) };
-          // Candidate events are infrequent (once per render), so persist them
-          // immediately even though streamed text is kept in memory.
-          storageWrite();
-        }
-        if (event?.type === 'candidate-recommended' && event.candidateId) {
-          liveCandidates = Array.isArray(event.candidates)
-            ? candidateSnapshot(event.candidates)
-            : markRecommended(liveCandidates, event.candidateId);
-          liveMessage.candidates = candidateSnapshot(liveCandidates);
-          liveMessage.result = { ...(liveMessage.result || {}), candidates: candidateSnapshot(liveCandidates) };
-          storageWrite();
-        }
-        input.onToolEvent?.(event);
-      };
-      const runnerInput = { ...input, onToolEvent };
-      let result;
-      try {
-        result = { ok: false, status: 'legacy_disabled', text: '旧 AI Runner 已停用，请使用统一 Agent Runtime' };
-      } catch (error) {
-        const failed = { ok: false, status: job.signal?.aborted ? 'cancelled' : 'error', text: job.signal?.aborted ? '已停止' : text(error?.message, String(error)), error: error?.code || 'ERROR', toolCallsUsed: [], aiTurns: 0, toolCalls: 0, renderCount: 0 };
-        liveMessage.role = 'error';
-        liveMessage.status = 'error';
-        liveMessage.text = failed.text;
-        liveMessage.candidates = candidateSnapshot(liveCandidates);
-        liveMessage.imageIds = [...new Set(liveCandidates.map(item => text(item.imageId)).filter(Boolean))];
-        liveMessage.result = { ...sessionClone(failed), candidates: candidateSnapshot(liveCandidates) };
-        storageWrite();
-        return { ...failed, mode, analysis, sessionId: session.id };
-      }
-      if (result?.ok !== false && input.pendingRefIds.length && (!input.isCurrent || input.isCurrent())) {
-        try { imageRepository?.markSent?.(session.id, input.pendingRefIds); } catch { /* persistence is best effort */ }
-      }
-      const renderedImageIds = [
-        ...liveCandidates.map(item => item.imageId),
-        ...(result.candidates || []).map(item => item.imageId),
-        ...(result.toolCallsUsed || [])
-        .filter(call => call.name === 'comfy.render' && call.result?.ok !== false)
-        .map(call => text(call.result?.data?.artifact?.id))
-      ].filter(Boolean);
-      liveCandidates = candidateSnapshot(result.candidates?.length ? result.candidates : liveCandidates);
-      liveMessage.candidates = candidateSnapshot(liveCandidates);
-      liveMessage.activity = activitySnapshot(liveActivity);
-      const selectedCandidate = finalCandidate(liveCandidates, liveMessage.result?.finalCandidateId);
-      if (!result.ok) {
-        liveMessage.role = 'error';
-        liveMessage.status = 'error';
-        liveMessage.text = result.text || result.error || 'AI 请求失败';
-        liveMessage.reasoning = result.reasoning || liveMessage.reasoning;
-        liveMessage.toolCalls = clone(result.toolCallsUsed || []);
-        if (renderedImageIds.length) liveMessage.imageIds = [...new Set(renderedImageIds)];
-        liveMessage.result = { ...sessionClone(result), candidates: candidateSnapshot(liveCandidates), ...(selectedCandidate || {}) };
-        storageWrite();
-        return { ...result, mode, analysis, sessionId: session.id };
-      }
-      const reply = mode === 'draw' ? parseReply(result.text) : null;
-      const replyThinking = text(reply?.thinking);
-      const displayReasoning = replyThinking || text(result.reasoning) || liveMessage.reasoning;
-      // The draw panel has a dedicated final-prompt block. Store only the
-      // canonical prompt for history; the UI hides this body when rendering
-      // the dedicated block, so marked protocol text cannot appear twice.
-      const hasCandidates = liveCandidates.length > 0;
-      const canonicalDrawPrompt = selectedCandidate?.finalPrompt || (!hasCandidates ? reply?.prompt : '');
-      const canonicalDrawNegative = selectedCandidate?.finalNegative || (!hasCandidates ? reply?.negative : '');
-      const canonicalDrawText = mode === 'draw' && text(canonicalDrawPrompt)
-        ? `${canonicalDrawPrompt}${canonicalDrawNegative ? `\n\n【负面提示词】\n${canonicalDrawNegative}` : ''}`
-        : '';
-      liveMessage.text = mode === 'draw' && hasCandidates
-        ? canonicalDrawText
-        : canonicalDrawText || result.text || liveMessage.text;
-      liveMessage.reasoning = displayReasoning;
-      liveMessage.toolCalls = clone(result.toolCallsUsed || []);
-      if (renderedImageIds.length) liveMessage.imageIds = [...new Set(renderedImageIds)];
-      liveMessage.result = {
-        ...sessionClone(result),
-        candidates: candidateSnapshot(liveCandidates),
-        ...(hasCandidates && !selectedCandidate ? { selectionRequired: true } : {}),
-        ...(selectedCandidate || {}),
-        ...(reply ? { prompt: canonicalDrawPrompt, negative: canonicalDrawNegative } : {})
-      };
-      liveMessage.status = 'done';
-      storageWrite();
-      const effectiveReply = reply ? { ...reply, prompt: canonicalDrawPrompt, negative: canonicalDrawNegative } : null;
-      return { ...result, mode, profile: mode, reply: effectiveReply, ...(effectiveReply ? { prompt: effectiveReply.prompt, negative: effectiveReply.negative } : {}), ...(hasCandidates && !selectedCandidate ? { selectionRequired: true } : {}), analysis, sessionId: session.id };
-    });
   }
   function chooseCandidate(messageId, candidateId, source = 'user') {
     const found = messageLocation(messageId);
@@ -1660,8 +1320,10 @@ function createAssistant(options = {}) {
     getPrompt: (key, version = 'effective') => version === 'default' && promptSource?.getDefault ? promptSource.getDefault(key) : prompt(key),
     getSettings: () => state.settings,
     getCurrentSessionId: () => state.currentId,
+    getRuntime: () => runtime,
+    getPrimaryTools: () => primaryTools,
     setSettings: value => {
-      if (isObject(value)) state.settings = { ...state.settings, ...clone(value) };
+      if (isObject(value)) state.settings = normaliseSettings(mergeSettingsPatch(state.settings, value));
       calls?.invalidateCapabilities?.();
       saveBusinessState();
       return clone(state.settings);
@@ -1683,7 +1345,12 @@ function createAssistant(options = {}) {
     vision: visionService,
     translation: options.translation || null,
     ai,
+    visionAI: visionClient(),
     prompts: promptSource,
+    resolveImage: (imageId, context = {}) => {
+      if (context.sessionId && context.sessionId !== state.currentId) return null;
+      return resolveImage(imageId);
+    },
     getSettings: () => state.settings
   });
   const toolBridge = {
@@ -1692,8 +1359,8 @@ function createAssistant(options = {}) {
     openAiTools: () => primaryTools?.openAiTools?.() || [],
     call: (name, args, context) => primaryTools?.call?.(name, args, context) || { ok: false, error: { code: 'TOOL_UNAVAILABLE', message: `工具不可用：${name}` } }
   };
-  runtime = createAgentRuntime({ primaryClient: ai, subagents, tools: toolBridge, getSettings: () => state.settings });
-  primaryTools = createPrimaryTools({ tags, imageRepository, runtime, comfy, getSettings: () => state.settings });
+  runtime = createAgentRuntime({ primaryClient: ai, subagents, tools: toolBridge, getSettings: () => state.settings, getPrimaryPrompt: () => prompt('primary') || '你是 AI 绘画 Tag 工具箱的主 AI，只使用固定高层工具完成用户任务。' });
+  primaryTools = createPrimaryTools({ tags, images, imageRepository, runtime, comfy, getSettings: () => state.settings });
   async function runPrimaryWithRuntime(value, config = {}) {
     const input = normaliseInput(value);
     const session = sessionById(input.sessionId) || currentSession();
@@ -1706,7 +1373,9 @@ function createAssistant(options = {}) {
     const current = currentUserMessage(input, input.text || '（附图）', input.images);
     const messages = [...sessionMessages(session), ...(current ? [current] : [])];
     const user = append('user', input.text || '（附图）', { imageIds: input.imageIds, imageReference: input.imageReference }, session.id);
-    const live = append('assistant', '', { status: 'streaming' }, session.id);
+    const liveSnapshot = append('assistant', '', { status: 'streaming' }, session.id);
+    const live = session.messages.find(message => message.id === liveSnapshot.id);
+    input.onStart?.({ user, assistant: liveSnapshot });
     try {
       const result = await runtime.runPrimary({
         requestId,
@@ -1715,6 +1384,7 @@ function createAssistant(options = {}) {
         input: { text: input.text, imageIds: input.imageIds, images: input.images, sessionId: session.id },
         config: { ...ai.getConfig(), ...(isObject(config) ? config : {}) },
         signal: controller.signal,
+        onEvent: input.onToolEvent,
         onToolCall: events => input.onToolEvent?.({ type: 'complete', name: events?.[0]?.name, result: events?.[0]?.result })
       });
       const payload = isObject(result?.data) ? result.data : {};
@@ -1736,7 +1406,7 @@ function createAssistant(options = {}) {
     }
   }
   const api = {
-    state, ai, prompts: clone(prompts), prompt: (key) => prompt(key), compose, parseReply,
+    state, ai, prompts: clone(prompts), prompt: (key) => prompt(key), parseReply,
     run: runPrimaryWithRuntime,
     runtime,
     primaryTools,
@@ -1750,7 +1420,7 @@ function createAssistant(options = {}) {
     refreshCapabilities: options2 => calls?.refreshCapabilities?.(options2) || Promise.resolve(null),
     newSession,
     currentSession: () => sessionClone(currentSession()), sessions: () => state.sessions.map(sessionClone),
-    getSettings: () => clone(state.settings), setSettings(value = {}) { if (isObject(value)) state.settings = normaliseSettings({ ...state.settings, ...clone(value), primaryApi: { ...state.settings.primaryApi, ...(value.primaryApi || {}) }, visionApi: { ...state.settings.visionApi, ...(value.visionApi || {}) }, comfy: { ...state.settings.comfy, ...(value.comfy || {}) }, limits: { ...state.settings.limits, ...(value.limits || {}) } }); ai.configure?.({ base: state.settings.base, model: state.settings.model, key: state.settings.key, temperature: state.settings.temperature, timeoutMs: state.settings.timeoutMs }); visionAi.configure?.(visionProfile()); calls?.invalidateCapabilities?.(); saveBusinessState(); return clone(state.settings); }, updateSettings(value = {}) { return api.setSettings(value); },
+    getSettings: () => clone(state.settings), setSettings(value = {}) { if (isObject(value)) state.settings = normaliseSettings(mergeSettingsPatch(state.settings, value)); ai.configure?.({ base: state.settings.base, model: state.settings.model, key: state.settings.key, temperature: state.settings.temperature, timeoutMs: state.settings.timeoutMs }); visionAi.configure?.(visionProfile()); calls?.invalidateCapabilities?.(); saveBusinessState(); return clone(state.settings); }, updateSettings(value = {}) { return api.setSettings(value); },
     listPresets: () => state.presets.map(clone), getPresets: () => state.presets.map(clone), setPresets(value) { state.presets = (Array.isArray(value) ? value : []).map(normalisePreset); state.activePreset = state.presets.find(item => item.id === state.activePreset)?.id || state.presets[0]?.id || ''; saveBusinessState(); return api.listPresets(); },
     addPreset(value) { const item = normalisePreset(value, state.presets.length); state.presets.push(item); state.activePreset = item.id; saveBusinessState(); return clone(item); }, removePreset(id) { if (state.presets.length <= 1) return false; const index = state.presets.findIndex(item => item.id === text(id)); if (index < 0) return false; state.presets.splice(index, 1); state.activePreset = state.presets[0]?.id || ''; saveBusinessState(); return true; }, getActivePreset: () => clone(state.presets.find(item => item.id === state.activePreset) || state.presets[0] || null), selectPreset(id) { if (!state.presets.some(item => item.id === text(id))) return false; state.activePreset = text(id); saveBusinessState(); return true; },
     listWorlds: () => state.worlds.map(clone), getWorlds: () => state.worlds.map(clone), setWorlds(value) { state.worlds = (Array.isArray(value) ? value : []).map(normaliseWorld); state.activeWorld = state.worlds.find(item => item.id === state.activeWorld)?.id || state.worlds[0]?.id || ''; saveBusinessState(); return api.listWorlds(); },

@@ -56,9 +56,6 @@ function createImageRepository(options = {}) {
   const counters = object(read(storage, 'conversation_image_slot_counters', {}))
     ? { ...read(storage, 'conversation_image_slot_counters', {}) }
     : {};
-  const legacyCollectionState = object(read(storage, 'legacy_collection_image_state', {}))
-    ? { ...read(storage, 'legacy_collection_image_state', {}) }
-    : {};
   const explicitlyRemoved = new Set(Array.isArray(read(storage, 'removed_conversation_image_refs', []))
     ? read(storage, 'removed_conversation_image_refs', []).map(text)
     : []);
@@ -157,7 +154,6 @@ function createImageRepository(options = {}) {
     write(storage, 'gallery_refs', [...gallery.values()].map(clone));
     write(storage, 'conversation_image_refs', [...conversations.values()].map(clone));
     write(storage, 'conversation_image_slot_counters', clone(counters));
-    write(storage, 'legacy_collection_image_state', clone(legacyCollectionState));
     write(storage, 'removed_conversation_image_refs', [...explicitlyRemoved]);
   }
 
@@ -320,7 +316,6 @@ function createImageRepository(options = {}) {
     conversations.delete(id);
     explicitlyRemoved.add(`${item.sessionId}|${item.imageId}`);
     try { options.onReferenceRemoved?.({ kind: 'conversation', sessionId: item.sessionId, refId: item.refId, imageId: item.imageId }); } catch { /* optional Vision adapter */ }
-    if (legacyCollectionState[item.imageId] === 'attached') legacyCollectionState[item.imageId] = 'removed';
     persist();
     const imageStillReferenced = referenceCount(item.imageId).total > 0;
     removePhysicalIfOrphaned(item.imageId);
@@ -329,9 +324,8 @@ function createImageRepository(options = {}) {
 
   function clearSessionContent(sessionId) {
     const target = session(sessionId);
-    // Legacy/imported sessions may still carry imageIds only in messages.
-    // Materialise those relationships before clearing the message body so the
-    // user-visible conversation gallery remains reachable.
+    // Materialise message image relationships before clearing the message body
+    // so the user-visible conversation gallery remains reachable.
     reconcileSessionMessages(sessionId);
     const removedMessages = Array.isArray(target?.messages) ? target.messages.length : 0;
     if (target) {
@@ -364,7 +358,6 @@ function createImageRepository(options = {}) {
         gallery.set(item.imageId, { galleryId: 'gallery_main', imageId: item.imageId, displayOrder, pinned: false, createdAt: now() });
       }
       item.ownership = 'shared-gallery';
-      if (legacyCollectionState[item.imageId]) legacyCollectionState[item.imageId] = 'promoted';
       item.updatedAt = now();
       promoted.push(item.imageId);
     }
@@ -392,10 +385,6 @@ function createImageRepository(options = {}) {
       if (index >= 0) allSessions.splice(index, 1);
     }
     saveSessions(allSessions);
-    if (!options2.retainImages) for (const item of refs) {
-      if (legacyCollectionState[item.imageId] !== 'attached') continue;
-      if (![...conversations.values()].some(ref => ref.imageId === item.imageId)) legacyCollectionState[item.imageId] = 'removed';
-    }
     let deletedImages = 0;
     if (!options2.retainImages) for (const item of uniqueReferenced) if (removePhysicalIfOrphaned(item.imageId)) deletedImages += 1;
     persist();
@@ -550,57 +539,6 @@ function createImageRepository(options = {}) {
     return null;
   }
 
-  function migrateLegacy(options2 = {}) {
-    const sessions = getSessions();
-    if (!Array.isArray(sessions) || typeof images?.collectionIds !== 'function') return;
-    const configuredCurrent = typeof options.currentSessionId === 'function' ? options.currentSessionId() : options.currentSessionId;
-    const requestedCurrent = text(configuredCurrent || read(storage, 'current_session_id', ''));
-    const defaultSession = sessions.some(item => text(item?.id) === requestedCurrent) ? requestedCurrent : text(sessions[0]?.id);
-    const checkpoint = read(storage, 'image_repository_migrated_v1', false) === true;
-    const sessionImportPending = read(storage, 'rewrite_migrated_v142', false) === true && read(storage, 'rewrite_sessions_migrated', false) !== true;
-    const legacyCollectionIds = new Set([...(images.collectionIds('talk') || []), ...(images.collectionIds('comfy') || [])].map(text));
-    if (checkpoint && !sessionImportPending) {
-      const legacyIds = new Set([...(images.collectionIds('talk') || []), ...(images.collectionIds('comfy') || [])].map(text));
-      for (const id of legacyIds) {
-        if (legacyCollectionState[id]) continue;
-        if (gallery.has(id)) legacyCollectionState[id] = 'promoted';
-        else if ([...conversations.values()].some(ref => ref.imageId === id)) legacyCollectionState[id] = 'attached';
-        else legacyCollectionState[id] = 'removed';
-      }
-    }
-    const collectionEligible = id => {
-      if (!image(id) || gallery.has(id)) {
-        if (gallery.has(id)) legacyCollectionState[id] = 'promoted';
-        return false;
-      }
-      return !checkpoint || !legacyCollectionState[id] || legacyCollectionState[id] === 'orphaned';
-    };
-    if (options2.collections !== false && defaultSession) for (const id of images.collectionIds('talk') || []) {
-      if (!collectionEligible(id)) continue;
-      const ref = attachToConversation(defaultSession, id, { source: 'upload' });
-      if (ref) legacyCollectionState[id] = 'attached';
-    }
-    const messageSessionByImage = new Map();
-    for (const item of sessions) for (const message of Array.isArray(item?.messages) ? item.messages : []) for (const id of Array.isArray(message?.imageIds) ? message.imageIds : []) if (!messageSessionByImage.has(text(id))) messageSessionByImage.set(text(id), { sessionId: text(item.id), message });
-    for (const [id, match] of messageSessionByImage) {
-      const ref = attachToConversation(match.sessionId, id, { source: 'message', messageId: match.message.id });
-      if (ref && sessionImportPending && legacyCollectionIds.has(id) && !legacyCollectionState[id]) legacyCollectionState[id] = 'attached';
-    }
-    if (options2.collections !== false && defaultSession) {
-      for (const id of images.collectionIds('comfy') || []) {
-        if (!collectionEligible(id)) continue;
-        const match = messageSessionByImage.get(text(id));
-        if (match) {
-          const ref = attachToConversation(match.sessionId, id, { source: 'comfy', messageId: match.message.id });
-          if (ref) legacyCollectionState[id] = 'attached';
-        }
-        // Comfy 出图属于对话区，不再自动提升进存储区（图库）。
-      }
-      if (!checkpoint) write(storage, 'image_repository_migrated_v1', true);
-    }
-    persist();
-  }
-
   function reconcileSessions() {
     const validIds = new Set(getSessions().map(item => text(item?.id)).filter(Boolean));
     let removed = 0;
@@ -611,15 +549,7 @@ function createImageRepository(options = {}) {
       removedItems.push(item);
       removed += 1;
     }
-    for (const item of removedItems) {
-      if (legacyCollectionState[item.imageId] !== 'attached') continue;
-      if (gallery.has(item.imageId)) legacyCollectionState[item.imageId] = 'promoted';
-      else if (![...conversations.values()].some(ref => ref.imageId === item.imageId)) legacyCollectionState[item.imageId] = 'orphaned';
-    }
-    for (const item of removedItems) {
-      if (legacyCollectionState[item.imageId] === 'orphaned') continue;
-      removePhysicalIfOrphaned(item.imageId);
-    }
+    for (const item of removedItems) removePhysicalIfOrphaned(item.imageId);
     if (removed) persist();
     return removed;
   }
@@ -641,38 +571,10 @@ function createImageRepository(options = {}) {
     return attached;
   }
 
-  function finalizeMigration() {
-    reconcileSessions();
-    migrateLegacy({ collections: true });
-    cleanupComfyGalleryRefs();
-    return { collectionsMigrated: read(storage, 'image_repository_migrated_v1', false) === true };
-  }
-
-  // One-time cleanup: Comfy 测试/历史出图曾被旧版迁移逻辑自动提升进图库。
-  // 按设计 Comfy 出图只属于对话区，这里把图库里的 comfy 来源条目撤下：
-  // 无任何会话/消息引用的（通常是测试遗留）同时回收文件；有引用的只移出
-  // 图库，图片仍保留在对应对话。
-  function cleanupComfyGalleryRefs() {
-    if (read(storage, 'image_repository_comfy_gallery_cleanup_v1', false) === true) return { removed: 0, purged: 0 };
-    let removed = 0;
-    let purged = 0;
-    for (const [imageId] of [...gallery.entries()]) {
-      const asset = imageAsset(imageId);
-      if (!asset || text(asset.source) !== 'comfy') continue;
-      gallery.delete(imageId);
-      removed += 1;
-      if (referenceCount(imageId).total === 0) {
-        try { if (typeof images?.remove === 'function') images.remove(imageId); } catch { /* 保留文件 */ }
-        purged += 1;
-      }
-    }
-    write(storage, 'image_repository_comfy_gallery_cleanup_v1', true);
-    if (removed) persist();
-    return { removed, purged };
-  }
-
-  migrateLegacy({ collections: options.deferCollectionMigration !== true });
-  cleanupComfyGalleryRefs();
+  // Initialise relationships from the current sessions and persisted refs.
+  // A saved ComfyUI image is a gallery item only after an explicit promotion.
+  reconcileSessions();
+  for (const item of getSessions()) reconcileSessionMessages(item?.id);
 
   return {
     listGallery,
@@ -696,10 +598,8 @@ function createImageRepository(options = {}) {
     exportGalleryManifest,
     importGalleryManifest,
     getOriginalBytes,
-    migrateLegacy,
     reconcileSessions,
-    reconcileSessionMessages,
-    finalizeMigration
+    reconcileSessionMessages
   };
 }
 

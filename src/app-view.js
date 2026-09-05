@@ -19,10 +19,11 @@
     const visionTempStore = modules.visionTempStore || assistant?.visionTempStore || null;
     const prompts = modules.prompts;
     const comfy = modules.comfy;
+    const runtime = modules.runtime || assistant?.runtime || null;
+    const preferencesStore = modules.preferences || modules.settings || null;
     const ui = {
       route: "tags",
       aiTab: "talk",
-      talkMode: "assistant",
       favoritesOpen: false,
       visionResult: null,
       visionOpen: false,
@@ -70,17 +71,17 @@
       if (["broad", "loose", "fuzzy", "low", "宽松", "低"].includes(raw)) return "broad";
       return "standard";
     }
-    const storage = {
+    const preferences = {
       get(key, fallback = null) {
         try {
-          return modules.storage?.get?.(key, fallback) ?? fallback;
+          return preferencesStore?.get?.(key, fallback) ?? fallback;
         } catch {
           return fallback;
         }
       },
       set(key, value) {
         try {
-          modules.storage?.set?.(key, value);
+          preferencesStore?.set?.(key, value);
         } catch {
           /* 页面仍可继续使用 */
         }
@@ -93,6 +94,14 @@
       el.classList.add("show");
       clearTimeout(notify.timer);
       notify.timer = setTimeout(() => el.classList.remove("show"), 1800);
+    };
+    const viewFactories = global.AppViews || {};
+    const views = {
+      conversation: viewFactories.conversation?.createConversationView?.({ document: doc, api: assistant, runtime, repository: imageRepository, notify, preferences, autoBind: false }),
+      gallery: viewFactories.gallery?.createGalleryView?.({ document: doc, repository: imageRepository, images, preferences, notify, autoBind: false }),
+      settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, autoBind: false }),
+      prompt: viewFactories.prompt?.createPromptView?.({ document: doc, prompts, notify, autoBind: false }),
+      agentStatus: viewFactories.agentStatus?.createAgentStatusView?.({ document: doc, runtime, api: assistant, notify, autoBind: false }),
     };
     const show = (selector, yes) => {
       const el = $(selector);
@@ -584,17 +593,16 @@
       const comfyState = capabilities?.comfy || {};
       if (comfyState.render) return "ComfyUI 已连接 · 工作流已就绪";
       if (!comfyState.connected) return comfyState.error || "ComfyUI 未连接 · 请确认 ComfyUI 已启动，并检查「API 设置 → ComfyUI 地址」";
-      if (!comfyState.enabled) return comfyState.error || "ComfyUI 已停用 · 请在绘图模式左上角打开“ComfyUI 出图”";
+      if (!comfyState.enabled) return comfyState.error || "ComfyUI 已停用 · 请在 API 设置中开启 ComfyUI";
       if (!comfyState.workflowReady) {
         return comfyState.error || "ComfyUI 未就绪 · 请到「API 设置 → ComfyUI」上传或粘贴 API 格式工作流";
       }
       return comfyState.error || "ComfyUI 未连接 · 请确认 ComfyUI 已启动，并检查「API 设置 → ComfyUI 地址」";
     }
-    function syncDrawControls(capabilities = ui.comfyCapabilities) {
+    function syncComfyStatus(capabilities = ui.comfyCapabilities) {
       const module = $("#comfyUiModule");
       if (!module) return;
       const state = capabilities?.comfy || {};
-      const inDrawMode = false;
       module.hidden = true;
       const status = $("#comfyStatus");
       const statusLabel = capabilityLabel(capabilities);
@@ -607,34 +615,6 @@
         status.classList.toggle("is-comfy-warning", connected && !workflowReady);
         status.classList.toggle("is-comfy-error", !connected);
       }
-      const toggleWrap = $("#tkDrawRenderWrap");
-      const iterationsWrap = $("#tkDrawIterationsWrap");
-      const toggle = $("#tkDrawRender");
-      const iterations = $("#tkDrawIterations");
-      const actions = $("#tkDrawControls", module);
-      if (!inDrawMode) return;
-      const ready = state.connected === true && state.workflowReady === true;
-      // The user's enable choice is independent from ComfyUI connectivity.
-      // Keep the toggle visible and writable while showing readiness in the
-      // status line; otherwise an async capability refresh can make a checked
-      // toggle appear to switch itself off.
-      if (actions) actions.hidden = false;
-      if (toggleWrap) toggleWrap.hidden = false;
-      if (toggle) {
-        toggle.disabled = false;
-        toggle.checked = settings().comfyOn === true;
-      }
-      if (ready) {
-        if (iterationsWrap) iterationsWrap.hidden = false;
-        if (iterations) {
-          iterations.disabled = false;
-          const value = Math.max(1, Math.min(8, Number(settings().batchCount) || 1));
-          iterations.value = String(value);
-        }
-        return;
-      }
-      if (iterationsWrap) iterationsWrap.hidden = true;
-      if (iterations) iterations.disabled = true;
     }
     async function refreshCapabilitiesStatus(options = {}) {
       const calls = assistant?.calls;
@@ -646,12 +626,7 @@
       ui.comfyCapabilities = capabilities;
       const label = capabilityLabel(capabilities);
       put("#comfyCapabilityHint", label);
-      syncDrawControls(capabilities);
-      const render = $("#tkDrawRender");
-      if (render) {
-        render.disabled = false;
-        render.checked = settings().comfyOn === true;
-      }
+      syncComfyStatus(capabilities);
       const localButton = $("#tpIdentify");
       const aiButton = $("#tpDescribe");
       if (localButton) {
@@ -725,6 +700,8 @@
         ]);
     }
     function renderPrompt() {
+      views.prompt?.render();
+      $("#worldBookCard")?.setAttribute("hidden", "");
       ensurePromptState();
       const preset = activePreset() || {};
       const worlds = assistant?.listWorlds?.() || [];
@@ -770,16 +747,17 @@
       renderWorldEntries();
     }
     const promptModuleDefs = [
-      ["assistant", "ui.ai.modeAssist"],
-      ["draw", "ui.ai.modeDraw"],
+      ["primary", "ui.prompt.main"],
+      ["vision", "ui.prompt.vision"],
+      ["translation", "ui.translation.title"],
+      ["generateTags", "ui.prompt.genTask"],
     ];
-    const promptSlotMap = { base: "main", genTask: "generate", quality: "quality", vision: "vision", system: "comfy" };
+    const promptSlotMap = { base: "primary", genTask: "generateTags", quality: "primary", vision: "vision", system: "translation" };
     const defaultPromptMods = {
-      main: ["draw"],
-      generate: ["draw"],
-      quality: ["draw"],
-      vision: ["assistant", "draw"],
-      comfy: ["draw"],
+      primary: ["primary"],
+      generateTags: ["generateTags"],
+      vision: ["vision"],
+      translation: ["translation"],
     };
     function presetSlotMods(preset, slot) {
       const value = preset?.mods?.[slot];
@@ -1063,9 +1041,7 @@
         ),
         comfyBase: formValue("#comfyBase", s.comfyBase).replace(/\/+$/, ""),
         comfyWorkflow: formValue("#comfyWf", s.comfyWorkflow),
-        // `comfyOn` is owned by setDrawComfyEnabled(). Other API fields must
-        // not copy a stale checkbox value back into persistent settings.
-        comfyOn: s.comfyOn === true,
+        comfyOn: $("#comfyOn") ? $("#comfyOn").checked : s.comfyOn === true,
         batchCount: Math.max(
           1,
           Math.min(8, Number($("#batchCount")?.value) || Number(s.batchCount) || 1),
@@ -1078,6 +1054,10 @@
         comfySteps:
           Number($("#comfySteps")?.value) || Number(s.comfySteps) || 25,
         comfyCfg: Number($("#comfyCfg")?.value) || Number(s.comfyCfg) || 7,
+        seed: $("#comfySeed") ? ($("#comfySeed").value === "" ? undefined : Number($("#comfySeed").value)) : s.seed,
+        sampler: formValue("#comfySampler", s.sampler || s.comfySampler || "euler"),
+        scheduler: formValue("#comfyScheduler", s.scheduler || s.comfyScheduler || "normal"),
+        generateNegativeTags: $("#generateNegativeTags") ? $("#generateNegativeTags").checked : s.generateNegativeTags === true,
       };
       assistant?.setSettings?.(patch);
       comfy?.setBase?.(patch.comfyBase);
@@ -1127,6 +1107,7 @@
       clearTimeout(settingsSaveTimer);
       settingsSaveTimer = null;
       const s = settings();
+      views.settings?.render(s);
       if ($("#aiBase"))
         $("#aiBase").value = s.base || "https://api.openai.com/v1";
       if ($("#aiPreset")) {
@@ -1148,6 +1129,11 @@
       }
       if ($("#comfyBase"))
         $("#comfyBase").value = s.comfyBase || "http://127.0.0.1:8188";
+      if ($("#comfyOn")) $("#comfyOn").checked = s.comfyOn === true;
+      if ($("#comfySeed")) $("#comfySeed").value = s.seed ?? "";
+      if ($("#comfySampler")) $("#comfySampler").value = s.sampler || s.comfySampler || "euler";
+      if ($("#comfyScheduler")) $("#comfyScheduler").value = s.scheduler || s.comfyScheduler || "normal";
+      if ($("#generateNegativeTags")) $("#generateNegativeTags").checked = s.generateNegativeTags === true;
       if ($("#batchCount")) $("#batchCount").value = Number(s.batchCount) || 1;
       if ($("#maxComfyCalls")) $("#maxComfyCalls").value = Number(s.maxComfyCalls) || 3;
       if ($("#comfyWf")) $("#comfyWf").value = workflowText(s.comfyWorkflow);
@@ -1361,7 +1347,7 @@
       const host = $("#talkImageRepository");
       if (!host) return;
       const rows = conversationRows();
-      host.dataset.columns = storage.get("conversation.columns", "two") === "single" ? "single" : "two";
+      host.dataset.columns = preferences.get("conversation.columns", "two") === "single" ? "single" : "two";
       const count = $("#talkImageRepositoryCount");
       if (count) count.textContent = formatText(localized("ui.ai.pendingImages", "对话图片 {count} 张 / 待发送 {pending} 张"), { count: rows.length, pending: ui.sendDrafts.length });
       host.replaceChildren();
@@ -1416,7 +1402,7 @@
       const valid = {
         order: ["oldest", "newest"],
       };
-      const order = valid.order.includes(storage.get("gallery.order", "oldest")) ? storage.get("gallery.order", "oldest") : "oldest";
+      const order = valid.order.includes(preferences.get("gallery.order", "oldest")) ? preferences.get("gallery.order", "oldest") : "oldest";
       ui.galleryOrder = order;
       return { order };
     }
@@ -2335,21 +2321,6 @@
         },
       };
     }
-    function drawContextTask() {
-      return settings().comfyOn !== false ? "comfy" : "draw";
-    }
-    function setDrawComfyEnabled(value) {
-      const enabled = Boolean(value);
-      assistant?.setSettings?.({ comfyOn: enabled });
-      if ($("#tkDrawRender")) $("#tkDrawRender").checked = enabled;
-      scheduleCapabilitiesStatus();
-    }
-    function setDrawIterations(value) {
-      const iterations = Math.max(1, Math.min(10, Number(value) || 3));
-      assistant?.setSettings?.({ batchCount: iterations });
-      if ($("#batchCount")) $("#batchCount").value = String(iterations);
-      syncDrawControls(ui.comfyCapabilities);
-    }
     let talkRenderPending = false;
     function scheduleTalkRender(render = renderTalk) {
       if (talkRenderPending) return;
@@ -3016,14 +2987,6 @@
         host.appendChild(row);
       });
     }
-    function syncTalkMode() {
-      const bar = $("#tkmodebar");
-      if (bar) bar.hidden = true;
-    }
-    function setTalkMode(mode, options = {}) {
-      ui.talkMode = "assistant";
-      syncTalkMode();
-    }
     function showAi(tab) {
       const nextTab = [
         "talk",
@@ -3057,7 +3020,6 @@
       if (ui.aiTab === "prompt") renderPrompt();
       if (ui.aiTab === "api") loadSettings();
       if (ui.aiTab === "mgr") renderManager();
-      if (ui.aiTab === "talk") requestAnimationFrame(syncTalkMode);
       ensureVisionPanePlacement();
     }
     function ensureVisionPanePlacement() {
@@ -3137,7 +3099,7 @@
         (theme === "auto" &&
           global.matchMedia?.("(prefers-color-scheme: dark)").matches);
       doc.body.classList.toggle("dark", dark);
-      storage.set("app.theme", theme);
+      preferences.set("app.theme", theme);
       $$(".popitem[data-theme]").forEach((item) => {
         const check = $(".ck", item);
         if (check) check.textContent = item.dataset.theme === theme ? "✓" : "";
@@ -3169,7 +3131,7 @@
       if (precision) precision.value = ui.searchPrecision;
       doc.documentElement.lang = id;
       ui.locale = id;
-      storage.set("app.locale", id);
+      preferences.set("app.locale", id);
       const localizedTitle = localized("ui.document.title", doc.title);
       if (localizedTitle) doc.title = localizedTitle.replace(/V1\.4\.1/g, `V${modules.version || "1.4.92"}`);
       put("#brandSub", `V${modules.version || "1.4.92"}`);
@@ -3232,7 +3194,7 @@
       $("#searchPrecision")?.addEventListener("change", (event) => {
         ui.searchPrecision = normaliseSearchPrecision(event.target.value);
         event.target.value = ui.searchPrecision;
-        storage.set("app.searchPrecision", ui.searchPrecision);
+        preferences.set("app.searchPrecision", ui.searchPrecision);
         tags?.setSearchPrecision?.(ui.searchPrecision);
         ui.tagPageCache.clear();
         ui.visible = 400;
@@ -3406,7 +3368,7 @@
         event.target.value = "";
         renderGallery();
       });
-      $("#galleryOrder")?.addEventListener("change", event => { ui.galleryOrder = ["oldest", "newest"].includes(event.target.value) ? event.target.value : "oldest"; storage.set("gallery.order", ui.galleryOrder); renderGallery(); });
+      $("#galleryOrder")?.addEventListener("change", event => { ui.galleryOrder = ["oldest", "newest"].includes(event.target.value) ? event.target.value : "oldest"; preferences.set("gallery.order", ui.galleryOrder); renderGallery(); });
       $("#galleryQuery")?.addEventListener("input", event => { ui.galleryQuery = String(event.target.value || "").trim(); renderGallery(); });
       $("#gallerySend")?.addEventListener("click", gallerySendSelectedItems);
       $("#galleryDownload")?.addEventListener("click", () => {
@@ -3448,10 +3410,9 @@
       });
       syncVisionPaneOffset();
       global.addEventListener("resize", () => {
-        syncTalkMode();
         syncVisionPaneOffset();
       });
-      const persistedComfyFields = ["#comfyBase", "#comfyPos", "#comfyNeg", "#comfyW", "#comfyH", "#comfySteps", "#comfyCfg", "#batchCount", "#maxComfyCalls", "#comfyWf"];
+      const persistedComfyFields = ["#comfyBase", "#comfyPos", "#comfyNeg", "#comfyW", "#comfyH", "#comfySteps", "#comfyCfg", "#comfySeed", "#comfySampler", "#comfyScheduler", "#comfyOn", "#generateNegativeTags", "#batchCount", "#maxComfyCalls", "#comfyWf"];
       persistedComfyFields.forEach(selector => $(selector)?.addEventListener("change", () => {
         configFromView();
       }));
@@ -3494,7 +3455,7 @@
           .catch(error => notify(error?.message || String(error)))
           .finally(() => { event.target.value = ""; }),
       );
-      $("#talkRepositoryColumns")?.addEventListener("change", event => { const value = event.target.value === "single" ? "single" : "two"; storage.set("conversation.columns", value); renderConversationRepository(); });
+      $("#talkRepositoryColumns")?.addEventListener("change", event => { const value = event.target.value === "single" ? "single" : "two"; preferences.set("conversation.columns", value); renderConversationRepository(); });
       $("#talkRepositoryClearPending")?.addEventListener("click", () => { ui.sendDrafts = []; renderConversationRepository(); });
       $("#talkPendingClear")?.addEventListener("click", () => { ui.sendDrafts = []; renderConversationRepository(); });
       $("#tpUpload")?.addEventListener("click", () => $("#tpFile")?.click());
@@ -4079,20 +4040,24 @@
         if (useAi) {
           let reasoning = "";
           setTranslationThinking(true, "AI 正在思考…");
-          result = await translation?.translateWithAI?.(input, direction, {
-            ...currentConfig(),
-            stream: true,
-            onDelta: (_content, deltaReasoning) => {
-              if (requestId !== ui.translateRequestId || !deltaReasoning) return;
-              reasoning += String(deltaReasoning);
+          const envelope = await runtime?.runSubAgent?.('translation', {
+            input: { text: input, direction, source: 'ai' },
+            requestId: `translation-${requestId}`,
+            onEvent: event => {
+              if (requestId !== ui.translateRequestId || !event?.reasoning) return;
+              reasoning += String(event.reasoning);
               setTranslationThinking(true, reasoning);
-            },
+            }
           });
+          result = envelope?.ok === false
+            ? { ok: false, error: envelope.error?.message || envelope.error || '翻译失败' }
+            : { ok: true, ...(envelope?.data || {}) };
           if (requestId === ui.translateRequestId)
             setTranslationThinking(true, reasoning || "AI 已完成翻译。", true);
         } else {
           setTranslationThinking(false);
-          result = await translation?.translateLocal?.(input, direction);
+          const envelope = await runtime?.runSubAgent?.('translation', { input: { text: input, direction, source: 'local' }, requestId: `translation-local-${requestId}` });
+          result = envelope?.ok === false ? { ok: false, error: envelope.error?.message || envelope.error || '翻译失败' } : { ok: true, ...(envelope?.data || {}) };
         }
       } catch (error) {
         result = { ok: false, error: error.message || String(error) };
@@ -4110,18 +4075,17 @@
       if (ui.started) return;
       ui.started = true;
       restoreTags();
-      ui.searchPrecision = normaliseSearchPrecision(storage.get("app.searchPrecision", "standard"));
+      ui.searchPrecision = normaliseSearchPrecision(preferences.get("app.searchPrecision", "standard"));
       $("#searchPrecision")?.setAttribute("value", ui.searchPrecision);
       if ($("#searchPrecision")) $("#searchPrecision").value = ui.searchPrecision;
       tags?.setSearchPrecision?.(ui.searchPrecision);
-      const theme = storage.get(
+      const theme = preferences.get(
         "app.theme",
-        storage.get("rewrite_theme", "light"),
+        preferences.get("rewrite_theme", "light"),
       );
       applyTheme(theme);
       ensurePromptState();
       bind();
-      setTalkMode("assistant", { persist: false });
       resizeTalkInput();
       loadSettings({ fetch: false });
       refreshCapabilitiesStatus({ force: true });
@@ -4135,12 +4099,14 @@
       renderConversationRepository();
       renderVisionPreview();
       renderEmbeddedVision();
-      locale(storage.get("app.locale", storage.get("rewrite_locale", "zh-CN")));
+      views.agentStatus?.render({ status: "idle" });
+      locale(preferences.get("app.locale", preferences.get("rewrite_locale", "zh-CN")));
       route("tags");
     }
     return {
       start,
       route,
+      views,
       showAi,
       renderTags,
       renderSelection,
@@ -4156,3 +4122,4 @@
   }
   global.AppView = { create: createAppView };
 })(window);
+
