@@ -34,6 +34,13 @@
       "brand": "AI 绘画 Tag 工具箱",
       "menu": "分类菜单",
       "searchTitle": "快捷键：Ctrl+K 或 / 可快速聚焦搜索框",
+      "searchPrecision": "搜索精度",
+      "searchPrecisionTitle": "选择搜索精度：精确、标准或宽松",
+      "searchSubmit": "搜索",
+      "searchSubmitTitle": "应用当前搜索条件",
+      "searchExact": "精确",
+      "searchStandard": "标准",
+      "searchBroad": "宽松",
       "searchPlaceholder": "搜索标签：英文 / 中文 / 别名（如：双马尾、blonde、异色瞳）",
       "aiModules": "AI 模块",
       "talkPage": "🤖 助手页",
@@ -45,14 +52,19 @@
       "dark": "🌙 深色模式",
       "autoTheme": "🖥️ 跟随系统",
       "aiAssistant": "🤖 AI 助手",
-      "adult": "成人标签",
+      "adult": "○ 成人标签：关",
+      "adultClose": "● 成人标签：开",
       "favorites": "⭐ 收藏组合",
+      "favoritesClose": "✕ 关闭收藏组合",
+      "vision": "🔍 识图",
+      "visionClose": "✕ 关闭识图",
+      "gallery": "🖼 图片库",
       "help": "❓ 帮助",
       "sponsor": "❤️ 赞助作者",
       "language": "文/A",
       "languageTitle": "切换界面语言",
       "styleTitle": "切换样式主题",
-      "adultOn": "成人标签：开",
+      "adultOn": "● 成人标签：开",
       "backHome": "← 返回主页",
       "backAssistant": "🤖 AI 助手"
     },
@@ -71,6 +83,9 @@
       "remove": "移除",
       "brandSub": "V1.4.1 · 共 {count} 个标签 · 单击选择 · 一键复制",
       "brandSubWithModel": "V1.4.1 · 共 {count} 个标签（含识图模型同步 {modelCount} 个）· 单击选择 · 一键复制"
+    },
+    "gallery": {
+      "title": "🖼 图片库", "upload": "上传", "download": "下载所选", "delete": "批量删除", "import": "导入", "export": "导出", "order": "排序", "oldest": "最早", "newest": "最新", "filter": "筛选图片", "columns": "列数", "two": "两列", "single": "单列", "size": "卡片大小", "compact": "紧凑", "standard": "标准", "large": "大图", "empty": "图片库为空", "identify": "识图", "send": "发送到对话仓库", "downloadOne": "下载", "rename": "重命名", "deleteTitle": "删除", "count": "{count} 张", "sent": "已发送到对话仓库", "selectFirst": "请先选择图片", "downloadFailed": "无法读取原始图片", "deleteConfirm": "确定从图片库移除 {name} 吗？", "batchDeleteConfirm": "确定处理 {count} 张图片吗？仍被会话引用的图片只能移除图库关联。", "deleteImpact": "会话引用 {conversations}，消息引用 {messages}。", "removeOnly": "仅移除图库关联", "purge": "彻底删除（无引用时）", "noSession": "没有可用会话，无法发送图片", "imported": "已导入 {count} 张图片", "importFailed": "有 {count} 张图片缺少原始数据"
     },
     "translation": {
       "title": "🌐 翻译",
@@ -199,7 +214,31 @@
       "workflowMissing": "未上传工作流",
       "connected": "已连接",
       "connectionFailed": "连接失败",
-      "comfyDisabled": "ComfyUI 未启用"
+      "comfyDisabled": "ComfyUI 未启用",
+      "conversationImages": "对话图片",
+      "pendingImages": "对话图片 {count} 张 / 待发送 {pending} 张",
+      "repositoryColumns": "图片列数",
+      "repositorySize": "图片大小",
+      "twoColumns": "两列",
+      "singleColumn": "单列",
+      "compact": "紧凑",
+      "standard": "标准",
+      "large": "大图",
+      "clearPending": "清空待发送",
+      "pending": "待发送",
+      "notPending": "未待发送",
+      "sent": "已发送",
+      "candidate": "候选",
+      "source": { "upload": "上传", "gallery": "图库", "comfy": "ComfyUI" },
+      "retainConversationImages": "保留对话图片到独立图库",
+      "deleteConversation": "确定删除对话“{title}”吗？",
+      "deleteConversationImpact": "消息 {messages} 条 · 专属图片 {owned} 张 · 共享图片 {shared} 张",
+      "newChatTitle": "新对话"
+      ,"repositoryEmpty": "暂无对话图片"
+      ,"removeConversationImage": "从对话移除"
+      ,"removePendingImage": "取消本次引用"
+      ,"imageSlot": "图{slot}"
+      ,"imageFallback": "图片"
       ,"worldPreviewHeader": "【扩展提示库：{name}】"
     },
     "custom": { "title": "＋ 添加自定义标签", "english": "英文标签（必填）", "chinese": "中文翻译", "alias": "搜索别名（空格分隔，选填）", "subcategory": "子分类（留空则为“自定义”）", "category": "分类", "save": "保存", "cancel": "取消", "list": "我的自定义标签" },
@@ -286,6 +325,7 @@
     "quality": "质量词",
     "negative": "负面提示词",
     "character": "人物与角色",
+    "character_names": "角色名",
     "series": "作品系列",
     "body": "身材与身体",
     "expression": "表情",

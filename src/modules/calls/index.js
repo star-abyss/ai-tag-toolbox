@@ -24,12 +24,12 @@ function number(value, fallback) {
   return Number.isFinite(result) ? result : fallback;
 }
 
-const RUNTIME_TOOL_NAMES = Object.freeze(['tags.search', 'vision.processOne', 'comfy.render']);
+const RUNTIME_TOOL_NAMES = Object.freeze(['tags.search', 'vision.processOne', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
 const AGENT_RUNTIME_TOOL_NAMES = Object.freeze([
   'tags.search', 'vision.processOne', 'comfy.render',
   'prompts.list', 'prompts.read', 'settings.comfy.get',
   'tags.describe', 'assets.listModels',
-  'comfy.submit', 'comfy.getResult', 'comfy.objectInfo', 'comfy.cancel', 'comfy.getImage'
+  'comfy.submit', 'comfy.getResult', 'comfy.objectInfo', 'comfy.cancel', 'comfy.getImage', 'conversation.listImages'
 ]);
 const AGENT_ADMIN_TOOL_NAMES = Object.freeze([
   'settings.comfy.update', 'settings.comfy.setIterations',
@@ -41,20 +41,27 @@ function imageUrl(value) {
   return text(value && (value.dataUrl || value.url || value.src || value.previewUrl || value.viewUrl));
 }
 
-function artifact(value) {
+function artifact(value, options = {}) {
   if (!value || typeof value !== 'object') return null;
-  return {
+  const output = {
     id: text(value.id || value.artifactId || value.promptId),
     filename: text(value.filename || value.name),
-    path: text(value.path || value.filePath),
-    viewUrl: text(value.viewUrl || value.url),
-    dataUrl: text(value.dataUrl),
     mime: text(value.mime || value.contentType, 'image/png'),
     width: Number(value.width) || 0,
     height: Number(value.height) || 0,
     prompt: text(value.prompt || value.promptText),
     negative: text(value.negative || value.negativePrompt)
   };
+  // Media URLs are retained only for the in-process Assistant renderer, which
+  // immediately stores/sanitizes them. External/native callers receive the
+  // metadata-only artifact and can address the image through its short ref.
+  if (options.includeMedia === true) {
+    const viewUrl = text(value.viewUrl || value.url);
+    const dataUrl = text(value.dataUrl);
+    if (/^https?:\/\//i.test(viewUrl)) output.viewUrl = viewUrl.slice(0, 600);
+    if (/^data:image\//i.test(dataUrl)) output.dataUrl = dataUrl;
+  }
+  return output;
 }
 
 function comfySettingsSnapshot(settings = {}, comfy = null) {
@@ -63,6 +70,7 @@ function comfySettingsSnapshot(settings = {}, comfy = null) {
     ? comfy.workflowStatus(workflowValue)
     : { ready: Boolean(workflowValue) };
   return {
+    'conversation.listImages': object({ sessionId: { type: 'string' } }),
     enabled: settings.comfyOn !== false,
     base: text(settings.comfyBase || comfy?.base, 'http://127.0.0.1:8188'),
     width: Number(settings.comfyW) || 768,
@@ -81,6 +89,7 @@ function makeSchemas() {
   const object = (properties, required = []) => ({ type: 'object', properties, required });
   const visionProcessSchema = object({
     imageId: { type: 'string', description: '明确的一张图片真实 ID（例如 img_xxx）；不要传“图片1”等显示编号，一次调用只能处理这一张图片' },
+    tempId: { type: 'string', description: '右侧 Vision 临时图片的单槽 tempId；与 imageId 二选一' },
     imagePath: { type: 'string', description: '可选：本地图片文件路径；传了之后自动登记为图片并识图，与 imageId 二选一' },
     mode: { type: 'string', enum: ['metadata', 'local', 'ai'], description: '识图方式：metadata、local 或 ai' },
     model: { type: 'string', description: 'local 模式可选的本地模型 ID' },
@@ -90,6 +99,9 @@ function makeSchemas() {
   // resolves exactly one imageId before entering Vision. Keep the schema to a
   // broadly supported object/required subset for OpenAI-compatible endpoints.
   return {
+    'agent.generateTags': object({ requirements: { type: 'string', maxLength: 8000 }, description: { type: 'string', maxLength: 8000 }, imageId: { type: 'string' }, positiveTags: { type: 'array', items: { type: 'string' }, maxItems: 256 }, referenceTags: { type: 'array', items: { type: 'string' }, maxItems: 256 } }),
+    'comfy.status': object({}),
+    'comfy.validateWorkflow': object({ workflow: { type: 'string', maxLength: 200000 } }),
     'tags.search': object({
       query: { type: 'string', description: '要查询的 Tag、中文名或别名' },
       category: { type: 'string', description: '可选分类 ID' },
@@ -173,7 +185,11 @@ function createCalls(options = {}) {
   const comfy = options.comfy || null;
   const prompts = options.prompts || null;
   const visionAI = options.visionAI || options.visionAi || null;
+  const generateTags = typeof options.generateTags === 'function' ? options.generateTags : null;
+  const getImageRepository = typeof options.getImageRepository === 'function' ? options.getImageRepository : () => null;
+  const visionTempStore = options.visionTempStore || options.tempStore || null;
   const getSettings = typeof options.getSettings === 'function' ? options.getSettings : () => ({});
+  const getCurrentSessionId = typeof options.getCurrentSessionId === 'function' ? options.getCurrentSessionId : null;
   const setSettings = typeof options.setSettings === 'function' ? options.setSettings : () => ({});
   const getPrompt = typeof options.getPrompt === 'function'
     ? options.getPrompt
@@ -183,6 +199,7 @@ function createCalls(options = {}) {
       };
   const visionService = options.visionService || createVisionService({
     images,
+    visionTempStore,
     localVision: options.localVision || options.vision,
     visionAI,
     getPrompt: id => getPrompt(id, 'effective')
@@ -346,37 +363,62 @@ function createCalls(options = {}) {
   }
 
   async function call(name, argumentsValue = {}, context = {}) {
+    const caller = text(context.caller).toLowerCase();
+    const scopedContext = { ...context };
+    if (getCurrentSessionId && (!caller || caller === 'ui' || caller === 'renderer')) {
+      const currentSessionId = text(getCurrentSessionId());
+      if (currentSessionId) scopedContext.sessionId = currentSessionId;
+    }
     const resolved = registry.resolve(name)?.name || text(name);
     if (resolved === 'comfy.render') {
-      const capabilities = await refreshCapabilities({ force: true, workflow: context.workflow });
+      const capabilities = await refreshCapabilities({ force: true, workflow: scopedContext.workflow });
       if (!capabilities.comfy.render) {
         return { ok: false, code: 'COMFY_UNAVAILABLE', error: capabilities.comfy.error || 'ComfyUI 当前不可用' };
       }
     }
-    return registry.call(name, argumentsValue, context);
+    return registry.call(name, argumentsValue, scopedContext);
   }
 
   add('tags.search', '查询 Tag 库。返回的标签用于辅助参考，不代表必须全部使用。', 'read', async (args) => {
     if (!tags?.search) throw new Error('Tag 模块不可用');
-    return { items: tags.search(text(args.query), { category: text(args.category), includeAdult: args.includeAdult === true, limit: Math.min(200, Math.max(1, Number(args.limit) || 50)) }) };
+    return { items: tags.search(text(args.query), { category: text(args.category), precision: text(args.precision, 'standard'), includeAdult: args.includeAdult === true, limit: Math.min(200, Math.max(1, Number(args.limit) || 50)) }) };
+  });
+  add('conversation.listImages', '读取当前会话已关联的图片引用和元数据。', 'read', async args => {
+    const sessionId = text(args.sessionId || getCurrentSessionId?.());
+    const imageRepository = getImageRepository();
+    if (!imageRepository?.listConversation) return { ok: false, code: 'IMAGE_REPOSITORY_UNAVAILABLE', images: [] };
+    return { ok: true, sessionId, images: imageRepository.listConversation(sessionId, { includeDeleted: false }).items || [] };
   });
 
   add('vision.processOne', '统一单图识图。一次只处理一个明确的 imageId；不接受 imageIds 数组。', 'read', async (args, context) => {
     if (!visionService?.processOne) throw new Error('单图识图服务不可用');
     let resolved = { ...args };
     const imageId = text(args.imageId);
+    const tempId = text(args.tempId);
     const imagePath = text(args.imagePath);
     if (!imageId && imagePath) {
-      if (typeof images?.addFile !== 'function') throw new Error('当前图片模块不支持从文件路径登记图片');
-      const row = await images.addFile(imagePath, { source: 'agent', filename: imagePath.split(/[\\/]/).pop() });
-      const newId = text(row?.id ?? row?.imageId ?? row);
-      if (!newId) throw new Error('无法从路径登记该图片，请确认文件存在且为支持的图片格式');
-      resolved = { ...resolved, imageId: newId };
-    } else if (!imageId && !imagePath) {
-      throw new Error('需要提供 imageId 或 imagePath 之一');
+      const registered = typeof context.resolveRegisteredImagePath === 'function'
+        ? await context.resolveRegisteredImagePath(imagePath, context)
+        : null;
+      const registeredImageId = text(registered?.imageId || (typeof registered === 'string' ? registered : ''));
+      const registeredTempId = text(registered?.tempId);
+      if (!registeredImageId && !registeredTempId) {
+        const error = new Error('Vision 不允许直接读取未登记的本地路径，请使用 imageId 或 tempId');
+        error.code = 'PATH_INPUT_DISABLED';
+        throw error;
+      }
+      resolved = { ...resolved };
+      delete resolved.imagePath;
+      if (registeredImageId) resolved.imageId = registeredImageId;
+      else resolved.tempId = registeredTempId;
+    } else if (!imageId && !tempId && !imagePath) {
+      throw new Error('需要提供 imageId、tempId 或 imagePath 之一');
     }
+    if (!imageId && tempId) resolved = { ...resolved, tempId };
     return visionService.processOne({
       ...resolved,
+      sessionId: context.sessionId,
+      refId: context.refId || resolved.refId,
       signal: context.signal,
       onDelta: context.onDelta,
       onEvent: context.onEvent,
@@ -384,17 +426,40 @@ function createCalls(options = {}) {
     });
   });
 
+  add('agent.generateTags', '调用固定文生图 Tag 子代理，返回结构化正向 Tag。', 'read', async (args, context) => {
+    if (!generateTags) return { ok: false, code: 'SUBAGENT_UNAVAILABLE', error: '文生图 Tag 子代理不可用' };
+    const settings = getSettings() || {};
+    const result = await generateTags({ ...args, allowNegativeTags: settings.generateNegativeTags === true, signal: context.signal });
+    if (!result || typeof result !== 'object') return { ok: false, code: 'INVALID_SUBAGENT_RESULT', error: '子代理返回格式无效' };
+    const output = { ok: result.ok !== false, positiveTags: Array.isArray(result.positiveTags) ? result.positiveTags.map(text).filter(Boolean) : [], imageUsed: result.imageUsed === true };
+    if (settings.generateNegativeTags === true && Array.isArray(result.negativeTags)) output.negativeTags = result.negativeTags.map(text).filter(Boolean);
+    if (result.error) output.error = text(result.error);
+    return output;
+  });
+  add('comfy.status', '查询 ComfyUI 当前连接状态。', 'read', async () => {
+    const settings = getSettings() || {};
+    return comfy?.status ? comfy.status({ enabled: settings.comfyOn !== false, workflow: settings.comfyWorkflow || comfy.workflow || '' }) : { connected: Boolean(await comfy?.check?.()) };
+  });
+  add('comfy.validateWorkflow', '检查当前或指定 ComfyUI 工作流是否可用。', 'read', async args => {
+    const settings = getSettings() || {};
+    const workflow = text(args.workflow || settings.comfyWorkflow || comfy?.workflow);
+    if (!workflow) return { ok: false, code: 'WORKFLOW_MISSING', error: '未设置 ComfyUI 工作流' };
+    try { const result = comfy?.workflowStatus?.(workflow) || { ready: true }; return { ok: result.ready !== false, workflowReady: result.ready !== false, ...result }; } catch (error) { return { ok: false, code: 'WORKFLOW_INVALID', error: error?.message || String(error) }; }
+  });
+
   add('comfy.render', '向 ComfyUI 提交一次渲染并返回图片 artifact。', 'read', async (args, context) => {
     if (!comfy?.render) throw new Error('ComfyUI 连接器不可用，请检查应用配置后重试');
     const settings = getSettings() || {};
-    const actualPrompt = text(args.prompt);
-    const actualNegative = text(args.negative || settings.comfyNeg);
+    const positive = Array.isArray(args.positiveTags) ? args.positiveTags.map(text).filter(Boolean) : text(args.prompt);
+    const actualPrompt = Array.isArray(positive) ? positive.join(', ') : positive;
+    const actualNegative = Array.isArray(args.negativeTags) ? args.negativeTags.map(text).filter(Boolean).join(', ') : text(settings.comfyNeg);
     const result = await comfy.render({
       prompt: actualPrompt, negative: actualNegative,
-      width: Number(args.width || settings.comfyW) || 768, height: Number(args.height || settings.comfyH) || 1024,
-      w: Number(args.width || settings.comfyW) || 768, h: Number(args.height || settings.comfyH) || 1024,
-      steps: Number(args.steps || settings.comfySteps) || 25, cfg: number(args.cfg ?? settings.comfyCfg, 7),
-      seed: args.seed == null ? Math.floor(Math.random() * 1e9) : Number(args.seed), sampler: text(args.sampler || settings.comfySampler), scheduler: text(args.scheduler || settings.comfyScheduler),
+      width: Number(settings.comfyW) || 768, height: Number(settings.comfyH) || 1024,
+      w: Number(settings.comfyW) || 768, h: Number(settings.comfyH) || 1024,
+      steps: Number(settings.comfySteps) || 25, cfg: number(settings.comfyCfg, 7),
+      batchCount: Math.max(1, Math.min(10, Number(settings.batchCount) || 1)), batch: Math.max(1, Math.min(10, Number(settings.batchCount) || 1)),
+      seed: Math.floor(Math.random() * 1e9), sampler: text(settings.comfySampler), scheduler: text(settings.comfyScheduler),
       workflow: args.workflow || context.workflow || settings.comfyWorkflow, signal: context.signal,
       onProgress: value => context.onEvent?.({ type: 'progress', tool: 'comfy.render', queue: value })
     });
@@ -402,7 +467,7 @@ function createCalls(options = {}) {
     if (images?.add && imageUrl(result)) {
       stored = images.add({ ...result, source: 'comfy', filename: result.filename || `comfy-${Date.now()}.png` }, { collection: 'comfy' }) || result;
     }
-    return { artifact: artifact({ ...stored, prompt: actualPrompt, negative: actualNegative }) };
+    return { artifact: artifact({ ...stored, prompt: actualPrompt, negative: actualNegative }, { includeMedia: context.caller === 'assistant' || context.internal === true }) };
   });
 
   add('comfy.check', '检查 ComfyUI 是否可连接。', 'read', async () => ({ connected: Boolean(await comfy?.check?.()) }), 'internal');

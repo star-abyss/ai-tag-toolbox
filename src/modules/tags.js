@@ -39,8 +39,11 @@ const DEFAULT_CATEGORIES = [
   { id: 'animal', name: '动物', icon: '🐾' },
   { id: 'other', name: '其他', icon: '🏷️' },
   { id: 'rating', name: '内容分级', icon: '🅰️' },
-  { id: 'nsfw', name: '成人标签', icon: '🔞', nsfw: true }
+  { id: 'nsfw', name: '成人标签', icon: '🔞', nsfw: true },
+  { id: 'character_names', name: '角色名', icon: '🏷️' }
 ];
+
+const CHARACTER_NAMES_CATEGORY = 'character_names';
 
 // WD 标签文件中的 category 数字只用于识图结果。给它们一个稳定、
 // 易读的分类名即可，详细 UI 分类仍以标签目录中的分类为准。
@@ -98,6 +101,15 @@ function searchKey(value) {
     .toLocaleLowerCase();
 }
 
+const SEARCH_PRECISIONS = Object.freeze(["exact", "standard", "broad"]);
+
+function normaliseSearchPrecision(value) {
+  const raw = text(value, "standard").toLowerCase();
+  if (["exact", "strict", "high", "2", "精确", "高"].includes(raw)) return "exact";
+  if (["broad", "loose", "fuzzy", "low", "0", "宽松", "低"].includes(raw)) return "broad";
+  return "standard";
+}
+
 function clone(value) {
   if (Array.isArray(value)) return value.map(clone);
   if (isObject(value)) {
@@ -134,6 +146,10 @@ function normaliseTag(row, source = 'base', index = 0) {
     row.categoryId ?? row.categoryName ?? (categoryCode == null ? row.category ?? row.cat : MODEL_CATEGORY_NAMES[categoryCode]),
     source === 'model' && categoryCode != null ? MODEL_CATEGORY_NAMES[categoryCode] || `wd_${categoryCode}` : 'other'
   );
+  const subcategory = text(row.subcategory ?? row.sub ?? row.group, '默认');
+  const normalizedCategory = category === 'character' && subcategory === '角色名'
+    ? CHARACTER_NAMES_CATEGORY
+    : category;
   const aliases = asList(row.aliases ?? row.alias ?? row.al);
   const adult = bool(row.nsfw ?? row.adult ?? row.isAdult) || category === 'nsfw' || categoryCode === 3;
   return {
@@ -141,8 +157,8 @@ function normaliseTag(row, source = 'base', index = 0) {
     en,
     zh: text(row.zh ?? row.cn ?? row.translation),
     aliases: [...new Set(aliases.map(text).filter(Boolean))],
-    category,
-    subcategory: text(row.subcategory ?? row.sub ?? row.group, '默认'),
+    category: normalizedCategory,
+    subcategory,
     nsfw: adult,
     categoryCode,
     count: Number.isFinite(Number(row.count ?? row.hits)) ? Number(row.count ?? row.hits) : null,
@@ -193,6 +209,15 @@ function loadTagFiles(options = {}) {
   const base = readDataSource(options.base || options.baseFile || path.join(tagDir, 'data-tags.js'), ['TAGS', 'BASE_CATEGORIES']);
   const extra = readDataSource(options.extra || options.extraFile || path.join(tagDir, 'extra-tags.js'), ['EXTRA_TAGS']);
   const synonyms = readDataSource(options.synonyms || options.synonymsFile || path.join(tagDir, 'synonyms.js'), ['SYNONYMS', 'SYNONYMS_BY_EN', 'SYNONYM_ALIASES']);
+  const keywordSource = options.keywords || options.keywordFile;
+  const keywordPath = typeof keywordSource === 'string'
+    ? keywordSource
+    : path.join(tagDir, 'search-keywords.js');
+  const keywords = isObject(keywordSource)
+    ? keywordSource
+    : keywordPath && fs.existsSync(path.resolve(keywordPath))
+      ? readDataSource(keywordPath, ['SEARCH_KEYWORDS', 'TAG_KEYWORDS'])
+      : {};
   const model = options.includeModel === false || !modelFile ? null : readDataSource(modelFile, []);
   return {
     categories: base.BASE_CATEGORIES || base.categories,
@@ -203,7 +228,8 @@ function loadTagFiles(options = {}) {
       reverse: synonyms.SYNONYMS || synonyms.reverse,
       byEn: synonyms.SYNONYMS_BY_EN || synonyms.byEn,
       aliases: synonyms.SYNONYM_ALIASES || synonyms.aliases
-    }
+    },
+    keywords: keywords.SEARCH_KEYWORDS || keywords.TAG_KEYWORDS || keywords.keywords || keywords
   };
 }
 
@@ -218,6 +244,20 @@ function normaliseSynonyms(value) {
   };
 }
 
+/** Convert the editable keyword asset into a normalized tag -> terms map. */
+function normaliseKeywords(value) {
+  if (!isObject(value)) return new Map();
+  const result = new Map();
+  for (const [key, terms] of Object.entries(value)) {
+    const ids = [...new Set([tagKey(key), searchKey(key)].filter(Boolean))];
+    const list = [...new Set(asList(terms).map(text).filter(Boolean))];
+    ids.forEach(id => {
+      if (list.length) result.set(id, [...new Set([...(result.get(id) || []), ...list])]);
+    });
+  }
+  return result;
+}
+
 function createTags(options = {}) {
   const storage = options.storage && typeof options.storage.get === 'function' && typeof options.storage.set === 'function' ? options.storage : null;
   const state = {
@@ -228,6 +268,9 @@ function createTags(options = {}) {
     selected: new Set(),
     loaded: false,
     synonyms: { byEn: {}, aliases: {}, reverse: {} },
+    keywords: new Map(),
+    searchPrecision: "standard",
+    revision: 0,
     searchRows: [],
     searchCache: new Map(),
     countCache: new Map()
@@ -252,6 +295,7 @@ function createTags(options = {}) {
     const selected = stored('rewrite_selected', []);
     if (Array.isArray(selected)) selected.map(tagKey).filter(id => state.tags.has(id)).forEach(id => state.selected.add(id));
     state.includeAdult = Boolean(stored('rewrite_adult', state.includeAdult || false));
+    state.searchPrecision = normaliseSearchPrecision(stored('app.searchPrecision', state.searchPrecision));
   }
 
   function categoryRows(input) {
@@ -270,12 +314,15 @@ function createTags(options = {}) {
       state.tags.set(id, base ? { ...base, ...tag, aliases: [...new Set([...(base.aliases || []), ...(tag.aliases || [])])] } : tag);
     }
     for (const id of [...state.selected]) if (!state.tags.has(id)) state.selected.delete(id);
-    state.searchRows = [...state.tags.values()].map(tag => ({
-      tag,
-      fields: [tag.en, tag.zh, ...tagAliases(tag)].map(searchKey).filter(Boolean)
-    }));
+    state.searchRows = [...state.tags.values()].map(tag => {
+      const fields = [tag.en, tag.zh, ...tagAliases(tag)].map(searchKey).filter(Boolean);
+      // 宽松模式的分类/子分类字段和紧凑索引按首次使用时建立，
+      // 避免启动时为近两万条标签做不必要的额外归一化。
+      return { tag, fields };
+    });
     state.searchCache.clear();
     state.countCache.clear();
+    state.revision += 1;
   }
 
   function addRows(rows, source) {
@@ -304,8 +351,12 @@ function createTags(options = {}) {
     state.originals.clear();
     state.custom.clear();
     state.synonyms = normaliseSynonyms(input.synonyms || {});
+    state.keywords = normaliseKeywords(input.keywords || input.searchKeywords || {});
     const categories = categoryRows(input.categories || input.categoryDefinitions || input.baseCategories);
     if (categories.length) state.categories = categories;
+    if (!state.categories.some(item => item.id === CHARACTER_NAMES_CATEGORY)) {
+      state.categories.push({ id: CHARACTER_NAMES_CATEGORY, name: '角色名', icon: '🏷️' });
+    }
     addRows(input.base || input.builtin || input.tags, 'base');
     addRows(input.extra || input.extensions, 'extra');
     addRows(modelRows(input.model || input.modelTags || input.wdTags), 'model');
@@ -322,9 +373,31 @@ function createTags(options = {}) {
     return [...new Set([...(tag.aliases || []), ...asList(byEn), ...asList(aliases)])];
   }
 
+  function tagKeywords(tag) {
+    const keys = [tag.id, tag.en].flatMap(value => [tagKey(value), searchKey(value)]).filter(Boolean);
+    return [...new Set(keys.flatMap(key => state.keywords.get(key) || []))];
+  }
+
+  function compactSearchKey(value) {
+    return searchKey(value).replace(/[\s._-]+/g, '');
+  }
+
+  function ensureBroadIndex(row) {
+    if (row.broadFields && row.compactFields && row.keywordFields) return row;
+    const category = state.categories.find(item => item.id === row.tag.category);
+    row.keywordFields = [...tagKeywords(row.tag), row.tag.category, category?.name, row.tag.subcategory]
+      .map(searchKey)
+      .filter(Boolean);
+    row.broadFields = [...row.fields, ...row.keywordFields]
+      .map(searchKey)
+      .filter(Boolean);
+    row.compactFields = row.broadFields.map(compactSearchKey).filter(Boolean);
+    return row;
+  }
+
   function view(tag) {
     if (!tag) return null;
-    return { ...clone(tag), aliases: tagAliases(tag), selected: state.selected.has(tag.id) };
+    return { ...clone(tag), aliases: tagAliases(tag), keywords: tagKeywords(tag), selected: state.selected.has(tag.id) };
   }
 
   function visible(tag, includeAdult) {
@@ -356,31 +429,70 @@ function createTags(options = {}) {
     return { ...counts };
   }
 
+  function subcategories(categoryValue, options = {}) {
+    const includeAdult = Boolean(options.includeAdult || options.adult || options.nsfw);
+    const category = text(categoryValue || options.category || options.categoryId);
+    const counts = new Map();
+    for (const tag of state.tags.values()) {
+      if (!visible(tag, includeAdult)) continue;
+      if (category && category !== 'all' && tag.category !== category) continue;
+      const name = text(tag.subcategory, '默认');
+      counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    return [...counts.entries()].map(([name, count]) => ({ name, count }));
+  }
+
   function searchIds(query, searchOptions = {}) {
     const needle = searchKey(query);
     const includeAdult = Boolean(searchOptions.includeAdult || searchOptions.adult || searchOptions.nsfw);
+    const precision = normaliseSearchPrecision(searchOptions.precision || searchOptions.searchPrecision || state.searchPrecision);
     const categoryValue = text(searchOptions.category || searchOptions.categoryId);
     const category = categoryValue === 'all' ? '' : categoryValue;
-    const cacheKey = `${needle}|${includeAdult ? 'adult' : 'safe'}|${category}`;
+    const subcategoryValue = text(searchOptions.subcategory || searchOptions.sub || searchOptions.group);
+    const subcategory = subcategoryValue === 'all' ? '' : subcategoryValue;
+    const cacheKey = [needle, includeAdult ? "adult" : "safe", category, subcategory, precision].join("|");
     if (state.searchCache.has(cacheKey)) return state.searchCache.get(cacheKey).slice();
     if (!needle) {
-      const ids = state.searchRows.filter(row => visible(row.tag, includeAdult) && (!category || row.tag.category === category)).map(row => row.tag.id);
+      const ids = state.searchRows.filter(row => visible(row.tag, includeAdult)
+        && (!category || row.tag.category === category)
+        && (!subcategory || row.tag.subcategory === subcategory)).map(row => row.tag.id);
       state.searchCache.set(cacheKey, ids);
       return ids.slice();
     }
     const terms = needle.split(' ').filter(Boolean);
+    const compactNeedle = compactSearchKey(needle);
+    const compactTerms = terms.map(compactSearchKey).filter(Boolean);
     const result = [];
     for (const row of state.searchRows) {
       const tag = row.tag;
-      if (!visible(tag, includeAdult) || (category && tag.category !== category)) continue;
-      if (!terms.every(term => row.fields.some(field => field.includes(term)))) continue;
-      let score = 40;
-      for (const field of row.fields) {
-        if (field === needle) score = Math.max(score, 100);
-        else if (field.startsWith(needle)) score = Math.max(score, 70);
-        else if (field.includes(needle)) score = Math.max(score, 55);
+      if (!visible(tag, includeAdult)
+        || (category && tag.category !== category)
+        || (subcategory && tag.subcategory !== subcategory)) continue;
+      if (precision === "exact") {
+        if (!row.fields.some(field => field === needle)) continue;
+        result.push({ id: tag.id, score: 100, en: tag.en });
+        continue;
       }
-      if (terms.length > 1) score += terms.filter(term => row.fields.some(field => field.startsWith(term))).length;
+      const indexedRow = precision === "broad" ? ensureBroadIndex(row) : row;
+      const fields = precision === "broad" ? indexedRow.broadFields : row.fields;
+      const termsMatch = terms.every(term => fields.some(field => field.includes(term)));
+      if (!termsMatch) {
+        if (precision !== "broad") continue;
+        const compactMatch = compactTerms.every(term => indexedRow.compactFields.some(field => field.includes(term)));
+        if (!compactMatch) continue;
+      }
+      let score = 40;
+      for (const field of fields) {
+        if (field === needle) score = Math.max(score, 100);
+        else if (field.startsWith(needle)) score = Math.max(score, 76);
+        else if (field.includes(needle)) score = Math.max(score, 54);
+      }
+      if (precision === "broad") {
+        if (compactNeedle && indexedRow.compactFields.some(field => field === compactNeedle)) score = Math.max(score, 68);
+        else if (compactNeedle && indexedRow.compactFields.some(field => field.includes(compactNeedle))) score = Math.max(score, 58);
+        if (indexedRow.keywordFields.some(field => field.includes(needle))) score = Math.max(score, 52);
+      }
+      if (terms.length > 1) score += terms.filter(term => fields.some(field => field.startsWith(term))).length;
       result.push({ id: tag.id, score, en: tag.en });
     }
     result.sort((left, right) => right.score - left.score || left.en.localeCompare(right.en));
@@ -393,11 +505,24 @@ function createTags(options = {}) {
     const query = pageOptions.query == null ? state.query || '' : text(pageOptions.query);
     const includeAdult = pageOptions.includeAdult == null ? Boolean(state.includeAdult) : Boolean(pageOptions.includeAdult);
     const category = text(pageOptions.category || pageOptions.categoryId);
-    const ids = searchIds(query, { includeAdult, category: query ? '' : category });
+    const subcategory = text(pageOptions.subcategory || pageOptions.sub || pageOptions.group);
+    const ids = searchIds(query, {
+      includeAdult,
+      category: query ? '' : category,
+      subcategory: query ? '' : subcategory,
+      precision: pageOptions.precision || pageOptions.searchPrecision || state.searchPrecision
+    });
     const offset = Math.max(0, Number(pageOptions.offset) || 0);
-    const limit = Math.max(1, Math.min(1000, Number(pageOptions.limit) || 200));
-    const items = ids.slice(offset, offset + limit).map(id => view(state.tags.get(id))).filter(Boolean);
-    return { items, total: ids.length, offset, limit, hasMore: offset + items.length < ids.length, categoryCounts: countByCategory(includeAdult), query, category, includeAdult };
+    const requested = Number(pageOptions.limit);
+    const requestedLimit = Number.isFinite(requested) && requested > 0 ? requested : 200;
+    // “全部”和搜索结果、角色名是高数量入口，仍保留 1000 条展示上限；
+    // 其他主分类允许按页面层的批次继续加载到该分类的完整结果。
+    const maxDisplay = !category || category === 'all' || category === CHARACTER_NAMES_CATEGORY ? 1000 : Number.POSITIVE_INFINITY;
+    const total = ids.length;
+    const displayTotal = Math.min(total, maxDisplay);
+    const limit = Math.max(1, Math.min(maxDisplay, requestedLimit));
+    const items = ids.slice(offset, Math.min(offset + limit, displayTotal)).map(id => view(state.tags.get(id))).filter(Boolean);
+    return { items, total, displayTotal, offset, limit, maxDisplay, hasMore: offset + items.length < displayTotal, categoryCounts: countByCategory(includeAdult), query, category, subcategory, includeAdult };
   }
 
   function search(query, searchOptions = {}) {
@@ -416,6 +541,12 @@ function createTags(options = {}) {
     else if (state.category && state.category !== 'all') filters.category = state.category;
     state.filters = filters;
     return search(state.query, filters);
+  }
+  function setSearchPrecision(value, options = {}) {
+    state.searchPrecision = normaliseSearchPrecision(value);
+    state.filters = { ...(state.filters || {}), precision: state.searchPrecision };
+    if (options.persist !== false) persist('app.searchPrecision', state.searchPrecision);
+    return state.searchPrecision;
   }
   function setCategory(category) {
     state.category = text(category, 'all');
@@ -473,9 +604,13 @@ function createTags(options = {}) {
     setQuery,
     setCategory,
     setAdult,
+    setSearchPrecision,
+    searchPrecisions: () => SEARCH_PRECISIONS.slice(),
     page,
     categoryCounts: countByCategory,
-    stateSnapshot: () => ({ query: state.query || '', category: state.category || '', includeAdult: Boolean(state.includeAdult), selected: [...state.selected], categories: state.categories.map(clone), categoryCounts: countByCategory(Boolean(state.includeAdult)) }),
+    subcategories,
+    getSubcategories: subcategories,
+    stateSnapshot: () => ({ query: state.query || '', category: state.category || '', includeAdult: Boolean(state.includeAdult), searchPrecision: state.searchPrecision, revision: state.revision, selected: [...state.selected], categories: state.categories.map(clone), categoryCounts: countByCategory(Boolean(state.includeAdult)) }),
     customTags: () => [...state.custom.values()].map(view),
     get: value => view(resolve(value)),
     categories: () => state.categories.map(clone),
@@ -501,6 +636,8 @@ function createTags(options = {}) {
       query: state.query || '',
       category: state.category || '',
       includeAdult: Boolean(state.includeAdult),
+      searchPrecision: state.searchPrecision,
+      revision: state.revision,
       selected: [...state.selected],
       custom: [...state.custom.keys()]
     })
@@ -518,5 +655,8 @@ module.exports = {
   loadTagFiles,
   normaliseTag,
   searchKey,
+  SEARCH_PRECISIONS,
+  normaliseSearchPrecision,
+  normaliseKeywords,
   readScriptData
 };

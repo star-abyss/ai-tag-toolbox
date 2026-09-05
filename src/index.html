@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
-    <title>AI 绘画 Tag 工具箱 V1.4.131 · Danbooru 标签选择器</title>
+    <title>AI 绘画 Tag 工具箱 V1.4.191 · Danbooru 标签选择器</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
@@ -16,16 +16,46 @@
   </head>
   <body>
     <header>
-      <div class="header-left">
-        <button class="hbtn" id="menuBtn" data-i18n-title="ui.header.menu">☰</button>
-        <div class="brand">
-          <span class="logo">🎨</span><span data-i18n="ui.header.brand">AI 绘画 Tag 工具箱</span
-          ><small id="brandSub" data-i18n="ui.common.loading"></small>
+      <div class="header-side-left">
+        <div class="header-left">
+          <button class="hbtn btn btn-icon btn-nav" id="menuBtn" data-i18n-title="ui.header.menu">☰</button>
+          <div class="brand">
+            <span class="logo">🎨</span><span data-i18n="ui.header.brand">AI 绘画 Tag 工具箱</span
+            ><small id="brandSub" data-i18n="ui.common.loading"></small>
+          </div>
+        </div>
+        <div class="header-leading" id="headerLeading">
+          <button class="hbtn sponsor btn btn-sponsor nav-action nav-compact" id="sponsorBtn" data-nav-action="sponsor" data-nav-tone="sponsor" data-i18n="ui.header.sponsor"></button>
+          <div class="popwrap">
+            <button class="hbtn btn btn-nav btn-secondary nav-action nav-compact" id="themeBtn" data-nav-action="theme" data-nav-tone="style" data-i18n="ui.header.style" data-i18n-title="ui.header.styleTitle"></button>
+            <div class="pop" id="themePop" hidden>
+              <button class="popitem btn btn-menu" data-theme="light">
+                <span class="ck">✓</span><span data-i18n="ui.header.light"></span>
+              </button>
+              <button class="popitem btn btn-menu" data-theme="dark">
+                <span class="ck"></span><span data-i18n="ui.header.dark"></span>
+              </button>
+              <button class="popitem btn btn-menu" data-theme="auto">
+                <span class="ck"></span><span data-i18n="ui.header.autoTheme"></span>
+              </button>
+            </div>
+          </div>
+          <div class="popwrap" id="localeWrap">
+            <button
+              class="hbtn btn btn-nav btn-secondary nav-action nav-compact"
+              id="localeBtn"
+              data-nav-action="locale"
+              data-nav-tone="language"
+              data-i18n="ui.header.language"
+              data-i18n-title="ui.header.languageTitle"
+            ></button>
+            <div class="pop" id="localePop" hidden></div>
+          </div>
+          <button class="hbtn btn btn-nav btn-toggle nav-action nav-toggle" id="nsfwBtn" data-nav-action="adult" data-nav-tone="adult" data-i18n="ui.header.adult" aria-pressed="false"></button>
         </div>
       </div>
       <div class="header-workspace" id="headerWorkspace">
         <div class="search" id="searchWrap">
-          <span class="si">🔍</span>
           <input
             id="q"
             type="text"
@@ -33,6 +63,21 @@
             data-i18n-placeholder="ui.header.searchPlaceholder"
             autocomplete="off"
           />
+          <label class="search-precision" data-i18n-title="ui.header.searchPrecisionTitle">
+            <span class="sr-only" data-i18n="ui.header.searchPrecision">搜索精度</span>
+            <select id="searchPrecision" aria-label="搜索精度" data-i18n-aria="ui.header.searchPrecision">
+              <option value="exact" data-i18n="ui.header.searchExact">精确</option>
+              <option value="standard" data-i18n="ui.header.searchStandard" selected>标准</option>
+              <option value="broad" data-i18n="ui.header.searchBroad">宽松</option>
+            </select>
+          </label>
+          <button id="searchBtn" class="search-submit btn btn-icon" type="button" data-i18n-title="ui.header.searchSubmitTitle" data-i18n-aria="ui.header.searchSubmit">
+            <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="10.8" cy="10.8" r="6.4"></circle>
+              <path d="m16 16 4.2 4.2"></path>
+            </svg>
+            <span class="sr-only" data-i18n="ui.header.searchSubmit">搜索</span>
+          </button>
         </div>
         <div
           id="aiCfgBtns"
@@ -43,7 +88,7 @@
         >
           <span class="ai-module-thumb" aria-hidden="true"></span>
           <button
-            class="ai-module-tab on"
+            class="ai-module-tab btn btn-segment on"
             id="aiModuleTalk"
             data-panel="talk"
             role="tab"
@@ -51,7 +96,7 @@
             data-i18n="ui.header.talkPage"
           ></button>
           <button
-            class="ai-module-tab"
+            class="ai-module-tab btn btn-segment"
             id="aiModulePrompt"
             data-panel="prompt"
             role="tab"
@@ -59,7 +104,7 @@
             data-i18n="ui.header.promptPage"
           ></button>
           <button
-            class="ai-module-tab"
+            class="ai-module-tab btn btn-segment"
             id="aiModuleApi"
             data-panel="api"
             role="tab"
@@ -68,53 +113,45 @@
           ></button>
         </div>
       </div>
-      <div class="header-actions" id="headerActions">
+      <div class="header-trailing" id="headerTrailing">
+        <button class="hbtn btn btn-nav btn-secondary nav-action nav-toggle" id="aiBtn" data-nav-action="ai" data-nav-tone="ai" data-i18n="ui.header.aiAssistant" aria-pressed="false"></button>
         <button
-          class="hbtn"
+          class="hbtn btn btn-nav btn-secondary nav-action nav-toggle"
           id="translateBtn"
+          data-nav-action="translation"
+          data-nav-tone="translation"
           data-i18n-title="ui.translation.title"
           data-i18n="ui.header.translation"
         ></button>
-      <div class="popwrap">
-        <button class="hbtn" id="themeBtn" data-i18n="ui.header.style" data-i18n-title="ui.header.styleTitle"></button>
-        <div class="pop" id="themePop" hidden>
-          <button class="popitem" data-theme="light">
-            <span class="ck">✓</span><span data-i18n="ui.header.light"></span>
-          </button>
-          <button class="popitem" data-theme="dark">
-            <span class="ck"></span><span data-i18n="ui.header.dark"></span>
-          </button>
-          <button class="popitem" data-theme="auto">
-            <span class="ck"></span><span data-i18n="ui.header.autoTheme"></span>
-          </button>
-        </div>
-      </div>
-      <button class="hbtn" id="aiBtn" data-i18n="ui.header.aiAssistant"></button>
-      <button class="hbtn" id="nsfwBtn"><span class="dot"></span><span data-i18n="ui.header.adult"></span></button>
-      <button class="hbtn" id="favBtn" data-i18n="ui.header.favorites"></button>
-      <button class="hbtn" id="helpBtn" data-i18n="ui.header.help"></button>
-      <button class="hbtn sponsor" id="sponsorBtn" data-i18n="ui.header.sponsor"></button>
-        <div class="popwrap" id="localeWrap">
-          <button
-            class="hbtn"
-            id="localeBtn"
-            data-i18n="ui.header.language"
-            data-i18n-title="ui.header.languageTitle"
-          ></button>
-          <div class="pop" id="localePop" hidden></div>
-        </div>
+      <button class="hbtn btn btn-nav btn-secondary nav-action nav-toggle" id="visionBtn" data-nav-action="vision" data-nav-tone="vision" data-i18n="ui.header.vision" aria-controls="tagPane" aria-expanded="false"></button>
+      <button class="hbtn btn btn-nav btn-secondary nav-action nav-toggle" id="galleryBtn" data-nav-action="gallery" data-nav-tone="gallery" aria-pressed="false"></button>
+      <button class="hbtn btn btn-nav btn-secondary nav-action nav-toggle" id="favBtn" data-nav-action="favorites" data-nav-tone="favorites" data-i18n="ui.header.favorites" aria-controls="drawer" aria-expanded="false"></button>
       </div>
     </header>
 
     <div class="wrap" id="wrapEl">
       <aside class="sidebar" id="sidebar">
         <div class="slist" id="catList"></div>
-        <button class="addbtn" id="addTagBtn" data-i18n="ui.custom.title"></button>
-        <div id="sideAi" style="display: none">
-          <button id="talkNew" class="tnew" data-i18n="ui.ai.newChat"></button>
-          <button id="talkManage" class="tnew" type="button">🗂 对话管理</button>
-          <div class="tsidehead" style="padding: 8px 8px 2px">📚 对话记录</div>
-          <div id="talkSessionList" class="tlist" style="flex: 1"></div>
+        <button class="addbtn btn btn-secondary" id="addTagBtn" data-i18n="ui.custom.title"></button>
+        <div id="sideAi" class="ai-sidebar-grid" style="display: none">
+          <section class="ai-session-column" aria-label="对话管理">
+            <button id="talkNew" class="tnew btn btn-primary" data-i18n="ui.ai.newChat"></button>
+            <button id="talkManage" class="tnew btn btn-secondary" type="button">🗂 对话管理</button>
+            <div class="tsidehead" style="padding: 8px 8px 2px">📚 对话记录</div>
+            <div id="talkSessionList" class="tlist" style="flex: 1"></div>
+          </section>
+          <section class="ai-conversation-repository" aria-label="当前对话图片仓库" data-i18n-aria="ui.ai.conversationImages" data-image-context="conversation" tabindex="0">
+            <div class="repo-head">
+              <strong data-i18n="ui.ai.conversationImages"></strong>
+              <span id="talkImageRepositoryCount" class="repo-count"></span>
+            </div>
+            <div class="repo-controls">
+              <select id="talkRepositoryColumns" aria-label="图片列数" data-i18n-aria="ui.ai.repositoryColumns"><option value="two" data-i18n="ui.ai.twoColumns"></option><option value="single" data-i18n="ui.ai.singleColumn"></option></select>
+              <select id="talkRepositorySize" aria-label="图片大小" data-i18n-aria="ui.ai.repositorySize"><option value="compact" data-i18n="ui.ai.compact"></option><option value="standard" data-i18n="ui.ai.standard"></option><option value="large" data-i18n="ui.ai.large"></option></select>
+              <button id="talkRepositoryClearPending" class="repo-clear btn btn-ghost" type="button" data-i18n="ui.ai.clearPending"></button>
+            </div>
+            <div id="talkImageRepository" class="conversation-repository-grid" data-columns="two" data-size="standard"></div>
+          </section>
         </div>
       </aside>
       <main class="main">
@@ -123,8 +160,9 @@
             <h2 id="catTitle">质量词</h2>
             <span class="cnt" id="catCnt"></span>
             <span class="sp"></span>
-            <button class="abtn ghost" id="clearQ" style="display: none">✕ 清除搜索</button>
+            <button class="abtn ghost btn btn-ghost" id="clearQ" style="display: none">✕ 清除搜索</button>
           </div>
+          <div id="subcatNav" class="subcat-nav" role="tablist" aria-label="子分类" hidden></div>
           <div class="content" id="content"><div id="chips"></div></div>
         </div>
         <section id="translateView" class="translate-view" aria-label="翻译模块" hidden>
@@ -139,8 +177,8 @@
               <option value="zh-en" data-i18n="ui.translation.directionZhToTag"></option>
               <option value="en-zh" data-i18n="ui.translation.directionTagToZh"></option>
             </select>
-            <button class="abtn ghost" id="translateClear" data-i18n="ui.common.clear"></button>
-            <button class="abtn" id="translateBack" data-i18n="ui.translation.back"></button>
+            <button class="abtn ghost btn btn-ghost" id="translateClear" data-i18n="ui.common.clear"></button>
+            <button class="abtn btn btn-secondary" id="translateBack" data-i18n="ui.translation.back"></button>
           </div>
           <div class="translate-grid">
             <section class="translate-pane">
@@ -150,6 +188,7 @@
               <textarea
                 id="translateInput"
                 class="translate-input"
+                spellcheck="false"
                 data-i18n-placeholder="ui.translation.inputPlaceholder"
               ></textarea>
             </section>
@@ -157,8 +196,8 @@
               <div class="translate-pane-head">
                 <span data-i18n="ui.translation.result"></span>
                 <span class="translate-actions">
-                  <button class="abtn pri" id="translateAi" data-i18n="ui.translation.aiTranslate"></button>
-                  <button class="abtn" id="translateCopy" data-i18n="ui.common.copy"></button>
+                  <button class="abtn pri btn btn-primary" id="translateAi" data-i18n="ui.translation.aiTranslate"></button>
+                  <button class="abtn btn btn-secondary" id="translateCopy" data-i18n="ui.common.copy"></button>
                 </span>
               </div>
               <details id="translateThinking" class="translate-thinking" hidden>
@@ -177,38 +216,47 @@
             <div class="translate-tags-head">
               <span data-i18n="ui.translation.matched"></span><span id="translateTagCount">0 个</span
               ><span class="sp"></span
-              ><button class="abtn ghost" id="translateCopyTags" data-i18n="ui.translation.copyTags"></button>
+              ><button class="abtn ghost btn btn-ghost" id="translateCopyTags" data-i18n="ui.translation.copyTags"></button>
             </div>
             <div id="translateTags" class="translate-tag-list">
               <span class="translate-empty">输入内容后会在这里显示相关 Tag</span>
             </div>
           </section>
         </section>
+        <section id="galleryView" class="gallery-view" aria-label="图片库" hidden>
+          <div class="gallery-toolbar">
+            <h2 data-i18n="ui.gallery.title"></h2><span id="galleryCount" class="cnt"></span><span class="sp"></span>
+            <button class="abtn btn btn-secondary" id="galleryUpload" data-i18n="ui.gallery.upload"></button>
+            <button class="abtn btn btn-secondary" id="galleryDownload" data-i18n="ui.gallery.download"></button>
+            <button class="abtn btn btn-danger" id="galleryDelete" data-i18n="ui.gallery.delete"></button>
+            <select id="galleryOrder" aria-label="排序" data-i18n-aria="ui.gallery.order"><option value="oldest" data-i18n="ui.gallery.oldest"></option><option value="newest" data-i18n="ui.gallery.newest"></option></select>
+            <input id="galleryQuery" type="search" data-i18n-placeholder="ui.gallery.filter" />
+            <select id="galleryColumns" aria-label="列数" data-i18n-aria="ui.gallery.columns"><option value="two" data-i18n="ui.gallery.two"></option><option value="single" data-i18n="ui.gallery.single"></option></select>
+            <select id="gallerySize" aria-label="卡片大小" data-i18n-aria="ui.gallery.size"><option value="compact" data-i18n="ui.gallery.compact"></option><option value="standard" data-i18n="ui.gallery.standard"></option><option value="large" data-i18n="ui.gallery.large"></option></select>
+          </div>
+          <input id="galleryFile" type="file" accept="image/*" multiple hidden />
+          <div id="galleryGrid" class="gallery-grid" data-columns="two" data-size="standard"></div>
+        </section>
       </main>
       <div class="tag-vision-slot" id="tagVisionSlot">
         <aside class="tkpane" id="tagPane" data-image-context="vision" tabindex="0" aria-label="单图识图区域">
           <div class="tp-headbar">
-            <button class="tp-vision-toggle" id="tpVisionToggle" type="button" title="收起识图面板" aria-label="收起识图面板" aria-controls="tagPane" aria-expanded="true">
-              <span class="tp-vision-icon" aria-hidden="true">🔍</span>
-              <span class="tp-vision-label" data-i18n="ui.ai.openVision">识图</span>
-              <span class="tp-vision-arrow" aria-hidden="true">›</span>
-            </button>
             <div class="tphead" data-i18n="ui.ai.currentImage"></div>
             <div class="tp-head-actions">
-              <button class="tp-icon danger" id="tpClearImg" type="button" title="清空识图图片" aria-label="清空识图图片" data-i18n-title="ui.ai.clearImage" data-i18n-aria="ui.ai.clearImage">🗑</button>
+              <button class="tp-icon danger btn btn-icon btn-danger" id="tpClearImg" type="button" title="清空识图图片" aria-label="清空识图图片" data-i18n-title="ui.ai.clearImage" data-i18n-aria="ui.ai.clearImage">🗑</button>
             </div>
           </div>
           <div id="tpImg" class="tp-img" data-image-context="vision"><div class="tp-empty" data-i18n="ui.ai.notUploaded"></div></div>
-          <button class="tp-act" id="tpUpload" data-i18n="ui.ai.uploadImage"></button>
+          <button class="tp-act btn btn-secondary" id="tpUpload" data-i18n="ui.ai.uploadImage"></button>
           <input type="file" id="tpFile" accept="image/*" hidden />
           <div class="tp-identify-row">
-            <button class="tp-act pri" id="tpIdentify" data-i18n="ui.ai.identify"></button>
+            <button class="tp-act pri btn btn-primary" id="tpIdentify" data-i18n="ui.ai.identify"></button>
             <select id="tpWdModel" class="tp-model" aria-label="识图模型" title="选择识图模型" data-i18n-title="ui.ai.visionModel" data-i18n-aria="ui.ai.visionModel">
               <option value="eva02">EVA02 Canary</option>
             </select>
           </div>
-          <button class="tp-act" id="tpDescribe" data-i18n="ui.ai.aiVision"></button>
-          <button class="tp-act ghost" id="tpStop" data-i18n="ui.ai.stop" style="display: none"></button>
+          <button class="tp-act btn btn-secondary" id="tpDescribe" data-i18n="ui.ai.aiVision"></button>
+          <button class="tp-act ghost btn btn-ghost" id="tpStop" data-i18n="ui.ai.stop" style="display: none"></button>
           <div id="tpModes" class="tp-mods"></div>
           <div class="tp-empty" id="tpPlaceholder" style="display: none" data-i18n="ui.ai.imageHint"></div>
         </aside>
@@ -222,20 +270,20 @@
         <div class="preview" id="preview"></div>
       </div>
       <div class="acts">
-        <button class="abtn pri" id="copyAll">📋 复制 Prompt</button>
-        <button class="abtn" id="saveFav">⭐ 收藏当前组合</button>
-        <button class="abtn ghost" id="clearSel">清空</button>
+        <button class="abtn pri btn btn-primary" id="copyAll">📋 复制 Prompt</button>
+        <button class="abtn btn btn-secondary" id="saveFav">⭐ 收藏当前组合</button>
+        <button class="abtn ghost danger btn btn-danger" id="clearSel">清空</button>
       </div>
     </div>
 
     <div class="scrim" id="scrim"></div>
 
     <div class="drawer" id="drawer">
-      <h3>⭐ 收藏组合 <button class="hbtn" id="drawerClose">✕</button></h3>
+      <h3>⭐ 收藏组合 <button class="hbtn btn btn-icon" id="drawerClose">✕</button></h3>
       <div class="body">
         <div class="favform">
           <input id="favName" placeholder="给当前已选组合起个名字…" />
-          <button class="abtn pri" id="favSave">保存</button>
+          <button class="abtn pri btn btn-primary" id="favSave">保存</button>
         </div>
         <div id="favList"></div>
       </div>
@@ -243,7 +291,7 @@
 
     <div class="modal" id="helpModal">
       <div class="box">
-        <button class="hbtn close" id="helpClose">✕</button>
+        <button class="hbtn close btn btn-icon" id="helpClose">✕</button>
         <h3 id="helpTitle" data-i18n="uiExtra.help.title"></h3>
         <div id="helpBody" class="helpbody" style="white-space: pre-line" data-i18n="uiExtra.help.body"></div>
       </div>
@@ -251,14 +299,14 @@
 
     <div class="modal" id="sponsorModal">
       <div class="box sponsor-box">
-        <button class="hbtn close" id="sponsorClose">✕</button>
+        <button class="hbtn close btn btn-icon" id="sponsorClose">✕</button>
         <h3>❤️ 赞助作者</h3>
         <div class="sponsor-card">
           <div class="savatar">🎨</div>
           <div class="sname">star_abyss</div>
           <div class="ssub">如果这个工具箱对你有帮助，欢迎赞助作者，支持持续更新 🌟</div>
           <a
-            class="abtn pri slink"
+            class="abtn pri slink btn btn-primary btn-sponsor-link"
             id="sponsorGo"
             href="https://ifdian.net/a/AI-Tag-Toolbox"
             target="_blank"
@@ -272,7 +320,7 @@
 
     <div class="modal" id="addModal">
       <div class="box">
-        <button class="hbtn close" id="addClose">✕</button>
+        <button class="hbtn close btn btn-icon" id="addClose">✕</button>
         <h3 data-i18n="ui.custom.title"></h3>
         <div class="form">
           <label
@@ -301,8 +349,8 @@
           </label>
         </div>
         <div class="form-acts">
-          <button class="abtn pri" id="nSave" data-i18n="ui.custom.save"></button>
-          <button class="abtn" id="nCancel" data-i18n="ui.custom.cancel"></button>
+          <button class="abtn pri btn btn-primary" id="nSave" data-i18n="ui.custom.save"></button>
+          <button class="abtn btn btn-secondary" id="nCancel" data-i18n="ui.custom.cancel"></button>
         </div>
         <div class="clhead" data-i18n="ui.custom.list"></div>
         <div class="clist" id="customList"></div>
@@ -313,11 +361,11 @@
       <div class="aibody">
         <div class="aitop slim">
           <span style="flex: 1"></span>
-          <button class="hbtn close" id="aiClose" title="返回标签页">✕</button>
+          <button class="hbtn close btn btn-icon" id="aiClose" title="返回标签页">✕</button>
         </div>
         <div id="tabApi" style="display: none">
           <div class="aitop slim2">
-            <button class="abtn ghost backbtn" id="apiBack" data-i18n="ui.settings.apiBack"></button>
+            <button class="abtn ghost backbtn btn btn-ghost" id="apiBack" data-i18n="ui.settings.apiBack"></button>
             <span style="font-weight: 700; font-size: 14px" data-i18n="ui.settings.apiTitle"></span>
           </div>
           <div class="apibody">
@@ -348,7 +396,7 @@
                     placeholder="输入后安全保存（不会写入普通配置）"
                     autocomplete="off"
                   />
-                  <button class="abtn ghost" id="aiKeyClear" type="button" data-i18n="ui.settings.keyClear"></button>
+                  <button class="abtn ghost btn btn-danger" id="aiKeyClear" type="button" data-i18n="ui.settings.keyClear"></button>
                 </div>
                 <span class="secret-status" id="aiKeyStatus">正在检查系统安全存储…</span>
               </label>
@@ -372,7 +420,7 @@
                     <select id="visionModel"></select>
                     <input id="visionModelCustom" placeholder="输入自定义识图模型名" style="display: none; margin-top: 6px" />
                   </label>
-                  <div class="row"><button class="abtn" id="visionTest" data-i18n="ui.settings.visionTest">🔌 测试识图 API</button></div>
+                  <div class="row"><button class="abtn btn btn-secondary" id="visionTest" data-i18n="ui.settings.visionTest">🔌 测试识图 API</button></div>
                 </div>
                 <div class="hint" data-i18n="ui.settings.visionHint">主 AI 可以直接看图，也可以调用识图 API。识图 API 只输出绘图 Tag / 观察结果，结果仅作辅助参考。</div>
                 <div class="hint" id="visionCapabilityHint" role="status"></div>
@@ -403,8 +451,8 @@
               </div>
               <div class="hint" data-i18n="ui.settings.timeoutHint"></div>
               <div class="row">
-                <button class="abtn" id="aiTest" data-i18n="ui.settings.testConnection"></button>
-                <button class="abtn ghost" id="aiClearCfg" data-i18n="ui.settings.restoreDefault"></button>
+                <button class="abtn pri btn btn-primary" id="aiTest" data-i18n="ui.settings.testConnection"></button>
+                <button class="abtn ghost danger btn btn-danger" id="aiClearCfg" data-i18n="ui.settings.restoreDefault"></button>
               </div>
               <div class="hint">
                 · 兼容所有 OpenAI
@@ -414,30 +462,20 @@
                 gpt-4o-mini、qwen-vl-max、Kimi 视觉版、deepseek-v4-flash-vision-exp、Ollama 的 llama3.2-vision
                 等）；纯文本模型（如 DeepSeek deepseek-chat）收到图片会报错。
               </div>
-              <details class="aiset agent-settings">
-                <summary data-i18n="ui.settings.agentTitle">🧩 外部 Agent 工具接口</summary>
-                <label class="opt"><input type="checkbox" id="agentWriteEnabled" /> <span data-i18n="ui.settings.agentWrite">允许外部 Agent 修改提示词和 ComfyUI 迭代设置</span></label>
-                <div class="hint" data-i18n="ui.settings.agentHint">默认只读。工具清单和调用示例位于应用目录的 agent-tools 文件夹；本地接口默认地址 http://127.0.0.1:32145。</div>
-                <div class="secret-status" id="agentStatus">工具服务启动中…</div>
-              </details>
+              <label class="opt"><input type="checkbox" id="generateNegativeTags" /> 允许文生图 Tag 子代理生成负面 Tag（默认关闭）</label>
               <div class="clhead comfyhead" data-i18n="ui.settings.comfyTitle"></div>
               <label
                 ><span data-i18n="ui.settings.comfyAddress"></span>
                 <input id="comfyBase" placeholder="http://127.0.0.1:8188" />
               </label>
-              <div class="opts">
-                <label class="opt"
-                  ><input type="checkbox" id="comfyOn" /><span data-i18n="ui.settings.comfyEnable"></span
-                ></label>
-              </div>
               <details class="aiset" style="border: none">
                 <summary>🎛 工作流（上传 / 拖入 / 粘贴，参数改动交给用户）</summary>
                 <div class="row">
-                  <button class="abtn" id="comfyWfJson" data-i18n="ui.settings.workflowUpload"></button>
-                  <button class="abtn" id="comfyWfPng" data-i18n="ui.settings.workflowPng"></button>
-                  <button class="abtn" id="comfyWfCopy" data-i18n="ui.settings.workflowCopy"></button>
-                  <button class="abtn" id="comfyWfOpen" data-i18n="ui.settings.workflowOpen"></button>
-                  <button class="abtn" id="comfyWfSync" data-i18n="ui.settings.workflowSync"></button>
+                  <button class="abtn btn btn-secondary" id="comfyWfJson" data-i18n="ui.settings.workflowUpload"></button>
+                  <button class="abtn btn btn-secondary" id="comfyWfPng" data-i18n="ui.settings.workflowPng"></button>
+                  <button class="abtn btn btn-secondary" id="comfyWfCopy" data-i18n="ui.settings.workflowCopy"></button>
+                  <button class="abtn btn btn-secondary" id="comfyWfOpen" data-i18n="ui.settings.workflowOpen"></button>
+                  <button class="abtn btn btn-secondary" id="comfyWfSync" data-i18n="ui.settings.workflowSync"></button>
                 </div>
                 <input type="file" id="comfyWfJsonFile" accept=".json,application/json" hidden />
                 <input type="file" id="comfyWfPngFile" accept="image/png" hidden />
@@ -471,7 +509,8 @@
                   <label class="opt"
                     >CFG <input id="comfyCfg" type="number" step="0.1" value="7" style="width: 64px"
                   /></label>
-                  <label class="opt">最大迭代 <input id="comfyIters" type="number" min="1" max="10" value="3" style="width: 64px" /></label>
+                  <label class="opt">单次出图数量 <input id="batchCount" type="number" min="1" max="10" value="1" style="width: 64px" /></label>
+                  <label class="opt">AI 调用上限 <input id="maxComfyCalls" type="number" min="1" max="20" value="3" style="width: 64px" /></label>
                 </div>
                 <div class="hint">
                   上传 / 拖入工作流（JSON 或含工作流的 PNG）后：自动识别标准采样器 / 提示词节点并注入
@@ -491,9 +530,9 @@
                   <textarea id="comfyWf" class="wfarea" placeholder="粘贴/上传 ComfyUI API 格式工作流 JSON"></textarea>
                 </label>
                 <div class="row">
-                  <button class="abtn" id="comfyTest">🔌 测试连接</button>
-                  <button class="abtn ghost" id="comfyWfClear">清空工作流</button>
-                  <button class="abtn ghost" id="comfyClearCfg">恢复默认</button>
+                  <button class="abtn btn btn-secondary" id="comfyTest">🔌 测试连接</button>
+                  <button class="abtn ghost danger btn btn-danger" id="comfyWfClear">清空工作流</button>
+                  <button class="abtn ghost danger btn btn-danger" id="comfyClearCfg">恢复默认</button>
                 </div>
                 <div class="hint">
                   · ComfyUI 需在本机运行（默认 http://127.0.0.1:8188）；返图由本工具自动抓取并经视觉模型分析。<br />·
@@ -504,9 +543,9 @@
             </div>
           </div>
         </div>
-        <div id="tabTalk" data-image-context="conversation" data-image-collection="talk">
+        <div id="tabTalk" data-image-context="conversation">
           <div class="tkshell">
-            <section class="talkmain" data-image-context="conversation" data-image-collection="talk">
+            <section class="talkmain" data-image-context="conversation">
               <div class="tkbody">
                 <div class="tkconv">
                   <div class="tk-statusline">
@@ -538,7 +577,7 @@
                     </div>
                     <div class="cstatus talk-status" id="talkStatus" aria-live="polite"></div>
                   </div>
-                  <div class="comfyconv talkconv" id="talkConv" data-image-context="conversation" data-image-collection="talk">
+                  <div class="comfyconv talkconv" id="talkConv" data-image-context="conversation">
                     <div class="cmsg sys">
                       <div class="body">
                         选择上方模式，输入内容后按 Enter 或点「发送」。对话框中的图片只作为 AI 对话附件；识图模块可在主标签页或 AI 页面单独接收一张图片。
@@ -547,29 +586,28 @@
                   </div>
                 </div>
               </div>
-              <div class="imgsrow talkimgs" id="talkImgRow" style="display: none"></div>
+              <div class="imgsrow talkimgs" id="talkPendingStrip" data-image-context="conversation" style="display: none"><div id="talkImgRow" class="pending-image-list"></div></div>
               <div class="tkmodebar">
                 <div class="tkthumb" id="tkThumb"></div>
-                <div class="tkmode on" data-mode="assistant"><span data-i18n="ui.ai.modeAssist"></span></div>
-                <div class="tkmode" data-mode="draw"><span data-i18n="ui.ai.modeDraw"></span></div>
+                <button class="tkmode btn btn-segment on" type="button" data-mode="assistant"><span data-i18n="ui.ai.modeAssist"></span></button>
+                <button class="tkmode btn btn-segment" type="button" data-mode="draw"><span data-i18n="ui.ai.modeDraw"></span></button>
               </div>
-              <div class="comfyin talkin" data-image-context="conversation" data-image-collection="talk">
+              <div class="comfyin talkin" data-image-context="conversation">
                 <textarea
                   id="talkIn"
                   rows="2"
                   placeholder="描述你的需求…（Enter 发送，Shift+Enter 换行；可直接粘贴 / 拖入图片）"
                 ></textarea>
                 <div class="talkbar">
-                  <button class="abtn" id="talkImgBtn" data-i18n="ui.ai.uploadImage"></button>
+                  <button class="abtn btn btn-secondary" id="talkImgBtn" data-i18n="ui.ai.uploadImage"></button>
                   <span class="tgrow"></span>
-                  <button class="abtn pri" id="talkSendBtn" data-i18n="ui.ai.send"></button>
-                  <button class="abtn ghost" id="talkStopBtn" data-i18n="ui.ai.stop" style="display: none"></button>
-                  <button class="abtn danger" id="talkClearBtn" data-i18n="ui.ai.clearChat"></button>
+                  <button class="abtn pri btn btn-primary" id="talkSendBtn" data-i18n="ui.ai.send"></button>
+                  <button class="abtn ghost btn btn-ghost" id="talkStopBtn" data-i18n="ui.ai.stop" style="display: none"></button>
+                  <button class="abtn danger btn btn-danger" id="talkClearBtn" data-i18n="ui.ai.clearChat"></button>
                 </div>
                 <input type="file" id="talkImgFile" accept="image/*" multiple hidden />
                 <div class="hint">
-                  · 🔍 识图模块一次只保留一张图片，不会进入 AI 对话；主标签页和 AI 页面共用同一张当前识图图片。<br />· 🎨 ComfyUI迭代 需先在「⚙️ API 设置 →
-                  ComfyUI」勾选启用并上传工作流。
+                  · 🔍 识图模块一次只保留一张图片，不会进入 AI 对话；主标签页和 AI 页面共用同一张当前识图图片。<br />· 🎨 ComfyUI 迭代需先上传工作流，并在绘图模式左上角打开“ComfyUI 出图”。
                 </div>
               </div>
             </section>
@@ -577,7 +615,7 @@
         </div>
         <div id="tabPrompt" style="display: none">
           <div class="aitop slim2">
-            <button class="abtn ghost backbtn" id="promptBack" data-i18n="ui.prompt.back"></button>
+            <button class="abtn ghost backbtn btn btn-ghost" id="promptBack" data-i18n="ui.prompt.back"></button>
             <span style="font-weight: 700; font-size: 14px" data-i18n="ui.prompt.title"></span>
           </div>
           <details id="mainPrompt" open class="promptcard">
@@ -588,23 +626,23 @@
               <div class="presetbar">
                 <span style="font-size: 13px; color: var(--muted)" data-i18n="ui.prompt.preset"></span>
                 <select id="presetSel" class="wbselect"></select>
-                <button class="abtn ghost" id="presetSave" data-i18n="ui.prompt.savePreset"></button>
-                <button class="abtn ghost" id="presetImport" data-i18n="ui.prompt.import"></button>
-                <button class="abtn ghost" id="presetExport" data-i18n="ui.prompt.export"></button>
-                <button class="abtn ghost danger" id="presetDelete" data-i18n="ui.prompt.delete"></button>
+                <button class="abtn ghost btn btn-ghost" id="presetSave" data-i18n="ui.prompt.savePreset"></button>
+                <button class="abtn ghost btn btn-ghost" id="presetImport" data-i18n="ui.prompt.import"></button>
+                <button class="abtn ghost btn btn-ghost" id="presetExport" data-i18n="ui.prompt.export"></button>
+                <span class="hint">提示词分为内部提示词和外部提示词；内部条目固定，不支持新建或删除。</span>
               </div>
               <div class="row" style="margin-top: 6px">
-                <button class="abtn" id="pcolExport" data-i18n="ui.prompt.exportCollection"></button>
-                <button class="abtn ghost" id="pcolImport" data-i18n="ui.prompt.importCollection"></button>
+                <button class="abtn btn btn-secondary" id="pcolExport" data-i18n="ui.prompt.exportCollection"></button>
+                <button class="abtn ghost btn btn-ghost" id="pcolImport" data-i18n="ui.prompt.importCollection"></button>
                 <input type="file" id="pcolFile" accept=".json,application/json" hidden />
-                <button class="abtn ghost" id="promptModReset" data-i18n="ui.prompt.resetModules"></button>
+                <button class="abtn ghost danger btn btn-danger" id="promptModReset" data-i18n="ui.prompt.resetModules"></button>
               </div>
-              <div class="hint" style="margin: 4px 0 10px" data-i18n="ui.prompt.modulesHint"></div>
+              <div class="hint" style="margin: 4px 0 10px">模块 A：内部提示词。用于主 AI 调用规则和固定子代理，允许编辑、恢复默认、导入导出。</div>
               <details class="pmod-lead" data-special="base">
                 <summary>
                   <span data-i18n="ui.prompt.base"></span> <span class="pcsub" data-i18n="ui.prompt.baseSub"></span
                   ><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="aiSysEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
-                  ><button class="abtn" id="aiSysReset" data-i18n="ui.promptExtra.resetDefault"></button>
+                  ><button class="abtn ghost danger btn btn-danger" id="aiSysReset" data-i18n="ui.promptExtra.resetDefault"></button>
                 </summary>
                 <div class="pmod-mods"></div>
                 <div class="form"><textarea id="aiSys" rows="12"></textarea></div>
@@ -613,7 +651,7 @@
                 <summary>
                   <span data-i18n="ui.prompt.genTask"></span>
                   <span class="pcsub" data-i18n="ui.prompt.genTaskSub"></span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="genTaskEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
-                  ><button class="abtn" id="genTaskReset" data-i18n="ui.promptExtra.resetDefault"></button>
+                  ><button class="abtn ghost danger btn btn-danger" id="genTaskReset" data-i18n="ui.promptExtra.resetDefault"></button>
                 </summary>
                 <div class="pmod-mods"></div>
                 <div class="form"><textarea id="genTask" rows="9"></textarea></div>
@@ -622,7 +660,7 @@
                 <summary>
                   <span data-i18n="ui.prompt.quality"></span>
                   <span class="pcsub" data-i18n="ui.prompt.qualitySub"></span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="qpEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
-                  ><button class="abtn" id="qpReset" data-i18n="ui.promptExtra.reset"></button>
+                  ><button class="abtn ghost danger btn btn-danger" id="qpReset" data-i18n="ui.promptExtra.reset"></button>
                 </summary>
                 <div class="pmod-mods"></div>
                 <div class="qprefix"><textarea id="qpText" rows="4"></textarea></div>
@@ -631,7 +669,7 @@
                 <summary>
                   <span data-i18n="ui.prompt.vision"></span> <span class="pcsub" data-i18n="ui.prompt.visionSub"></span
                   ><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="aiVisionEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
-                  ><button class="abtn" id="aiVisionReset" data-i18n="ui.promptExtra.resetDefault"></button>
+                  ><button class="abtn ghost danger btn btn-danger" id="aiVisionReset" data-i18n="ui.promptExtra.resetDefault"></button>
                 </summary>
                 <div class="pmod-mods"></div>
                 <div class="qprefix" style="border-left-color: var(--cp)">
@@ -649,7 +687,20 @@
               <div class="hint" data-i18n="ui.prompt.mainHint"></div>
             </div>
           </details>
+          <section class="promptcard" id="agentPromptPanels">
+            <h3>内部提示词</h3><div class="hint">固定子代理和主 AI 调用规则。可编辑或恢复默认，不支持新建和删除。</div>
+            <label>主 AI 调用规则<textarea id="internalPromptMain" rows="4"></textarea></label>
+            <label>文生图 Tag 子代理<textarea id="internalPromptGenerate" rows="4"></textarea></label>
+            <label>识图子代理<textarea id="internalPromptVision" rows="4"></textarea></label>
+            <button class="abtn ghost danger btn btn-danger" id="internalPromptReset">恢复内部提示词默认</button>
+            <button class="abtn btn btn-secondary" id="internalPromptExport">导出内部提示词</button>
+            <button class="abtn btn btn-secondary" id="internalPromptImport">导入内部提示词</button>
+            <input type="file" id="internalPromptFile" accept="application/json,.json" hidden />
+            <h3>外部提示词</h3><div class="hint">发送给主 AI，优先级低于内部提示词。</div>
+            <label>用户偏好与工作规则<textarea id="externalPromptText" rows="5"></textarea></label>
+          </section>
 
+          <div class="hint" style="margin: 12px 0 4px">模块 B：外部提示词。发送给主 AI，优先级低于内部提示词。</div>
           <details id="worldBookCard" open class="promptcard">
             <summary data-i18n-title="ui.promptExtra.toggleTitle">
               <span data-i18n="ui.prompt.world"></span> <span class="pcsub" data-i18n="ui.prompt.worldSub"></span>
@@ -661,10 +712,10 @@
                 <label class="opt"
                   ><input type="checkbox" id="worldEnabled" checked /> <span data-i18n="ui.prompt.worldEnabled"></span
                 ></label>
-                <button class="abtn" id="worldAdd" data-i18n="ui.prompt.newWorld"></button>
-                <button class="abtn" id="wbImport" data-i18n="ui.prompt.import"></button>
-                <button class="abtn" id="wbExport" data-i18n="ui.prompt.exportWorld"></button>
-                <button class="abtn" id="wbBundle" data-i18n="ui.prompt.bundleWorld"></button>
+                <button class="abtn pri btn btn-primary" id="worldAdd" data-i18n="ui.prompt.newWorld"></button>
+                <button class="abtn btn btn-secondary" id="wbImport" data-i18n="ui.prompt.import"></button>
+                <button class="abtn btn btn-secondary" id="wbExport" data-i18n="ui.prompt.exportWorld"></button>
+                <button class="abtn btn btn-secondary" id="wbBundle" data-i18n="ui.prompt.bundleWorld"></button>
               </div>
               <div class="row" style="margin-top: 4px; align-items: center">
                 <span style="font-size: 13px; color: var(--muted)" data-i18n="ui.prompt.enabledObjects"></span>
@@ -674,11 +725,11 @@
               <input type="file" id="wbImportFile" accept=".json,application/json" hidden />
               <div class="clhead wbheadline" style="margin-top: 12px">
                 <span id="wbListTitle" data-i18n="ui.prompt.entryTitle"></span><span style="flex: 1"></span
-                ><button class="abtn" id="wbFoldAll" data-i18n="ui.prompt.allCollapse"></button
-                ><button class="abtn" id="wbAdd" data-i18n="ui.prompt.newEntry"></button>
+                ><button class="abtn ghost btn btn-ghost" id="wbFoldAll" data-i18n="ui.prompt.allCollapse"></button
+                ><button class="abtn pri btn btn-primary" id="wbAdd" data-i18n="ui.prompt.newEntry"></button>
               </div>
               <div class="wblist" id="wbList"></div>
-              <div class="row"><button class="abtn" id="previewWorld" data-i18n="ui.prompt.previewWorld"></button></div>
+              <div class="row"><button class="abtn btn btn-secondary" id="previewWorld" data-i18n="ui.prompt.previewWorld"></button></div>
               <div class="hint" data-i18n="ui.promptExtra.worldHint"></div>
             </div>
           </details>
@@ -701,17 +752,17 @@
       </div>
     <div class="modal" id="wbModal">
       <div class="box">
-        <button class="hbtn close" id="wbModalClose">✕</button>
+        <button class="hbtn close btn btn-icon" id="wbModalClose">✕</button>
         <h3 data-i18n="ui.promptExtra.importModalTitle"></h3>
         <div class="hint" id="wbModalHint"></div>
         <div class="form-acts">
-          <button class="abtn" id="wbSelAll" data-i18n="ui.promptExtra.selectAll"></button>
-          <button class="abtn" id="wbSelNone" data-i18n="ui.promptExtra.selectNone"></button>
+          <button class="abtn ghost btn btn-ghost" id="wbSelAll" data-i18n="ui.promptExtra.selectAll"></button>
+          <button class="abtn ghost btn btn-ghost" id="wbSelNone" data-i18n="ui.promptExtra.selectNone"></button>
         </div>
         <div class="wbimport" id="wbImportList"></div>
         <div class="form-acts">
-          <button class="abtn pri" id="wbImportGo" data-i18n="ui.promptExtra.importSelected"></button>
-          <button class="abtn" id="wbImportCancel" data-i18n="ui.common.cancel"></button>
+          <button class="abtn pri btn btn-primary" id="wbImportGo" data-i18n="ui.promptExtra.importSelected"></button>
+          <button class="abtn ghost btn btn-ghost" id="wbImportCancel" data-i18n="ui.common.cancel"></button>
         </div>
       </div>
     </div>
@@ -720,9 +771,10 @@
       <div class="box cfb">
         <div id="cfmIcon">⚠️</div>
         <div class="cfmsg" id="cfmText"></div>
+        <label id="cfmRetainImagesWrap" hidden><input type="checkbox" id="cfmRetainImages" /> <span data-i18n="ui.ai.retainConversationImages"></span></label>
         <div class="form-acts">
-          <button class="abtn ghost" id="cfmNo">取消</button>
-          <button class="abtn pri danger" id="cfmYes">确定</button>
+          <button class="abtn ghost btn btn-ghost" id="cfmNo">取消</button>
+          <button class="abtn pri danger btn btn-danger" id="cfmYes">确定</button>
         </div>
       </div>
     </div>

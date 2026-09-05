@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
-    "version":  "1.4.131",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.131 识图按钮定位修复测试版",
+    "version":  "1.4.191",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.191 配置与图片修复版",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",

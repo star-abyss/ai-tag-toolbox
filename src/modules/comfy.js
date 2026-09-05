@@ -110,8 +110,15 @@ function findTextBindings(workflow, nodeId, visited = new Set(), result = []) {
   // commonly expose value or prompt instead. Supporting all fields matters
   // for SDXL nodes, which carry both text_g and text_l conditioning values.
   const localBindings = [];
-  for (const key of ['text', 'text_g', 'text_l', 'value', 'prompt', 'positive', 'negative']) {
+  const wildcardLink = linkedNodeId(node.inputs.wildcard_text);
+  const localKeys = wildcardLink == null && typeof node.inputs.wildcard_text === 'string'
+    ? ['wildcard_text']
+    : ['text', 'text_g', 'text_l', 'value', 'prompt', 'positive', 'negative'];
+  for (const key of localKeys) {
     if (typeof node.inputs[key] === 'string') localBindings.push({ node, key, value: node.inputs[key] });
+  }
+  if (wildcardLink == null && !localBindings.length && typeof node.inputs.populated_text === 'string') {
+    localBindings.push({ node, key: 'populated_text', value: node.inputs.populated_text });
   }
   if (localBindings.length) {
     result.push(...localBindings);
@@ -120,8 +127,15 @@ function findTextBindings(workflow, nodeId, visited = new Set(), result = []) {
   // Once a node owns a text input, its other links are usually clip/model
   // dependencies (for example a LoRA loader). Do not walk those links and
   // accidentally treat their auxiliary text as the sampler prompt.
-  if (result.length) return result;
-  for (const value of Object.values(node.inputs)) {
+  const entries = Object.entries(node.inputs);
+  const semanticLinks = entries.filter(([key, value]) => linkedNodeId(value) != null && /text|prompt|positive|negative|conditioning|wildcard|^input\d*$/i.test(key));
+  const before = result.length;
+  for (const [, value] of semanticLinks) {
+    const linked = linkedNodeId(value);
+    if (linked != null) findTextBindings(workflow, linked, visited, result);
+  }
+  if (result.length > before) return result;
+  for (const [, value] of entries) {
     const linked = linkedNodeId(value);
     if (linked != null) findTextBindings(workflow, linked, visited, result);
   }
@@ -206,6 +220,7 @@ function workflowParams(params = {}) {
     cfg: hasOwn(params, 'cfg') ? params.cfg : undefined,
     sampler: hasOwn(params, 'sampler') ? params.sampler : undefined,
     scheduler: hasOwn(params, 'scheduler') ? params.scheduler : undefined,
+    batchCount: hasOwn(params, 'batchCount') ? params.batchCount : hasOwn(params, 'batch') ? params.batch : undefined,
     ckpt: hasOwn(params, 'ckpt') ? params.ckpt : hasOwn(params, 'model') ? params.model : undefined
   };
 }
@@ -307,6 +322,14 @@ function applyWorkflowOverrides(workflow, params = {}) {
     }
   }
 
+  if (provided(values.batchCount)) {
+    const latentId = linkedNodeId(inputs.latent_image) || linkedNodeId(inputs.latent) || linkedNodeId(inputs.samples);
+    const binding = latentId ? findDimensionBinding(workflow, latentId, ['batch_size', 'batch']) : null;
+    if (!binding) throw new Error('ComfyUI 工作流无法覆盖单次出图数量：未找到 latent batch_size 输入');
+    setBinding(binding, numericOverride(values.batchCount, 'batchCount'));
+    changed.push('batchCount');
+  }
+
   for (const field of ['steps', 'cfg']) {
     if (!provided(values[field])) continue;
     const binding = findInputBinding(sampler, field, workflow, { scalarKeys: ['value', field] });
@@ -367,6 +390,13 @@ function setTextPlaceholder(binding, placeholder) {
   return original;
 }
 
+function setValuePlaceholder(binding, placeholder) {
+  if (!binding?.node?.inputs || !binding.key) return undefined;
+  const original = binding.node.inputs[binding.key];
+  binding.node.inputs[binding.key] = `{{${placeholder}}}`;
+  return original;
+}
+
 /**
  * Import a ComfyUI API workflow and expose its editable values.
  *
@@ -394,31 +424,31 @@ function importApiWorkflow(value) {
     prompt = setTextPlaceholder(positiveBinding, 'prompt') || prompt;
     negative = setTextPlaceholder(negativeBinding, 'negative') || negative;
     for (const field of ['steps', 'cfg']) {
-      if (node.inputs[field] === undefined) continue;
-      const original = node.inputs[field];
+      const binding = findInputBinding(node, field, workflow, { scalarKeys: ['value', field] });
+      if (!binding) continue;
+      const original = setValuePlaceholder(binding, field);
       if (field === 'steps') steps = Number.parseInt(original, 10) || 25;
       else cfg = Number.parseFloat(original) || 7;
-      node.inputs[field] = `{{${field}}}`;
       found = true;
     }
     const seedField = node.inputs.seed !== undefined ? 'seed' : node.inputs.noise_seed !== undefined ? 'noise_seed' : '';
     if (seedField) {
-      seed = String(node.inputs[seedField]);
-      node.inputs[seedField] = '{{seed}}';
-      found = true;
-    }
-    const latent = workflow[linkedNodeId(node.inputs.latent_image)];
-    if (latent?.inputs) {
-      const widthKey = ['width', 'empty_latent_width', 'empty_latent_w'].find(key => latent.inputs[key] !== undefined);
-      const heightKey = ['height', 'empty_latent_height', 'empty_latent_h'].find(key => latent.inputs[key] !== undefined);
-      if (widthKey) {
-        width = latent.inputs[widthKey];
-        latent.inputs[widthKey] = '{{width}}';
+      const binding = findInputBinding(node, seedField, workflow, { scalarKeys: ['value', seedField, 'seed', 'noise_seed'] });
+      if (binding) {
+        seed = String(setValuePlaceholder(binding, 'seed'));
         found = true;
       }
-      if (heightKey) {
-        height = latent.inputs[heightKey];
-        latent.inputs[heightKey] = '{{height}}';
+    }
+    const latentId = linkedNodeId(node.inputs.latent_image) || linkedNodeId(node.inputs.latent) || linkedNodeId(node.inputs.samples);
+    if (latentId) {
+      const widthBinding = findDimensionBinding(workflow, latentId, ['width', 'empty_latent_width', 'empty_latent_w']);
+      const heightBinding = findDimensionBinding(workflow, latentId, ['height', 'empty_latent_height', 'empty_latent_h']);
+      if (widthBinding) {
+        width = setValuePlaceholder(widthBinding, 'width');
+        found = true;
+      }
+      if (heightBinding) {
+        height = setValuePlaceholder(heightBinding, 'height');
         found = true;
       }
     }
@@ -473,7 +503,7 @@ function defaultWorkflow(params = {}) {
       }
     },
     '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: params.ckpt || '' } },
-    '5': { class_type: 'EmptyLatentImage', inputs: { width: Number(params.w) || 768, height: Number(params.h) || 1024, batch_size: 1 } },
+    '5': { class_type: 'EmptyLatentImage', inputs: { width: Number(params.w) || 768, height: Number(params.h) || 1024, batch_size: Math.max(1, Math.min(10, Number(params.batchCount || params.batch) || 1)) } },
     '6': { class_type: 'CLIPTextEncode', inputs: { text: params.prompt || '', clip: ['4', 1] } },
     '7': { class_type: 'CLIPTextEncode', inputs: { text: params.negative || '', clip: ['4', 1] } },
     '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },

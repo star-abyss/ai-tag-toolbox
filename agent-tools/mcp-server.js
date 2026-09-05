@@ -34,7 +34,7 @@ async function handle(message) {
     return write(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'ai-tag-toolbox', version: '1.4.131' }
+      serverInfo: { name: 'ai-tag-toolbox', version: '1.4.191' }
     });
   }
   if (method === 'notifications/initialized' || method === 'notifications/cancelled') return;

@@ -53,13 +53,36 @@ function bytesFrom(value) {
 }
 
 function dataUrlBytes(value) {
-  if (typeof value !== 'string' || !value.startsWith('data:')) return null;
+  if (typeof value !== 'string' || !/^data:/i.test(value)) return null;
   const comma = value.indexOf(',');
   if (comma < 0) return null;
   const header = value.slice(5, comma);
   const payload = value.slice(comma + 1);
-  if (header.toLowerCase().includes(';base64')) return Buffer.from(payload, 'base64');
-  return Buffer.from(decodeURIComponent(payload), 'utf8');
+  if (!/^image\/[a-z0-9.+-]+(?:;[^,]*)?$/i.test(header)) return null;
+  const base64 = header.split(';').slice(1).some(item => item.trim().toLowerCase() === 'base64');
+  if (base64) {
+    if (!payload || payload.length % 4 !== 0) return null;
+    const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+    const contentLength = payload.length - padding;
+    for (let index = 0; index < contentLength; index += 1) {
+      const code = payload.charCodeAt(index);
+      const valid = (code >= 65 && code <= 90)
+        || (code >= 97 && code <= 122)
+        || (code >= 48 && code <= 57)
+        || code === 43
+        || code === 47;
+      if (!valid) return null;
+    }
+    for (let index = contentLength; index < payload.length; index += 1) if (payload[index] !== '=') return null;
+    try {
+      const bytes = Buffer.from(payload, 'base64');
+      return bytes.length ? bytes : null;
+    } catch { return null; }
+  }
+  try {
+    const bytes = Buffer.from(decodeURIComponent(payload), 'utf8');
+    return bytes.length ? bytes : null;
+  } catch { return null; }
 }
 
 function mimeFromDataUrl(value) {
@@ -245,9 +268,20 @@ function parsePngMetadata(input) {
 
 function normaliseInput(input, meta = {}, sequence = 1) {
   const source = typeof input === 'string' ? { dataUrl: input } : (isObject(input) ? input : {});
-  const rawBytes = bytesFrom(source.bytes || source.buffer || source.data) || dataUrlBytes(source.dataUrl || source.url);
-  const mime = text(source.mime || source.type || mimeFromDataUrl(source.dataUrl || source.url), 'image/*');
-  const dataUrl = text(source.dataUrl || source.url) || dataUrlFromBytes(rawBytes, mime === 'image/*' ? 'image/png' : mime);
+  const sourceAddress = text(source.dataUrl || source.url);
+  const suppliedBytes = bytesFrom(source.bytes || source.buffer || source.data);
+  const parsedBytes = dataUrlBytes(sourceAddress);
+  const rawBytes = suppliedBytes || parsedBytes;
+  const invalidDataUrl = /^data:/i.test(sourceAddress) && !suppliedBytes && !parsedBytes;
+  const mime = text(source.mime || source.type || mimeFromDataUrl(sourceAddress), 'image/*');
+  // Never retain a malformed data URL. A caller with real bytes still gets a
+  // canonical data URL generated below; a malformed-only record is marked
+  // unavailable so Vision cannot accidentally consume it.
+  const dataUrl = invalidDataUrl
+    ? ''
+    : suppliedBytes && sourceAddress && !parsedBytes
+      ? dataUrlFromBytes(rawBytes, mime === 'image/*' ? 'image/png' : mime)
+      : sourceAddress || dataUrlFromBytes(rawBytes, mime === 'image/*' ? 'image/png' : mime);
   const filename = text(source.filename || source.fileName || meta.filename || meta.fileName);
   const id = text(source.id || source.imageId, makeId(sequence, `${filename}|${dataUrl.slice(0, 96)}`));
   return {
@@ -256,6 +290,7 @@ function normaliseInput(input, meta = {}, sequence = 1) {
     thumbnailDataUrl: text(source.thumbnailDataUrl || source.thumbnail || meta.thumbnailDataUrl),
     filename,
     name: filename,
+    displayName: text(source.displayName || source.name || meta.displayName || meta.name, filename),
     mime,
     source: text(source.source || meta.source, 'unknown'),
     width: Number.isFinite(Number(source.width)) ? Math.max(0, Number(source.width)) : 0,
@@ -263,9 +298,10 @@ function normaliseInput(input, meta = {}, sequence = 1) {
     bytes: rawBytes,
     metadata: source.metadata ? clone(source.metadata) : null,
     analysis: source.analysis ? clone(source.analysis) : null,
-    status: text(source.status, 'ready'),
+    status: invalidDataUrl ? 'unavailable' : text(source.status, 'ready'),
     blobId: text(source.blobId),
-    createdAt: source.createdAt || new Date().toISOString()
+    createdAt: source.createdAt || new Date().toISOString(),
+    updatedAt: source.updatedAt || source.createdAt || new Date().toISOString()
   };
 }
 
@@ -290,9 +326,9 @@ function createImages(options = {}) {
 
   function indexValue() {
     return [...items.values()].map(item => ({
-      id: item.id, filename: item.filename, name: item.name, mime: item.mime, source: item.source,
+      id: item.id, filename: item.filename, name: item.name, displayName: item.displayName, mime: item.mime, source: item.source,
       width: item.width, height: item.height, metadata: clone(item.metadata), analysis: clone(item.analysis),
-      status: item.status, blobId: item.blobId, createdAt: item.createdAt,
+      status: item.status, blobId: item.blobId, createdAt: item.createdAt, updatedAt: item.updatedAt,
       collections: [...collections.entries()].filter(([, set]) => set.has(item.id)).map(([name]) => name),
       dataUrl: item.bytes ? '' : item.dataUrl,
       thumbnailDataUrl: item.thumbnailDataUrl || ''
@@ -549,5 +585,6 @@ module.exports = {
   promptToTags,
   workflowPromptText,
   dataUrlFromBytes,
+  dataUrlBytes,
   normaliseInput
 };

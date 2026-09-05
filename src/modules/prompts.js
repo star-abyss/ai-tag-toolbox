@@ -26,6 +26,7 @@ const PROMPT_ALIASES = Object.freeze({
   mainPrompt: 'main',
   gen: 'generate',
   generation: 'generate',
+  generateTags: 'generate',
   task: 'generate',
   freeChat: 'chat',
   defaultVision: 'vision',
@@ -46,14 +47,15 @@ const PROMPT_META = Object.freeze({
   appendices: { label: '默认附录提示词', kind: 'appendix-set', role: 'system', mode: 'optional', editable: false, editableOverride: false, deletable: false }
 });
 
+const INTERNAL_PROMPT_KEYS = Object.freeze(['main', 'generate', 'vision', 'comfy', 'quality']);
+const EXTERNAL_PROMPT_KEYS = Object.freeze(['chat']);
+
 const MODE_KEYS = Object.freeze({
   generate: ['main', 'generate', 'quality'],
   gen: ['main', 'generate', 'quality'],
   chat: ['main', 'chat'],
   vision: ['vision'],
-  recreate: ['main', 'vision', 'quality'],
-  comfy: ['main', 'comfy', 'quality'],
-  comfyIteration: ['main', 'comfy', 'quality']
+  comfy: ['main', 'comfy', 'quality']
 });
 
 function text(value, fallback = '') {
@@ -247,6 +249,30 @@ function createPrompts(options = {}) {
     return true;
   }
 
+  function listByBlock(block) {
+    const keysForBlock = block === 'internal' ? INTERNAL_PROMPT_KEYS : EXTERNAL_PROMPT_KEYS;
+    return keysForBlock.map(item).filter(Boolean);
+  }
+
+  function resetBlock(block) {
+    for (const key of (block === 'internal' ? INTERNAL_PROMPT_KEYS : EXTERNAL_PROMPT_KEYS)) reset(key);
+    return listByBlock(block);
+  }
+
+  function exportBlock(block = 'internal') {
+    const keysForBlock = block === 'internal' ? INTERNAL_PROMPT_KEYS : EXTERNAL_PROMPT_KEYS;
+    return { format: 'ai-tag-prompts', version: 1, block, items: Object.fromEntries(keysForBlock.map(key => [key, get(key)])) };
+  }
+
+  function importBlock(payload, block = 'internal') {
+    if (!payload || payload.format !== 'ai-tag-prompts' || !payload.items || typeof payload.items !== 'object') return { ok: false, code: 'INVALID_PROMPT_BUNDLE' };
+    const keysForBlock = block === 'internal' ? INTERNAL_PROMPT_KEYS : EXTERNAL_PROMPT_KEYS;
+    const unknown = Object.keys(payload.items).filter(key => !keysForBlock.includes(key));
+    if (unknown.length || keysForBlock.some(key => payload.items[key] != null && typeof payload.items[key] !== 'string')) return { ok: false, code: 'PROMPT_SCHEMA_INVALID', unknown };
+    for (const key of keysForBlock) if (typeof payload.items[key] === 'string') set(key, payload.items[key]);
+    return { ok: true, items: listByBlock(block) };
+  }
+
   function item(key) {
     const resolved = resolveKey(key);
     const metaValue = PROMPT_META[resolved] || { label: state.custom[resolved]?.name || resolved, kind: 'custom', editable: true, editableOverride: true, deletable: true };
@@ -322,6 +348,7 @@ function createPrompts(options = {}) {
     appendices,
     compose,
     snapshot: () => ({ values: Object.fromEntries(keys().map(key => [key, get(key)])), defaults: clone(defaults), state: clone(state), metadata: Object.fromEntries(keys().map(key => [key, meta(key)])), appendices: appendices() })
+    ,listByBlock, resetBlock, exportBlock, importBlock, internalKeys: INTERNAL_PROMPT_KEYS, externalKeys: EXTERNAL_PROMPT_KEYS
   };
 
   load();

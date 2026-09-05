@@ -15,15 +15,17 @@
     const imageStore = modules.imageStore || null;
     const translation = modules.translation;
     const assistant = modules.assistant;
+    const imageRepository = modules.imageRepository || assistant?.imageRepository || null;
+    const visionTempStore = modules.visionTempStore || assistant?.visionTempStore || null;
     const prompts = modules.prompts;
     const comfy = modules.comfy;
     const ui = {
       route: "tags",
       aiTab: "talk",
       talkMode: "assistant",
-      currentVisionImageId: "",
+      favoritesOpen: false,
       visionResult: null,
-      visionCollapsed: false,
+      visionOpen: false,
       visionDescription: "",
       visionBusy: false,
       visionAbort: null,
@@ -31,16 +33,25 @@
       visionUploadId: 0,
       lastImageContext: "",
       visible: 400,
+      subcategory: "",
       locale: "zh-CN",
       translateTimer: null,
       translateRefsTimer: null,
       translateRequestId: 0,
       searchTimer: null,
+      searchPrecision: "standard",
+      tagPageCache: new Map(),
       pendingWorldEntries: [],
       confirmAction: null,
       thinkingOpen: Object.create(null),
       thinkingScroll: Object.create(null),
       candidatePreviews: Object.create(null),
+      gallerySelected: new Set(),
+      galleryOrder: "oldest",
+      galleryQuery: "",
+      galleryColumns: "two",
+      gallerySize: "standard",
+      aiTabBeforeGallery: "talk",
       comfyFollow: { "#talkConv": true },
       comfyCapabilities: null,
       started: false,
@@ -52,6 +63,12 @@
       const value = v == null ? "" : String(v).trim();
       return value || fallback;
     };
+    function normaliseSearchPrecision(value) {
+      const raw = str(value, "standard").toLowerCase();
+      if (["exact", "strict", "high", "精确", "高"].includes(raw)) return "exact";
+      if (["broad", "loose", "fuzzy", "low", "宽松", "低"].includes(raw)) return "broad";
+      return "standard";
+    }
     const storage = {
       get(key, fallback = null) {
         try {
@@ -124,6 +141,8 @@
         query: str(snap.query),
         category: str(snap.category, "quality"),
         adult: Boolean(snap.includeAdult),
+        precision: normaliseSearchPrecision(snap.searchPrecision || ui.searchPrecision),
+        revision: Number(snap.revision) || 0,
         selected: snap.selected || tags?.selected?.() || [],
       };
     }
@@ -131,6 +150,46 @@
       const pack = modules.locales?.[ui.locale] || {};
       const value = str(key).split(".").reduce((object, part) => object && object[part], pack);
       return typeof value === "string" ? value : fallback;
+    }
+    function galleryText(key, fallback = "", values = {}) {
+      return formatText(localized(`ui.gallery.${key}`, fallback), values);
+    }
+    const navActionConfig = {
+      ai: { selector: "#aiBtn", idleKey: "ui.header.aiAssistant", activeKey: "ui.header.backHome", idle: ["🤖 AI 助手", "🤖 AI Assistant"], active: ["← 返回主页", "← Back home"], run: () => route(ui.route === "ai" ? "tags" : "ai") },
+      translation: { selector: "#translateBtn", idleKey: "ui.header.translation", activeKey: "ui.header.backHome", idle: ["🌐 翻译", "🌐 Translate"], active: ["← 返回主页", "← Back home"], run: () => route(ui.route === "translation" ? "tags" : "translation") },
+      vision: { selector: "#visionBtn", idleKey: "ui.header.vision", activeKey: "ui.header.visionClose", idle: ["🔍 识图", "🔍 Vision"], active: ["✕ 关闭识图", "✕ Close vision"], run: () => setVisionOpen(!ui.visionOpen) },
+      gallery: { selector: "#galleryBtn", idleKey: "ui.header.gallery", activeKey: "ui.header.backHome", idle: ["🖼 图片库", "🖼 Gallery"], active: ["← 返回主页面", "← Back home"], run: () => route(ui.route === "gallery" ? "tags" : "gallery") },
+      favorites: { selector: "#favBtn", idleKey: "ui.header.favorites", activeKey: "ui.header.favoritesClose", idle: ["⭐ 收藏组合", "⭐ Favorites"], active: ["✕ 关闭收藏组合", "✕ Close favorites"], run: () => toggleFavoriteDrawer() },
+      adult: { selector: "#nsfwBtn", idleKey: "ui.header.adult", activeKey: "ui.header.adultClose", idle: ["○ 成人标签：关", "○ Adult tags: off"], active: ["● 成人标签：开", "● Adult tags: on"], run: () => toggleAdultTags() },
+      sponsor: { selector: "#sponsorBtn", idleKey: "ui.header.sponsor", idle: ["❤️ 赞助作者", "❤️ Sponsor"], run: () => $("#sponsorModal")?.classList.add("show") },
+      theme: { selector: "#themeBtn", idleKey: "ui.header.style", idle: ["🎨 样式", "🎨 Style"], run: event => toggleThemeMenu(event) },
+      locale: { selector: "#localeBtn", idleKey: "ui.header.language", idle: ["文/A", "文/A"], run: () => toggleLocaleMenu() },
+    };
+    function syncNavAction(name, active) {
+      const config = navActionConfig[name];
+      const button = config ? $(config.selector) : null;
+      if (!button) return;
+      const english = ui.locale === "en-US" ? 1 : 0;
+      const useActive = Boolean(active && config.activeKey && config.active);
+      const fallback = (useActive ? config.active : config.idle)[english];
+      button.classList.toggle("on", useActive);
+      if (config.activeKey) button.setAttribute("aria-pressed", useActive ? "true" : "false");
+      else button.removeAttribute("aria-pressed");
+      button.dataset.navState = useActive ? "active" : "idle";
+      button.textContent = localized(useActive ? config.activeKey : config.idleKey, fallback);
+      if (name === "vision" || name === "favorites") button.setAttribute("aria-expanded", useActive ? "true" : "false");
+      if (name === "vision" || name === "favorites") button.title = button.textContent;
+    }
+    function syncNavigationStates() {
+      syncNavAction("ai", ui.route === "ai");
+      syncNavAction("translation", ui.route === "translation");
+      syncNavAction("vision", ui.visionOpen);
+      syncNavAction("gallery", ui.route === "gallery");
+      syncNavAction("favorites", ui.favoritesOpen);
+      syncNavAction("adult", tagSnapshot().adult);
+      syncNavAction("sponsor", false);
+      syncNavAction("theme", false);
+      syncNavAction("locale", false);
     }
     function categoryLabel(id, fallback = "") {
       const pack = modules.locales?.[ui.locale] || {};
@@ -153,12 +212,12 @@
       return item || {};
     }
     const categoryColors = {
-      quality: "#4967D8", negative: "#C2413A", character: "#6E5ACB", body: "#258F83",
+      quality: "#4967D8", negative: "#C2413A", character: "#6E5ACB", character_names: "#7659A8", body: "#258F83",
       expression: "#B9770E", eyes: "#1E8FA5", hair: "#8A5A9E", features: "#7A63B8",
       outfit: "#2A8C6F", footwear: "#2A8F88", accessory: "#B46A2C", pose: "#5564C7",
       scene: "#AF7413", camera: "#3C75B8", style: "#8B63A8", time_weather: "#3D8A5A",
       atmosphere: "#AD5D83", effects: "#B34A46", food: "#A27A16", animal: "#B76832",
-      other: "#64748B", rating: "#9B7B1F", series: "#287EA4", nsfw: "#A23E72",
+      other: "#64748B", rating: "#9B7B1F", series: "#287EA4", nsfw: "#E85D9F",
     };
     function categoryColor(id) {
       return categoryColors[String(id || "").toLowerCase()] || "#94A3B8";
@@ -176,14 +235,43 @@
     }
     function tagRows() {
       const snap = tagSnapshot();
+      const cacheKey = [
+        snap.query,
+        snap.category,
+        snap.precision,
+        snap.adult ? "adult" : "safe",
+        snap.revision || 0,
+        ui.subcategory,
+        ui.visible,
+        tags?.size?.() || 0,
+        JSON.stringify(snap.categoryCounts || {}),
+      ].join("\u0001");
+      const cached = ui.tagPageCache.get(cacheKey);
+      if (cached) return cached;
       const page = tags?.page?.({
         query: snap.query,
         category: snap.query ? "" : snap.category,
         includeAdult: snap.adult,
+        subcategory: snap.query ? "" : ui.subcategory,
+        precision: snap.precision,
         offset: 0,
         limit: ui.visible,
       }) || { items: [], total: 0, hasMore: false };
+      if (ui.tagPageCache.size >= 24) {
+        const oldest = ui.tagPageCache.keys().next().value;
+        if (oldest != null) ui.tagPageCache.delete(oldest);
+      }
+      ui.tagPageCache.set(cacheKey, page);
       return page;
+    }
+    function executeSearch() {
+      const query = str($("#q")?.value);
+      if (ui.route !== "tags") route("tags");
+      ui.subcategory = "";
+      ui.visible = 400;
+      tags?.setQuery?.(query);
+      renderCategories();
+      renderTags();
     }
     function renderCategories() {
       const host = $("#catList");
@@ -207,7 +295,7 @@
         seen.add(category.id);
         const count = snap.categoryCounts[category.id] || 0;
         const button = doc.createElement("button");
-        button.className = `cat${snap.category === category.id ? " on" : ""}${category.neg ? " neg" : ""}${category.nsfw ? " nsfw" : ""}`;
+        button.className = `cat btn btn-menu${snap.category === category.id ? " on" : ""}${category.neg ? " neg" : ""}${category.nsfw ? " nsfw" : ""}`;
         button.dataset.cat = category.id;
         button.style.setProperty("--cat-color", categoryColor(category.id));
         const label = category.id === "all" ? localized("ui.tag.all", category.name || category.id) : categoryLabel(category.id, category.name || category.id);
@@ -216,7 +304,7 @@
       });
       const adult = $("#aiNsfwChk");
       if (adult) adult.checked = snap.adult;
-      $("#nsfwBtn")?.classList.toggle("on", snap.adult);
+      syncNavAction("adult", snap.adult);
     }
     function renderCustomCategories() {
       const select = $("#nCat");
@@ -252,7 +340,7 @@
       custom.slice().reverse().forEach((item) => {
         const row = doc.createElement("div");
         row.className = "crow";
-        row.innerHTML = '<span class="cen"></span><span class="czh"></span><button class="cdel">✕</button>';
+        row.innerHTML = '<span class="cen"></span><span class="czh"></span><button class="cdel btn btn-icon btn-danger">✕</button>';
         $(".cen", row).textContent = item.en || item.id;
         $(".czh", row).textContent = item.zh || "";
         $(".cdel", row).onclick = () => confirm(`确定删除自定义 Tag「${item.en || item.id}」吗？`, () => {
@@ -264,12 +352,49 @@
         host.appendChild(row);
       });
     }
+    function renderSubcategoryNav(snap = tagSnapshot()) {
+      const host = $("#subcatNav");
+      if (!host) return;
+      host.replaceChildren();
+      host.hidden = true;
+      const category = str(snap.category);
+      if (snap.query || !category || category === "all") return;
+      const entries = tags?.subcategories?.(category, { includeAdult: snap.adult }) || [];
+      if (entries.length <= 1) return;
+      const color = categoryColor(category);
+      const allCount = entries.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+      const rows = [{ name: "", label: localized("ui.tag.all", "全部"), count: allCount }, ...entries.map(item => ({
+        name: str(item.name, "默认"),
+        label: str(item.name, "默认"),
+        count: Number(item.count) || 0,
+      }))];
+      rows.forEach((item) => {
+        const button = doc.createElement("button");
+        const active = (ui.subcategory || "") === item.name;
+        button.type = "button";
+        button.className = "subcat-btn btn btn-menu";
+        if (active) button.classList.add("on");
+        button.style.setProperty("--subcat-color", color);
+        button.dataset.subcategory = item.name;
+        button.setAttribute("role", "tab");
+        button.setAttribute("aria-selected", active ? "true" : "false");
+        const label = doc.createElement("span");
+        label.textContent = item.label;
+        const count = doc.createElement("span");
+        count.className = "n";
+        count.textContent = String(item.count);
+        button.append(label, count);
+        host.appendChild(button);
+      });
+      host.hidden = false;
+    }
     function renderTags() {
       const host = $("#chips");
       if (!host) return;
       const snap = tagSnapshot();
       const page = tagRows();
       const rows = page.items || [];
+      renderSubcategoryNav(snap);
       const clearSearch = $("#clearQ");
       if (clearSearch) clearSearch.style.display = snap.query ? "" : "none";
       const chosen = new Set(selectedIds());
@@ -280,7 +405,7 @@
           ? `🔍 ${localized("ui.tag.search", ui.locale === "en-US" ? "Search" : "搜索")}: ${snap.query}`
           : categoryLabel(snap.category, snap.categories.find((item) => item.id === snap.category)?.name || localized("ui.tag.all", "标签")),
       );
-      put("#catCnt", formatText(localized("ui.tag.tagCount", "{count} 个"), { count: page.total || rows.length }));
+      put("#catCnt", formatText(localized("ui.tag.tagCount", "{count} 个"), { count: page.total ?? rows.length }));
       const shown = rows;
       const groups = new Map();
       shown.forEach((raw) => {
@@ -302,7 +427,7 @@
         row.className = "chips";
         items.forEach((item) => {
           const button = doc.createElement("button");
-          button.className = `chip${chosen.has(str(item.id || item.en).toLowerCase()) ? " sel" : ""}${item.nsfw ? " nsfw" : ""}`;
+          button.className = `chip btn btn-chip${chosen.has(str(item.id || item.en).toLowerCase()) ? " sel" : ""}${item.nsfw ? " nsfw" : ""}`;
           button.dataset.en = str(item.id || item.en).toLowerCase();
           button.style.setProperty("--c", categoryColor(item.category));
           button.innerHTML = `<span class="en">${item.en || ""}</span><span class="zh">${item.zh || (item.aliases || item.al || []).join(" ")}</span><span class="cp">${localized("ui.tag.copyOnly", "仅复制")}</span>`;
@@ -313,8 +438,8 @@
       });
       if (page.hasMore) {
         const more = doc.createElement("button");
-        more.className = "abtn ghost loadmore";
-          more.textContent = formatText(localized("ui.tag.loadMore", "继续加载（{shown}/{total}）"), { shown: shown.length, total: page.total });
+        more.className = "abtn ghost btn btn-ghost loadmore";
+          more.textContent = formatText(localized("ui.tag.loadMore", "继续加载（{shown}/{total}）"), { shown: shown.length, total: page.displayTotal ?? page.total });
         more.onclick = () => {
           ui.visible += 400;
           renderTags();
@@ -334,7 +459,7 @@
       rows.forEach((item) => {
         const chip = doc.createElement("span");
         chip.className = "schip";
-        chip.innerHTML = `<span>${item.en || item.id}</span><button data-remove="${item.id || item.en}">✕</button>`;
+        chip.innerHTML = `<span>${item.en || item.id}</span><button class="btn btn-icon btn-danger" data-remove="${item.id || item.en}">✕</button>`;
         host.appendChild(chip);
       });
       put("#preview", rows.map((item) => item.en || item.id).join(", "));
@@ -350,7 +475,7 @@
       (assistant?.listFavorites?.() || []).forEach((item) => {
         const row = doc.createElement("div");
         row.className = "fav";
-        row.innerHTML = `<b>${item.name || "未命名收藏"}</b><div class="row"><button class="abtn load">载入</button><button class="abtn add">追加</button><button class="abtn ghost del">删除</button></div>`;
+        row.innerHTML = `<b>${item.name || "未命名收藏"}</b><div class="row"><button class="abtn btn btn-secondary load">载入</button><button class="abtn btn btn-secondary add">追加</button><button class="abtn ghost btn btn-danger del">删除</button></div>`;
         row.querySelector(".load").onclick = () => {
           tags?.clearSelection?.();
           (item.tags || []).forEach((id) => tags?.select?.(id, true));
@@ -368,13 +493,69 @@
       });
     }
     function openDrawer() {
+      if (ui.visionOpen) setVisionOpen(false);
+      ui.favoritesOpen = true;
       $("#drawer")?.classList.add("show");
-      $("#scrim")?.classList.add("show");
+      syncNavAction("favorites", true);
+      syncScrim();
       renderFavorites();
     }
     function closeDrawer() {
+      ui.favoritesOpen = false;
       $("#drawer")?.classList.remove("show");
-      $("#scrim")?.classList.remove("show");
+      syncNavAction("favorites", false);
+      syncScrim();
+    }
+    function toggleFavoriteDrawer() {
+      if (ui.favoritesOpen) closeDrawer();
+      else openDrawer();
+    }
+    function toggleAdultTags() {
+      tags?.setAdult?.(!tagSnapshot().adult);
+      renderCategories();
+      renderTags();
+    }
+    function syncScrim() {
+      const drawerOpen = $("#drawer")?.classList.contains("show");
+      $("#scrim")?.classList.toggle("show", Boolean(drawerOpen || ui.visionOpen));
+      doc.body.classList.toggle("vision-open", ui.visionOpen);
+      if (ui.visionOpen) syncVisionPaneOffset();
+    }
+    function syncVisionPaneOffset() {
+      const header = $("header");
+      const bottom = Number(header?.getBoundingClientRect?.().bottom || header?.offsetHeight || 63);
+      const sidebar = $("#sidebar");
+      const pane = $("#tagPane");
+      const sidebarRect = sidebar?.getBoundingClientRect?.();
+      const paneRect = pane?.getBoundingClientRect?.();
+      const narrow = Number(global.innerWidth || 0) <= 900;
+      const sidebarVisible = sidebar && sidebar.style.display !== "none" && Number(sidebarRect?.width || sidebar.offsetWidth || 0) > 0;
+      const sidebarWidth = !narrow && sidebarVisible
+        ? Number(sidebarRect?.width || sidebar.offsetWidth || 0)
+        : 0;
+      const paneWidth = Number(paneRect?.width || pane?.offsetWidth || 0);
+      // On narrow AI layouts the repository occupies the first block of the
+      // column. Place the Vision drawer below it so neither the drawer nor the
+      // scrim steals repository hit targets.
+      const paneTop = narrow && ui.visionOpen && doc.body.classList.contains("aiview") && sidebarVisible
+        ? bottom + Number(sidebarRect?.height || sidebar?.offsetHeight || 0)
+        : bottom;
+      const root = doc.documentElement;
+      root.style.setProperty("--vision-pane-top", `${Math.max(0, Math.ceil(paneTop))}px`);
+      root.style.setProperty("--vision-scrim-top", `${Math.max(0, Math.ceil(narrow ? paneTop : bottom))}px`);
+      root.style.setProperty("--vision-scrim-left", `${Math.max(0, Math.ceil(sidebarWidth))}px`);
+      root.style.setProperty("--vision-scrim-right", `${Math.max(0, Math.ceil(narrow ? 0 : paneWidth))}px`);
+    }
+    function setVisionOpen(value) {
+      ui.visionOpen = Boolean(value);
+      syncVisionPaneOffset();
+      if (ui.visionOpen && ui.favoritesOpen) closeDrawer();
+      const pane = $("#tagPane");
+      pane?.classList.toggle("vision-open", ui.visionOpen);
+      syncNavAction("vision", ui.visionOpen);
+      const button = $("#visionBtn");
+      if (button) button.setAttribute("aria-expanded", ui.visionOpen ? "true" : "false");
+      syncScrim();
     }
 
     function settings() {
@@ -416,25 +597,26 @@
       const actions = $("#tkDrawControls", module);
       if (!inDrawMode) return;
       const ready = state.connected === true && state.workflowReady === true;
+      // The user's enable choice is independent from ComfyUI connectivity.
+      // Keep the toggle visible and writable while showing readiness in the
+      // status line; otherwise an async capability refresh can make a checked
+      // toggle appear to switch itself off.
+      if (actions) actions.hidden = false;
+      if (toggleWrap) toggleWrap.hidden = false;
+      if (toggle) {
+        toggle.disabled = false;
+        toggle.checked = settings().comfyOn === true;
+      }
       if (ready) {
-        if (actions) actions.hidden = false;
-        if (toggleWrap) toggleWrap.hidden = false;
         if (iterationsWrap) iterationsWrap.hidden = false;
-        if (toggle) {
-          toggle.disabled = false;
-          toggle.checked = settings().comfyOn !== false;
-        }
         if (iterations) {
           iterations.disabled = false;
-          const value = Math.max(1, Math.min(10, Number(settings().comfyIters) || 3));
+          const value = Math.max(1, Math.min(20, Number(settings().maxComfyCalls) || Number(settings().comfyIters) || 3));
           iterations.value = String(value);
         }
         return;
       }
-      if (actions) actions.hidden = true;
-      if (toggleWrap) toggleWrap.hidden = true;
       if (iterationsWrap) iterationsWrap.hidden = true;
-      if (toggle) toggle.disabled = true;
       if (iterations) iterations.disabled = true;
     }
     async function refreshCapabilitiesStatus(options = {}) {
@@ -450,8 +632,8 @@
       syncDrawControls(capabilities);
       const render = $("#tkDrawRender");
       if (render) {
-        render.disabled = !(capabilities?.comfy?.connected && capabilities?.comfy?.workflowReady);
-        if (capabilities?.comfy?.connected && capabilities?.comfy?.workflowReady) render.checked = settings().comfyOn !== false;
+        render.disabled = false;
+        render.checked = settings().comfyOn === true;
       }
       const localButton = $("#tpIdentify");
       const aiButton = $("#tpDescribe");
@@ -653,7 +835,7 @@
       (assistant?.listWorlds?.() || []).forEach((world) => {
         const card = doc.createElement("div");
         card.className = `world-card${world.id === activeWorld()?.id ? " on" : ""}`;
-        card.innerHTML = `<span>${world.name}</span><span class="muted">${(world.entries || []).length} 条</span><button class="abtn ghost">删除</button>`;
+        card.innerHTML = `<span>${world.name}</span><span class="muted">${(world.entries || []).length} 条</span><button class="abtn ghost btn btn-danger">删除</button>`;
         $("span", card).onclick = () => {
           assistant?.selectWorld?.(world.id);
           renderPrompt();
@@ -673,7 +855,7 @@
       (world.entries || []).forEach((entry, index) => {
         const row = doc.createElement("div");
         row.className = "wbi";
-        row.innerHTML = `<div class="wi-head"><input class="wi-name"><label><input class="wi-enabled" type="checkbox">启用</label><label><input class="wi-constant" type="checkbox">常驻</label><button class="abtn ghost wi-del">删除</button></div><input class="wi-keys" placeholder="触发关键词（空=常驻）"><textarea class="wi-content" rows="3"></textarea>`;
+        row.innerHTML = `<div class="wi-head"><input class="wi-name"><label><input class="wi-enabled" type="checkbox">启用</label><label><input class="wi-constant" type="checkbox">常驻</label><button class="abtn ghost btn btn-danger wi-del">删除</button></div><input class="wi-keys" placeholder="触发关键词（空=常驻）"><textarea class="wi-content" rows="3"></textarea>`;
         $(".wi-name", row).value = entry.name || "";
         $(".wi-keys", row).value = entry.keys || "";
         $(".wi-content", row).value = entry.content || "";
@@ -783,41 +965,74 @@
       renderPrompt();
       notify(`已导入 ${selected.length} 条世界书条目`);
     }
-    function confirm(message, action) {
+    function confirm(message, action, options = {}) {
       const modal = $("#cfmModal");
       if (!modal) return action?.();
-      ui.confirmAction = action;
+      const retainWrap = $("#cfmRetainImagesWrap");
+      const retain = $("#cfmRetainImages");
+      if (retainWrap) retainWrap.hidden = options.retainImages !== true;
+      if (retain) retain.checked = false;
+      ui.confirmAction = () => action?.(Boolean(retain?.checked));
       put("#cfmText", message);
       modal.classList.add("show");
     }
 
-    function configFromView() {
+    function formValue(selector, fallback = "") {
+      const field = $(selector);
+      return field ? String(field.value ?? "").trim() : String(fallback ?? "").trim();
+    }
+
+    function workflowText(value) {
+      if (typeof value === "string") return value;
+      if (!value || typeof value !== "object") return "";
+      try { return JSON.stringify(value, null, 2); } catch { return ""; }
+    }
+
+    let settingsSaveTimer = null;
+    function scheduleSettingsSave() {
+      clearTimeout(settingsSaveTimer);
+      settingsSaveTimer = setTimeout(() => {
+        settingsSaveTimer = null;
+        if (ui.route === "ai" && ui.aiTab === "api") configFromView();
+      }, 240);
+    }
+
+    function flushSettingsSave() {
+      clearTimeout(settingsSaveTimer);
+      settingsSaveTimer = null;
+      if (ui.route === "ai" && ui.aiTab === "api") configFromView();
+    }
+
+    function configFromView(options = {}) {
       const s = settings();
       const inheritedVision = $("#visionInheritPrimary")?.checked ?? s.visionInheritPrimary !== false;
       const patch = {
-        base: str(
-          $("#aiBase")?.value,
-          s.base || "https://api.openai.com/v1",
-        ).replace(/\/+$/, ""),
+        base: formValue("#aiBase", s.base).replace(/\/+$/, ""),
         model:
           $("#aiModel")?.value === "__custom__"
-            ? ($("#aiModelCustom") ? str($("#aiModelCustom").value) : s.model)
-            : str($("#aiModel")?.value === "__loading__" ? "" : $("#aiModel")?.value, s.model),
-        key: $("#aiKey") ? str($("#aiKey").value) : s.key,
+            ? formValue("#aiModelCustom", s.model)
+            : $("#aiModel")?.value === "__loading__"
+              ? s.model
+              : formValue("#aiModel", s.model),
+        key: formValue("#aiKey", s.key),
         visionInheritPrimary: $("#visionInheritPrimary") ? Boolean($("#visionInheritPrimary").checked) : s.visionInheritPrimary !== false,
-        visionBase: str($("#visionBase")?.value, s.visionBase || "https://api.openai.com/v1").replace(/\/+$/, ""),
-        visionKey: $("#visionKey") ? str($("#visionKey").value) : s.visionKey,
+        visionBase: formValue("#visionBase", s.visionBase).replace(/\/+$/, ""),
+        visionKey: formValue("#visionKey", s.visionKey),
         // The model selector is informational while inherit mode is on. Keep
         // a saved independent choice for the moment the user turns inherit
         // off, but never let it shadow the primary model in that mode.
-        visionModel: inheritedVision
+        visionModel: options.preserveVisionModel
+          ? s.visionModel
+          : inheritedVision
           ? s.visionModel
           : $("#visionModel")?.value === "__custom__"
-            ? str($("#visionModelCustom")?.value, s.visionModel)
-            : str($("#visionModel")?.value === "__loading__" ? "" : $("#visionModel")?.value, s.visionModel),
+            ? formValue("#visionModelCustom", s.visionModel)
+            : $("#visionModel")?.value === "__loading__"
+              ? s.visionModel
+              : formValue("#visionModel", s.visionModel),
         visionTemperature: Number(s.visionTemperature) || 0.2,
         visionTimeoutMs: Number(s.visionTimeoutMs) || 120000,
-        agentWriteEnabled: $("#agentWriteEnabled") ? Boolean($("#agentWriteEnabled").checked) : s.agentWriteEnabled === true,
+        generateNegativeTags: $("#generateNegativeTags") ? Boolean($("#generateNegativeTags").checked) : s.generateNegativeTags === true,
         temperature: Number(s.temperature) || 0.7,
         strict: $("#aiStrict") ? $("#aiStrict").checked : s.strict !== false,
         timeoutEnabled: $("#aiTimeoutEnabled")
@@ -830,21 +1045,22 @@
             Number($("#aiTimeoutSec")?.value) || Number(s.timeoutSec) || 300,
           ),
         ),
-        comfyBase: str(
-          $("#comfyBase")?.value,
-          s.comfyBase || "http://127.0.0.1:8188",
-        ).replace(/\/+$/, ""),
-        comfyWorkflow: str($("#comfyWf")?.value, s.comfyWorkflow),
-        comfyOn: $("#comfyOn") ? $("#comfyOn").checked : Boolean(s.comfyOn),
-        comfyIters: Math.max(
+        comfyBase: formValue("#comfyBase", s.comfyBase).replace(/\/+$/, ""),
+        comfyWorkflow: formValue("#comfyWf", s.comfyWorkflow),
+        // `comfyOn` is owned by setDrawComfyEnabled(). Other API fields must
+        // not copy a stale checkbox value back into persistent settings.
+        comfyOn: s.comfyOn === true,
+        maxComfyCalls: Math.max(
           1,
           Math.min(
             10,
-            Number($("#comfyIters")?.value) || Number(s.comfyIters) || 3,
+            Number($("#maxComfyCalls")?.value) || Number(s.maxComfyCalls) || Number(s.comfyIters) || 3,
           ),
         ),
-        comfyPos: str($("#comfyPos")?.value, s.comfyPos),
-        comfyNeg: str($("#comfyNeg")?.value, s.comfyNeg),
+        batchCount: Math.max(1, Math.min(10, Number($("#batchCount")?.value) || Number(s.batchCount) || 1)),
+        maxComfyCalls: Math.max(1, Math.min(20, Number($("#maxComfyCalls")?.value) || Number(s.maxComfyCalls) || 3)),
+        comfyPos: formValue("#comfyPos", s.comfyPos),
+        comfyNeg: formValue("#comfyNeg", s.comfyNeg),
         comfyW: Number($("#comfyW")?.value) || Number(s.comfyW) || 768,
         comfyH: Number($("#comfyH")?.value) || Number(s.comfyH) || 1024,
         comfySteps:
@@ -896,6 +1112,8 @@
       }
     }
     function loadSettings(options = {}) {
+      clearTimeout(settingsSaveTimer);
+      settingsSaveTimer = null;
       const s = settings();
       if ($("#aiBase"))
         $("#aiBase").value = s.base || "https://api.openai.com/v1";
@@ -904,7 +1122,7 @@
         $("#aiPreset").value = option ? option.value : "";
       }
       if ($("#aiKey")) $("#aiKey").value = s.key || "";
-      if ($("#agentWriteEnabled")) $("#agentWriteEnabled").checked = s.agentWriteEnabled === true;
+      if ($("#generateNegativeTags")) $("#generateNegativeTags").checked = s.generateNegativeTags === true;
       if ($("#visionInheritPrimary")) $("#visionInheritPrimary").checked = s.visionInheritPrimary !== false;
       if ($("#visionBase")) $("#visionBase").value = s.visionBase || s.base || "https://api.openai.com/v1";
       if ($("#visionKey")) $("#visionKey").value = s.visionKey || "";
@@ -919,18 +1137,21 @@
       }
       if ($("#comfyBase"))
         $("#comfyBase").value = s.comfyBase || "http://127.0.0.1:8188";
-      if ($("#comfyOn")) $("#comfyOn").checked = Boolean(s.comfyOn);
-      if ($("#comfyIters")) $("#comfyIters").value = Number(s.comfyIters) || 3;
-      if ($("#tkDrawIterations")) $("#tkDrawIterations").value = String(Math.max(1, Math.min(10, Number(s.comfyIters) || 3)));
-      ["comfyWf", "comfyPos", "comfyNeg"].forEach((key) => {
-        if ($("#" + key)) $("#" + key).value = s[key] || "";
-      });
+      if ($("#comfyIters")) $("#comfyIters").value = Number(s.maxComfyCalls) || Number(s.comfyIters) || 3;
+      if ($("#batchCount")) $("#batchCount").value = Number(s.batchCount) || 1;
+      if ($("#maxComfyCalls")) $("#maxComfyCalls").value = Number(s.maxComfyCalls) || 3;
+      if ($("#tkDrawIterations")) $("#tkDrawIterations").value = String(Math.max(1, Math.min(20, Number(s.maxComfyCalls) || Number(s.comfyIters) || 3)));
+      if ($("#comfyWf")) $("#comfyWf").value = workflowText(s.comfyWorkflow);
+      if ($("#comfyPos")) $("#comfyPos").value = s.comfyPos || "";
+      if ($("#comfyNeg")) $("#comfyNeg").value = s.comfyNeg || "";
       ["comfyW", "comfyH", "comfySteps", "comfyCfg"].forEach((key) => {
         if ($("#" + key))
           $("#" + key).value = Number(s[key]) || $("#" + key).value;
       });
-      populateModels(options);
-      populateVisionModels(options);
+      comfy?.setBase?.(s.comfyBase || "http://127.0.0.1:8188");
+      comfy?.setWorkflow?.(workflowText(s.comfyWorkflow));
+      populateModels({ ...options, selectedModel: s.model });
+      populateVisionModels({ ...options, selectedModel: s.visionInheritPrimary !== false ? s.model : s.visionModel });
       refreshAgentStatus();
       refreshCapabilitiesStatus({ force: true });
       setTimeout(refreshAgentStatus, 300);
@@ -967,7 +1188,7 @@
       if (!select) return [];
       const s = settings();
       const base = str($("#aiBase")?.value, s.base || "https://api.openai.com/v1").replace(/\/+$/, "");
-      const savedModel = options.reset ? "" : str(s.model);
+      const savedModel = options.selectedModel === undefined ? str(s.model) : str(options.selectedModel);
       const requestId = ++modelRequestId;
       const loading = doc.createElement("option");
       loading.value = "__loading__";
@@ -1025,7 +1246,9 @@
       const base = (inherited
         ? str($("#aiBase")?.value, s.base || "https://api.openai.com/v1")
         : str($("#visionBase")?.value, s.visionBase || s.base || "https://api.openai.com/v1")).replace(/\/+$/, "");
-      const savedModel = options.reset ? "" : (inherited ? primaryModel : str(s.visionModel));
+      const savedModel = options.selectedModel === undefined
+        ? (inherited ? primaryModel : str(s.visionModel))
+        : str(options.selectedModel);
       const requestId = ++visionModelRequestId;
       const loading = doc.createElement("option");
       loading.value = "__loading__";
@@ -1070,7 +1293,7 @@
         : inherited && effectiveModel
           ? `沿用主模型：${effectiveModel}；如果它不支持图片，请取消“沿用主对话 API 配置”并选择独立视觉模型。`
           : "自定义模型是否支持图片输入由服务商决定。";
-      if (!inherited && (!s.visionModel || options.reset) && selected !== "__custom__" && selected !== "__loading__") {
+      if (!inherited && !s.visionModel && selected !== "__custom__" && selected !== "__loading__") {
         // Keep the selected option and the persisted effective profile in
         // sync. This matters when the user switches from inheriting a
         // text-only primary model to an independent vision API: the select
@@ -1080,35 +1303,15 @@
       return values;
     }
 
-    function bucket(name) {
-      if (imageStore)
-        return {
-          ids: () => (imageStore.collectionIds?.(name) || []).filter(id => imageStore.get?.(id)?.source !== "workflow"),
-          list: () => (imageStore.collectionList?.(name) || []).filter(item => item?.source !== "workflow"),
-          add: (value) => imageStore.addToCollection?.(name, value),
-          remove: (value) => imageStore.removeFromCollection?.(name, value),
-          clear: () => imageStore.clearCollection?.(name),
-        };
-      return (
-        images?.collection?.(name) || {
-          ids: () => [],
-          list: () => [],
-          add: (value) => images?.add?.(value, { collection: name }),
-          remove: (value) => images?.removeFrom?.(name, value),
-          clear: () => {},
-        }
-      );
-    }
-    function bucketIds(name) {
-      return bucket(name).ids?.() || [];
-    }
     function currentVisionImage() {
-      const id = str(ui.currentVisionImageId);
+      const active = visionTempStore?.current?.();
+      const id = str(active?.tempId || active?.imageId);
       if (!id) return null;
-      try { return imageStore?.get?.(id) || images?.get?.(id) || null; } catch { return null; }
+      try { return visionTempStore?.get?.(id) || imageStore?.get?.(id) || images?.get?.(id) || null; } catch { return null; }
     }
     function currentVisionId() {
-      return str(ui.currentVisionImageId);
+      const active = visionTempStore?.current?.();
+      return str(active?.tempId || active?.imageId);
     }
     function renderVisionPreview() {
       const current = currentVisionImage();
@@ -1118,21 +1321,184 @@
           ? '<img loading="lazy" decoding="async" src="' + (current.thumbnailDataUrl || current.dataUrl || "") + '" alt="当前图片">'
           : '<div class="tp-empty">尚未上传图片</div>';
     }
-    function renderImages(name, selector) {
-      const host = $(selector);
-      if (!host) return;
-      const rows = bucket(name).list?.() || [];
+    function currentTalkSessionId() {
+      return str(assistant?.currentSession?.()?.id);
+    }
+    function conversationRows() {
+      const sessionId = currentTalkSessionId();
+      return sessionId ? (imageRepository?.listConversation?.(sessionId)?.items || []) : [];
+    }
+    function renderPendingImageStrip() {
+      const strip = $("#talkPendingStrip");
+      const host = $("#talkImgRow");
+      if (!strip || !host) return;
+      const rows = conversationRows().filter(item => item.pending);
       host.replaceChildren();
-      host.style.display = rows.length ? "" : "none";
-      rows.forEach((item, index) => {
+      strip.style.display = rows.length ? "" : "none";
+      rows.forEach(item => {
+        const asset = images?.get?.(item.imageId) || {};
         const wrap = doc.createElement("div");
-        wrap.className = "imgthumb";
-        wrap.innerHTML = `<img loading="lazy" decoding="async" src="${item.thumbnailDataUrl || item.dataUrl || ""}" alt="图片${index + 1}"><span class="imgnum">图${index + 1}</span><button class="imgdel">✕</button>`;
-        $(".imgdel", wrap).onclick = () => {
-          bucket(name).remove?.(item.id);
-          renderImages(name, selector);
-        };
+        wrap.className = "pending-image-card";
+        wrap.dataset.refId = item.refId;
+        wrap.innerHTML = '<img loading="lazy" decoding="async" alt=""><span class="imgnum"></span><button type="button" class="imgdel btn btn-icon btn-danger">✕</button>';
+        $(".imgdel", wrap).title = localized("ui.ai.removePendingImage", "Remove pending image");
+        $("img", wrap).src = asset.thumbnailDataUrl || asset.dataUrl || "";
+        const slotLabel = formatText(localized("ui.ai.imageSlot", "Image {slot}"), { slot: item.slotNo });
+        $("img", wrap).alt = item.displayTitle || slotLabel;
+        $(".imgnum", wrap).textContent = slotLabel;
+        $(".imgdel", wrap).onclick = event => { event.stopPropagation(); imageRepository?.setPending?.(currentTalkSessionId(), item.refId, false); renderConversationRepository(); };
         host.appendChild(wrap);
+      });
+    }
+    function renderConversationRepository() {
+      const host = $("#talkImageRepository");
+      if (!host) return;
+      const rows = conversationRows();
+      const pending = rows.filter(item => item.pending);
+      host.dataset.columns = storage.get("conversation.columns", "two") === "single" ? "single" : "two";
+      host.dataset.size = ["compact", "standard", "large"].includes(storage.get("conversation.size", "standard")) ? storage.get("conversation.size", "standard") : "standard";
+      const count = $("#talkImageRepositoryCount");
+      if (count) count.textContent = formatText(localized("ui.ai.pendingImages", "对话图片 {count} 张 / 待发送 {pending} 张"), { count: rows.length, pending: pending.length });
+      host.replaceChildren();
+      if (!rows.length) { const empty = doc.createElement("div"); empty.className = "repo-empty"; empty.textContent = localized("ui.ai.repositoryEmpty", "No conversation images"); host.appendChild(empty); renderPendingImageStrip(); return; }
+      rows.forEach(item => {
+        const asset = images?.get?.(item.imageId) || {};
+        const card = doc.createElement("article");
+        card.className = "conversation-image-card";
+        card.dataset.refId = item.refId;
+        card.draggable = true;
+        if (item.pending) card.classList.add("is-pending");
+        if (item.selected) card.classList.add("is-selected");
+        card.innerHTML = '<img class="conversation-image-thumb" loading="lazy" decoding="async" alt=""><div class="conversation-image-meta"><strong class="conversation-image-slot"></strong><span class="conversation-image-title"></span><span class="conversation-image-source"></span><span class="conversation-image-candidate"></span></div><button type="button" class="conversation-image-delete btn btn-icon btn-danger">🗑</button>';
+        const slotLabel = formatText(localized("ui.ai.imageSlot", "Image {slot}"), { slot: item.slotNo });
+        const img = $(".conversation-image-thumb", card); img.src = asset.thumbnailDataUrl || asset.dataUrl || ""; img.alt = item.displayTitle || slotLabel;
+        $(".conversation-image-delete", card).title = localized("ui.ai.removeConversationImage", "Remove from conversation");
+        $(".conversation-image-slot", card).textContent = slotLabel;
+        $(".conversation-image-title", card).textContent = item.displayTitle || asset.displayName || asset.filename || localized("ui.ai.imageFallback", "Image");
+        $(".conversation-image-source", card).textContent = localized(`ui.ai.source.${item.source || "upload"}`, item.source || localized("ui.ai.source.upload", "Upload"));
+        $(".conversation-image-candidate", card).textContent = item.candidateId ? `${localized("ui.ai.candidate", "Candidate")} ${item.candidateId}` : (item.pending ? localized("ui.ai.pending", "Pending") : item.sent ? localized("ui.ai.sent", "Sent") : "");
+        card.tabIndex = 0;
+        card.setAttribute("role", "button");
+        card.setAttribute("aria-pressed", item.pending ? "true" : "false");
+        card.setAttribute("aria-label", `${item.displayTitle || asset.displayName || asset.filename || item.imageId} · ${item.pending ? localized("ui.ai.pending", "Pending") : localized("ui.ai.notPending", "Not pending")}`);
+        const togglePending = event => { if (event?.target?.closest?.("button")) return; imageRepository?.setPending?.(currentTalkSessionId(), item.refId, !item.pending); renderConversationRepository(); };
+        card.addEventListener("click", togglePending);
+        card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); togglePending(event); } });
+        $(".conversation-image-delete", card).onclick = event => { event.stopPropagation(); imageRepository?.removeFromConversation?.(currentTalkSessionId(), item.refId); renderConversationRepository(); };
+        card.addEventListener("dragstart", event => { const payload = JSON.stringify({ sessionId: currentTalkSessionId(), refId: item.refId, imageId: item.imageId }); event.dataTransfer?.setData("application/x-ai-tag-conversation-ref", payload); event.dataTransfer?.setData("application/x-ai-tag-image-id", item.imageId); event.dataTransfer?.setData("text/plain", item.imageId); if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy"; });
+        host.appendChild(card);
+      });
+      renderPendingImageStrip();
+    }
+    async function addConversationImages(files) {
+      const sessionId = currentTalkSessionId();
+      if (!sessionId) return null;
+      let added = 0;
+      for (const file of files || []) {
+        if (!file?.type?.startsWith("image/")) continue;
+        const dataUrl = await readFile(file);
+        const thumbnailDataUrl = await makeThumbnail(file);
+        const item = imageStore?.add?.({ dataUrl, thumbnailDataUrl, filename: file.name, source: "file" });
+        if (item?.id && imageRepository?.attachToConversation?.(sessionId, item.id, { source: "upload", pending: true })) added += 1;
+      }
+      if (added) renderConversationRepository();
+      return added;
+    }
+    function galleryPreferences() {
+      const valid = {
+        order: ["oldest", "newest"],
+        columns: ["two", "single"],
+        size: ["compact", "standard", "large"]
+      };
+      const order = valid.order.includes(storage.get("gallery.order", "oldest")) ? storage.get("gallery.order", "oldest") : "oldest";
+      const columns = valid.columns.includes(storage.get("gallery.columns", "two")) ? storage.get("gallery.columns", "two") : "two";
+      const size = valid.size.includes(storage.get("gallery.size", "standard")) ? storage.get("gallery.size", "standard") : "standard";
+      ui.galleryOrder = order; ui.galleryColumns = columns; ui.gallerySize = size;
+      return { order, columns, size };
+    }
+    function galleryRows() {
+      return imageRepository?.listGallery?.({ order: ui.galleryOrder, query: ui.galleryQuery })?.items || [];
+    }
+    function galleryDownloadItem(item) {
+      if (!item?.imageId) return;
+      const bytesPromise = imageRepository?.getOriginalBytes?.(item.imageId) || images?.getBytes?.(item.imageId);
+      Promise.resolve(bytesPromise).then(bytes => {
+        if (!bytes) return notify(galleryText("downloadFailed", "无法读取原始图片"));
+        const mime = item.mime || "image/png";
+        const link = doc.createElement("a");
+        link.href = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        link.download = item.filename || `${item.imageId}.png`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 800);
+      }).catch(error => notify(error?.message || String(error)));
+    }
+    function chooseGalleryDelete(item) {
+      const refs = imageRepository?.referenceCount?.(item.imageId) || { gallery: 1, conversations: 0, messages: 0, total: 1 };
+      const name = item.displayName || item.filename || item.imageId;
+      if (refs.conversations || refs.messages) {
+        const impact = galleryText("deleteImpact", `会话引用 ${refs.conversations}，消息引用 ${refs.messages}。`, refs);
+        if (typeof global.alert === "function") global.alert(impact);
+        if (typeof global.confirm !== "function" || !global.confirm(galleryText("deleteConfirm", `确定从图片库移除 ${name} 吗？`, { name }))) return;
+        imageRepository?.removeFromGallery?.(item.imageId, { purge: false, retain: true });
+        return;
+      }
+      const choice = typeof global.prompt === "function" ? global.prompt(`${galleryText("deleteConfirm", `确定处理 ${name} 吗？`, { name })}\n1. ${galleryText("removeOnly", "仅移除图库关联")}\n2. ${galleryText("purge", "彻底删除（无引用时）")}`, "1") : "1";
+      if (choice === "1") imageRepository?.removeFromGallery?.(item.imageId, { purge: false, retain: true });
+      else if (choice === "2") imageRepository?.removeFromGallery?.(item.imageId, { purge: true });
+    }
+    function chooseGallerySession() {
+      const sessions = assistant?.sessions?.() || [];
+      if (!sessions.length) return null;
+      const current = assistant?.currentSession?.();
+      if (sessions.length === 1) return current || sessions[0];
+      const labels = sessions.map((item, index) => `${index + 1}. ${item.title || item.id}`).join("\n");
+      const answer = typeof global.prompt === "function" ? global.prompt(labels, String(Math.max(1, sessions.indexOf(current) + 1))) : "1";
+      const index = Number(answer) - 1;
+      return Number.isInteger(index) && sessions[index] ? sessions[index] : null;
+    }
+    function renderGallery() {
+      const host = $("#galleryGrid");
+      if (!host) return;
+      const prefs = galleryPreferences();
+      host.dataset.columns = prefs.columns;
+      host.dataset.size = prefs.size;
+      if ($("#galleryOrder")) $("#galleryOrder").value = prefs.order;
+      if ($("#galleryColumns")) $("#galleryColumns").value = prefs.columns;
+      if ($("#gallerySize")) $("#gallerySize").value = prefs.size;
+      host.replaceChildren();
+      const rows = galleryRows();
+      put("#galleryCount", galleryText("count", `${rows.length} 张`, { count: rows.length }));
+      if (!rows.length) {
+        const empty = doc.createElement("div"); empty.className = "gallery-empty"; empty.textContent = galleryText("empty", "图片库为空"); host.appendChild(empty); return;
+      }
+      const available = new Set(rows.map(item => item.imageId));
+      ui.gallerySelected = new Set([...ui.gallerySelected].filter(id => available.has(id)));
+      rows.forEach(item => {
+        const card = doc.createElement("article");
+        card.className = "gallery-card";
+        card.dataset.imageId = item.imageId;
+        card.draggable = true;
+        if (ui.gallerySelected.has(item.imageId)) card.classList.add("is-selected");
+        const preview = images?.preview?.(item.imageId) || item;
+        const src = preview?.thumbnailDataUrl || preview?.dataUrl || "";
+        card.innerHTML = `<img class="gallery-thumb" loading="lazy" decoding="async" alt=""><div class="gallery-meta"><div class="gallery-name"></div><div class="gallery-sub"></div><div class="gallery-actions"><button type="button" data-action="vision">${galleryText("identify", "识图")}</button><button type="button" data-action="conversation">${galleryText("send", "发送到对话仓库")}</button><button type="button" data-action="download">${galleryText("downloadOne", "下载")}</button><button type="button" data-action="rename">${galleryText("rename", "重命名")}</button></div></div><div class="gallery-card-tools"><button type="button" class="btn btn-icon btn-danger" data-action="delete" title="${galleryText("deleteTitle", "删除")}">🗑</button></div>`;
+        const img = $(".gallery-thumb", card); img.src = src; img.alt = item.displayName || item.filename || item.imageId;
+        $(".gallery-name", card).textContent = item.displayName || item.filename || item.imageId;
+        const dimensions = item.width && item.height ? `${item.width}×${item.height}` : "";
+        $(".gallery-sub", card).textContent = [item.source || "", dimensions, item.createdAt ? new Date(item.createdAt).toLocaleString() : ""].filter(Boolean).join(" · ");
+        card.addEventListener("click", event => { if (event.target.closest("[data-action]")) return; if (ui.gallerySelected.has(item.imageId)) ui.gallerySelected.delete(item.imageId); else ui.gallerySelected.add(item.imageId); renderGallery(); });
+        card.addEventListener("dragstart", event => { event.dataTransfer?.setData("application/x-ai-tag-image-id", item.imageId); event.dataTransfer?.setData("text/plain", item.imageId); if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy"; });
+        card.addEventListener("click", event => {
+          const action = event.target.closest("[data-action]")?.dataset.action;
+          if (!action) return;
+          event.stopPropagation();
+          if (action === "vision") { visionTempStore?.setLibraryReference?.(item.imageId); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true); }
+          if (action === "conversation") { const target = chooseGallerySession(); if (!target) return notify(galleryText("noSession", "没有可用会话，无法发送图片")); const attached = imageRepository?.attachToConversation?.(target.id, item.imageId, { source: "gallery" }); if (!attached) return notify("发送图片失败"); notify(galleryText("sent", "已发送到对话仓库")); renderTalk(); }
+          if (action === "download") galleryDownloadItem(item);
+          if (action === "rename") { const name = global.prompt(galleryText("rename", "重命名"), item.displayName || item.filename || ""); if (name?.trim()) { imageRepository?.renameGalleryImage?.(item.imageId, name.trim()); renderGallery(); } }
+          if (action === "delete") { chooseGalleryDelete(item); ui.gallerySelected.delete(item.imageId); renderGallery(); }
+        });
+        host.appendChild(card);
       });
     }
     function readFile(file) {
@@ -1218,14 +1584,14 @@
       }
     }
     async function addImage(file, name) {
-      if (!file || !images?.add) return null;
+      if (!file || !file.type?.startsWith("image/") || !imageStore?.add) return null;
       const dataUrl = await readFile(file);
       const thumbnailDataUrl = await makeThumbnail(file);
-      const item = images.add(
+      if (!/^data:image\//i.test(dataUrl)) return null;
+      const item = imageStore.add(
         { dataUrl, thumbnailDataUrl, filename: file.name, source: "file" },
         { collection: name },
       );
-      renderImages(name, `#${name}Row`);
       return item;
     }
     function cancelVisionRequest(restoreControls = false) {
@@ -1255,20 +1621,13 @@
       talkVisionFold.model = null;
       talkVisionFold.description = false;
     }
-    function removeTransientVisionImage(imageId) {
-      const id = str(imageId);
-      if (!id) return;
-      const item = currentVisionImage();
-      if (item?.id !== id || item?.source !== "vision") return;
-      try { images?.remove?.(id); } catch { /* 图片清理失败不影响当前状态 */ }
-    }
     async function loadVisionMetadata(imageId, requestId, controller) {
       const call = assistant?.calls?.call;
       let result = null;
       try {
         result = call
           ? await call("vision.processOne", { imageId, mode: "metadata" }, { caller: "ui", signal: controller.signal })
-          : { ok: true, data: await Promise.resolve(images?.metadata?.(imageId) || {}) };
+          : { ok: true, data: await Promise.resolve(visionTempStore?.get?.(imageId)?.metadata || images?.metadata?.(imageId) || {}) };
       } catch (error) {
         result = { ok: false, error: error?.message || String(error) };
       }
@@ -1281,14 +1640,11 @@
       return result;
     }
     async function replaceVisionImage(file) {
-      if (!file || !images?.add) return null;
+      if (!file || !visionTempStore?.replaceExternal) return null;
       const uploadId = ui.visionUploadId + 1;
       ui.visionUploadId = uploadId;
-      const previousId = currentVisionId();
       cancelVisionRequest(true);
       clearVisionResult();
-      removeTransientVisionImage(previousId);
-      ui.currentVisionImageId = "";
       renderVisionPreview();
       renderTalkVisionPanel();
       let dataUrl;
@@ -1301,16 +1657,13 @@
         return null;
       }
       if (uploadId !== ui.visionUploadId) return null;
-      const item = images.add(
-        { dataUrl, thumbnailDataUrl, filename: file.name, source: "vision" },
-      );
-      if (!item?.id) {
+      const item = visionTempStore.replaceExternal({ dataUrl, thumbnailDataUrl, filename: file.name, mime: file.type || "image/png" });
+      if (!item?.tempId) {
         notify("识图图片导入失败");
         renderVisionPreview();
         renderTalkVisionPanel();
         return null;
       }
-      ui.currentVisionImageId = item.id;
       renderVisionPreview();
       renderTalkVisionPanel();
       refreshCapabilitiesStatus();
@@ -1319,7 +1672,7 @@
       ui.visionRequestId = requestId;
       ui.visionAbort = controller;
       ui.visionBusy = true;
-      await loadVisionMetadata(item.id, requestId, controller);
+      await loadVisionMetadata(item.tempId, requestId, controller);
       return item;
     }
     async function addVisionFiles(files) {
@@ -1327,13 +1680,6 @@
       if (!imageFiles.length) return null;
       if (imageFiles.length > 1) notify("识图区域一次只保留一张图片，已使用第一张");
       return replaceVisionImage(imageFiles[0]);
-    }
-    async function addFiles(files, name) {
-      if (name === "vision") return addVisionFiles(files);
-      for (const file of files || [])
-        if (file.type?.startsWith("image/")) await addImage(file, name);
-      renderImages(name, `#${name}ImgRow`);
-      renderImages(name, `#${name}Row`);
     }
     function imageContextFromNode(node) {
       let current = node;
@@ -1363,8 +1709,8 @@
     }
     function addFilesForContext(files, context) {
       ui.lastImageContext = context || "";
-      if (context === "vision") return addFiles(files, "vision");
-      if (context === "conversation") return addFiles(files, "talk");
+      if (context === "vision") return addVisionFiles(files);
+      if (context === "conversation") return addConversationImages(files);
       return null;
     }
     function tagText(item) { return str(item?.tag || item?.name || item?.en || item); }
@@ -1382,7 +1728,7 @@
         const value = tagText(item); const key = value.toLowerCase();
         if (!value || seen.has(key)) return;
         seen.add(key);
-        const chip = doc.createElement("button"); chip.type = "button"; chip.className = "tchip ok tagchip"; chip.dataset.tag = value; chip.textContent = value; chip.title = `${value} · 点击复制`;
+        const chip = doc.createElement("button"); chip.type = "button"; chip.className = "tchip ok tagchip btn btn-chip"; chip.dataset.tag = value; chip.textContent = value; chip.title = `${value} · 点击复制`;
         chip.onclick = async () => { if (await copy(value)) notify(`已复制：${value}`); };
         host.appendChild(chip);
       });
@@ -1415,8 +1761,8 @@
         const head = doc.createElement("div"); head.className = "tpm-head";
         const label = doc.createElement("span"); label.textContent = title;
         const spacer = doc.createElement("span"); spacer.style.flex = "1";
-        const fold = doc.createElement("button"); fold.type = "button"; fold.className = "tp-fold"; fold.textContent = "▾"; fold.title = "折叠 / 展开";
-        const button = doc.createElement("button"); button.type = "button"; button.className = "tpm-copy"; button.textContent = "📋 复制";
+        const fold = doc.createElement("button"); fold.type = "button"; fold.className = "tp-fold btn btn-icon"; fold.textContent = "▾"; fold.title = "折叠 / 展开";
+        const button = doc.createElement("button"); button.type = "button"; button.className = "tpm-copy btn btn-ghost"; button.textContent = "📋 复制";
         const body = doc.createElement("div"); body.className = "tpm-body";
         renderVisionChipsInto(body, values);
         const key = identified ? "model" : "builtin";
@@ -1430,7 +1776,11 @@
         };
         const toggle = () => setFolded(!module.classList.contains("collapsed"));
         fold.onclick = toggle; head.onclick = event => { if (event.target === button || event.target === fold) return; toggle(); };
-        button.onclick = async event => { event.stopPropagation(); if (await copy(values.map(tagText).join(", "))) notify(`已复制 ${values.length} 个${identified ? "识别" : "内置"} Tag`); };
+        button.onclick = async event => {
+          event.stopPropagation();
+          const copiedValues = uniqueTagTexts(values);
+          if (await copy(copiedValues.join(", "))) notify(`已复制 ${copiedValues.length} 个${identified ? "识别" : "内置"} Tag`);
+        };
         head.append(label, spacer, fold, button); module.append(head, body); host.appendChild(module); setFolded(initialFolded);
       });
       if (description) {
@@ -1438,8 +1788,8 @@
         const head = doc.createElement("div"); head.className = "tpm-head";
         const label = doc.createElement("span"); label.textContent = localized("ui.ai.describe", "🖼 AI 描述");
         const spacer = doc.createElement("span"); spacer.style.flex = "1";
-        const fold = doc.createElement("button"); fold.type = "button"; fold.className = "tp-fold"; fold.title = localized("ui.common.collapse", "折叠");
-        const button = doc.createElement("button"); button.type = "button"; button.className = "tpm-copy"; button.textContent = `📋 ${localized("ui.common.copy", "复制")}`;
+        const fold = doc.createElement("button"); fold.type = "button"; fold.className = "tp-fold btn btn-icon"; fold.title = localized("ui.common.collapse", "折叠");
+        const button = doc.createElement("button"); button.type = "button"; button.className = "tpm-copy btn btn-ghost"; button.textContent = `📋 ${localized("ui.common.copy", "复制")}`;
         const body = doc.createElement("pre"); body.id = "tpDesc"; body.className = "tpm-body tpm-description"; body.textContent = description;
         const setFolded = folded => {
           talkVisionFold.description = folded;
@@ -1455,8 +1805,19 @@
       const placeholder = $("#tpPlaceholder"); if (placeholder) placeholder.style.display = embedded.length || model.length || description ? "none" : "";
     }
     function renderVisionChipsInto(host, rows) {
-      host.replaceChildren(); const seen = new Set();
-      rows.forEach(item => { const value = tagText(item); const key = value.toLowerCase(); if (!value || seen.has(key)) return; seen.add(key); const chip = doc.createElement("button"); chip.type = "button"; chip.className = "tchip ok tagchip"; chip.dataset.tag = value; chip.textContent = value; chip.title = `${value} · 点击复制`; chip.onclick = async () => { if (await copy(value)) notify(`已复制：${value}`); }; host.appendChild(chip); });
+      host.replaceChildren();
+      uniqueTagTexts(rows).forEach(value => {
+        const chip = doc.createElement("button"); chip.type = "button"; chip.className = "tchip ok tagchip btn btn-chip"; chip.dataset.tag = value; chip.textContent = value; chip.title = `${value} · 点击复制`; chip.onclick = async () => { if (await copy(value)) notify(`已复制：${value}`); }; host.appendChild(chip);
+      });
+    }
+    function uniqueTagTexts(rows) {
+      const seen = new Set();
+      return (rows || []).map(tagText).filter(value => {
+        const key = value.toLowerCase();
+        if (!value || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     }
     async function localVision() {
       const button = $("#tpIdentify");
@@ -1534,7 +1895,7 @@
         if (capabilities.vision && capabilities.vision.ai !== true) throw new Error(capabilities.vision.aiError || "请先配置支持图片输入的独立识图 API");
         const call = assistant?.calls?.call;
         if (typeof call !== "function") throw new Error("Calls 网关不可用，无法执行 AI 识图");
-        const result = await call("vision.processOne", { imageId, mode: "ai", instruction: "请描述图片内容，并输出适合绘图的 Tag。", includeLocalTags: true }, { caller: "ui", signal: controller.signal });
+        const result = await call("vision.processOne", { imageId, mode: "ai", instruction: "请按图片中可见内容进行详细描述：主体、人物外观、服装、姿势表情、构图视角、场景物体、光影色彩与画风；以精炼绘图 Tag 为主，如实包含可见 NSFW 内容，只输出结果。", includeLocalTags: true }, { caller: "ui", signal: controller.signal });
         if (ui.visionRequestId === requestId) {
           ui.visionResult = result?.data || null;
           ui.visionDescription = result?.data?.text || result?.text || result?.data?.error || result?.error || "没有返回描述";
@@ -1563,25 +1924,6 @@
         }
       }
     }
-    function setVisionCollapsed(value) {
-      ui.visionCollapsed = Boolean(value);
-      const pane = $("#tagPane");
-      const toggle = $("#tpVisionToggle");
-      const arrow = $(".tp-vision-arrow", toggle || undefined);
-      const tagSlot = $("#tagVisionSlot");
-      pane?.classList.toggle("is-collapsed", ui.visionCollapsed);
-      tagSlot?.classList.toggle("is-collapsed", ui.visionCollapsed && ui.route === "tags");
-      if (toggle) {
-        if (arrow) arrow.textContent = ui.visionCollapsed ? "‹" : "›";
-        const label = ui.visionCollapsed
-          ? localized("ui.ai.openVision", "打开识图面板")
-          : localized("ui.common.collapse", "收起识图面板");
-        toggle.title = label;
-        toggle.setAttribute("aria-label", label);
-        toggle.setAttribute("aria-expanded", ui.visionCollapsed ? "false" : "true");
-      }
-    }
-
     function currentConfig() {
       const s = settings();
       return {
@@ -1594,43 +1936,268 @@
           : 120000,
       };
     }
+    const messageIconMarkup = {
+      copy: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="10" height="10" rx="2"></rect><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path></svg>',
+      edit: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"></path><path d="m14.5 6.5 3 3"></path></svg>',
+      regenerate: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.5 9a7 7 0 1 0 1.2 6"></path><path d="M18.5 4.5v4.5H14"></path></svg>',
+    };
+    function setMessageActionIcon(button, type, title) {
+      button.type = "button";
+      button.className = "cico btn btn-icon message-action";
+      button.dataset.action = type;
+      button.title = title;
+      button.setAttribute("aria-label", title);
+      button.innerHTML = messageIconMarkup[type] || "";
+    }
+    function appendMarkdownInline(parent, value) {
+      const source = String(value || "");
+      const pattern = /(\x60[^\x60]+\x60|\*\*[^\*]+\*\*|__[^\_]+__|~~[^~]+~~|\*[^\*]+\*|\_[^\_]+\_|\[[^\]]+\]\((?:https?:\/\/|mailto:)[^)]+\)|https?:\/\/[^\s<]+)/g;
+      let cursor = 0;
+      let match;
+      while ((match = pattern.exec(source))) {
+        if (match.index > cursor) parent.appendChild(doc.createTextNode(source.slice(cursor, match.index)));
+        const token = match[0];
+        if (token.charCodeAt(0) === 96) {
+          const code = doc.createElement("code");
+          code.className = "md-inline-code";
+          code.textContent = token.slice(1, -1);
+          parent.appendChild(code);
+        } else if (token.startsWith("**") || token.startsWith("__")) {
+          const strong = doc.createElement("strong");
+          appendMarkdownInline(strong, token.slice(2, -2));
+          parent.appendChild(strong);
+        } else if (token.startsWith("~~")) {
+          const deleted = doc.createElement("del");
+          appendMarkdownInline(deleted, token.slice(2, -2));
+          parent.appendChild(deleted);
+        } else if (token.startsWith("*") || token.startsWith("_")) {
+          const emphasis = doc.createElement("em");
+          appendMarkdownInline(emphasis, token.slice(1, -1));
+          parent.appendChild(emphasis);
+        } else {
+          const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+          if (!linkMatch && /^https?:\/\//.test(token)) {
+            const link = doc.createElement("a");
+            link.className = "md-link";
+            link.href = token;
+            link.target = "_blank";
+            link.rel = "noreferrer";
+            link.textContent = token;
+            parent.appendChild(link);
+          } else if (!linkMatch) {
+            parent.appendChild(doc.createTextNode(token));
+          } else {
+            const link = doc.createElement("a");
+            link.className = "md-link";
+            link.href = linkMatch[2];
+            link.target = "_blank";
+            link.rel = "noreferrer";
+            link.textContent = linkMatch[1];
+            parent.appendChild(link);
+          }
+        }
+        cursor = match.index + token.length;
+      }
+      if (cursor < source.length) parent.appendChild(doc.createTextNode(source.slice(cursor)));
+    }
+    function markdownTableCells(line) {
+      let source = String(line || "").trim();
+      if (source.startsWith("|")) source = source.slice(1);
+      if (source.endsWith("|") && !source.endsWith("\\|")) source = source.slice(0, -1);
+      const cells = [];
+      let current = "";
+      let escaped = false;
+      for (const char of source) {
+        if (char === "|" && !escaped) {
+          cells.push(current.trim());
+          current = "";
+          continue;
+        }
+        if (char === "\\" && !escaped) {
+          escaped = true;
+          continue;
+        }
+        current += char;
+        escaped = false;
+      }
+      cells.push(current.trim());
+      return cells;
+    }
+    function markdownTableDelimiter(line) {
+      const cells = markdownTableCells(line);
+      return cells.length > 0 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+    }
+    function markdownCodeBlock(code, language) {
+      const block = doc.createElement("div");
+      block.className = "codeblock";
+      const bar = doc.createElement("div");
+      bar.className = "codebar";
+      const lang = doc.createElement("span");
+      lang.className = "codelang";
+      lang.textContent = language || "text";
+      const button = doc.createElement("button");
+      button.className = "codebtn btn btn-ghost";
+      button.type = "button";
+      button.textContent = "📋 复制代码";
+      button.onclick = async (event) => {
+        event.stopPropagation();
+        if (await copy(code)) notify("代码已复制");
+      };
+      const pre = doc.createElement("pre");
+      pre.className = "codepre";
+      pre.textContent = code;
+      bar.append(lang, button);
+      block.append(bar, pre);
+      return block;
+    }
+    function renderMarkdownTable(host, headerCells, alignments, bodyRows) {
+      const wrap = doc.createElement("div");
+      wrap.className = "md-table-wrap";
+      const table = doc.createElement("table");
+      table.className = "md-table";
+      const thead = doc.createElement("thead");
+      const headRow = doc.createElement("tr");
+      headerCells.forEach((cell, index) => {
+        const th = doc.createElement("th");
+        if (alignments[index]) th.style.textAlign = alignments[index];
+        appendMarkdownInline(th, cell);
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+      if (bodyRows.length) {
+        const tbody = doc.createElement("tbody");
+        bodyRows.forEach(row => {
+          const tr = doc.createElement("tr");
+          headerCells.forEach((_header, index) => {
+            const td = doc.createElement("td");
+            if (alignments[index]) td.style.textAlign = alignments[index];
+            appendMarkdownInline(td, row[index] || "");
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+      }
+      wrap.appendChild(table);
+      host.appendChild(wrap);
+    }
+    function renderMarkdownBlocks(host, value) {
+      const lines = String(value || "").replace(/\r\n?/g, "\n").split("\n");
+      let paragraph = [];
+      const flushParagraph = () => {
+        if (!paragraph.length) return;
+        const p = doc.createElement("p");
+        p.className = "md-p";
+        paragraph.forEach((line, index) => {
+          if (index) p.appendChild(doc.createElement("br"));
+          appendMarkdownInline(p, line);
+        });
+        host.appendChild(p);
+        paragraph = [];
+      };
+      let index = 0;
+      while (index < lines.length) {
+        const line = lines[index];
+        if (!line.trim()) {
+          flushParagraph();
+          index += 1;
+          continue;
+        }
+        const fence = line.match(/^ {0,3}(\x60{3,}|~{3,})\s*([^\s]*)\s*$/);
+        if (fence) {
+          flushParagraph();
+          const marker = fence[1];
+          const markerChar = marker[0];
+          const closePattern = new RegExp("^ {0,3}" + (markerChar === "~" ? "~" : "\\x60") + "{" + marker.length + ",}\\s*$");
+          const codeLines = [];
+          index += 1;
+          while (index < lines.length && !closePattern.test(lines[index])) {
+            codeLines.push(lines[index]);
+            index += 1;
+          }
+          if (index < lines.length) index += 1;
+          host.appendChild(markdownCodeBlock(codeLines.join("\n"), fence[2] || "text"));
+          continue;
+        }
+        const heading = line.match(/^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+        if (heading) {
+          flushParagraph();
+          const h = doc.createElement("h" + Math.min(6, heading[1].length));
+          h.className = "md-heading";
+          appendMarkdownInline(h, heading[2]);
+          host.appendChild(h);
+          index += 1;
+          continue;
+        }
+        if (index + 1 < lines.length && line.includes("|") && markdownTableDelimiter(lines[index + 1])) {
+          flushParagraph();
+          const headerCells = markdownTableCells(line);
+          const delimiterCells = markdownTableCells(lines[index + 1]);
+          const alignments = delimiterCells.map(cell => cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : cell.startsWith(":") ? "left" : "");
+          const bodyRows = [];
+          index += 2;
+          while (index < lines.length && lines[index].trim() && lines[index].includes("|")) {
+            bodyRows.push(markdownTableCells(lines[index]));
+            index += 1;
+          }
+          renderMarkdownTable(host, headerCells, alignments, bodyRows);
+          continue;
+        }
+        const unordered = line.match(/^ {0,3}[-*+]\s+(.+)$/);
+        const ordered = line.match(/^ {0,3}\d+[.)]\s+(.+)$/);
+        if (unordered || ordered) {
+          flushParagraph();
+          const list = doc.createElement(ordered ? "ol" : "ul");
+          list.className = "md-list";
+          const matcher = ordered ? /^ {0,3}\d+[.)]\s+(.+)$/ : /^ {0,3}[-*+]\s+(.+)$/;
+          while (index < lines.length) {
+            const itemMatch = lines[index].match(matcher);
+            if (!itemMatch) break;
+            const li = doc.createElement("li");
+            const task = itemMatch[1].match(/^\[([ xX])\]\s+(.+)$/);
+            if (task) {
+              const marker = doc.createElement("span");
+              marker.className = "md-task";
+              marker.textContent = task[1].toLowerCase() === "x" ? "✓" : "○";
+              li.appendChild(marker);
+              appendMarkdownInline(li, task[2]);
+            } else appendMarkdownInline(li, itemMatch[1]);
+            list.appendChild(li);
+            index += 1;
+          }
+          host.appendChild(list);
+          continue;
+        }
+        const quote = line.match(/^ {0,3}>\s?(.*)$/);
+        if (quote) {
+          flushParagraph();
+          const quoteLines = [];
+          while (index < lines.length) {
+            const quoteMatch = lines[index].match(/^ {0,3}>\s?(.*)$/);
+            if (!quoteMatch) break;
+            quoteLines.push(quoteMatch[1]);
+            index += 1;
+          }
+          const blockquote = doc.createElement("blockquote");
+          renderMarkdownBlocks(blockquote, quoteLines.join("\n"));
+          host.appendChild(blockquote);
+          continue;
+        }
+        if (/^ {0,3}(?:[-*_]\s*){3,}$/.test(line)) {
+          flushParagraph();
+          host.appendChild(doc.createElement("hr"));
+          index += 1;
+          continue;
+        }
+        paragraph.push(line);
+        index += 1;
+      }
+      flushParagraph();
+    }
     function renderRichMessage(host, value) {
       host.replaceChildren();
-      const raw = String(value || "");
-      const parts = raw.split(String.fromCharCode(96).repeat(3));
-      parts.forEach((segment, index) => {
-        if (index % 2 === 0) {
-          if (!segment) return;
-          const textEl = doc.createElement("div");
-          textEl.className = "msg-text";
-          textEl.textContent = segment;
-          host.appendChild(textEl);
-          return;
-        }
-        const newline = segment.indexOf("\n");
-        const language = newline >= 0 ? segment.slice(0, newline).trim() : "text";
-        const code = newline >= 0 ? segment.slice(newline + 1) : segment;
-        const block = doc.createElement("div");
-        block.className = "codeblock";
-        const bar = doc.createElement("div");
-        bar.className = "codebar";
-        const lang = doc.createElement("span");
-        lang.className = "codelang";
-        lang.textContent = language || "text";
-        const button = doc.createElement("button");
-        button.className = "codebtn";
-        button.textContent = "📋 复制代码";
-        button.onclick = async (event) => {
-          event.stopPropagation();
-          if (await copy(code)) notify("代码已复制");
-        };
-        const pre = doc.createElement("pre");
-        pre.className = "codepre";
-        pre.textContent = code;
-        bar.append(lang, button);
-        block.append(bar, pre);
-        host.appendChild(block);
-      });
+      renderMarkdownBlocks(host, value);
     }
     function updateStreamingBody(host, value) {
       const raw = String(value || "");
@@ -1657,6 +2224,10 @@
         imageIds,
         primaryVision: modelIsVision(config.model),
         nsfwEnabled: Boolean(tagSnapshot().adult),
+        includeAdult: Boolean(tagSnapshot().adult),
+        searchPrecision: ui.searchPrecision,
+        currentCategory: tagSnapshot().category,
+        tagRevision: tagSnapshot().revision,
         strict: config.strict !== false,
         worldbookEntries: world?.enabled === false ? [] : world?.entries || [],
         worldbookMods: world?.enabled === false ? [] : world?.mods || [],
@@ -1677,13 +2248,12 @@
     function setDrawComfyEnabled(value) {
       const enabled = Boolean(value);
       assistant?.setSettings?.({ comfyOn: enabled });
-      if ($("#comfyOn")) $("#comfyOn").checked = enabled;
       if ($("#tkDrawRender")) $("#tkDrawRender").checked = enabled;
       scheduleCapabilitiesStatus();
     }
     function setDrawIterations(value) {
       const iterations = Math.max(1, Math.min(10, Number(value) || 3));
-      assistant?.setSettings?.({ comfyIters: iterations });
+      assistant?.setSettings?.({ maxComfyCalls: iterations });
       if ($("#comfyIters")) $("#comfyIters").value = String(iterations);
       if ($("#tkDrawIterations")) $("#tkDrawIterations").value = String(iterations);
       syncDrawControls(ui.comfyCapabilities);
@@ -1726,10 +2296,10 @@
       const bar = doc.createElement("div");
       bar.className = "editbar";
       const save = doc.createElement("button");
-      save.className = "abtn pri";
+      save.className = "abtn pri btn btn-primary";
       save.textContent = message.role === "user" ? "保存并重新发送" : "保存修改";
       const cancel = doc.createElement("button");
-      cancel.className = "abtn ghost";
+      cancel.className = "abtn ghost btn btn-ghost";
       cancel.textContent = "取消";
       bar.append(save, cancel);
       body.replaceChildren(area, bar);
@@ -1806,7 +2376,7 @@
         session.messages.forEach((message, index) => {
           const row = doc.createElement("div");
           row.dataset.messageId = message.id;
-          row.className = "cmsg " + (message.role === "assistant" ? "ai" : message.role === "error" ? "err" : "user");
+          row.className = "cmsg " + (message.role === "assistant" ? "ai" : message.role === "error" ? "err" : message.role === "system" ? "sys" : "user");
           const body = doc.createElement("div");
           body.className = "body";
           const candidateRows = message.mode === "draw" && (Array.isArray(message.candidates) ? message.candidates : message.result?.candidates || []);
@@ -1877,35 +2447,22 @@
           }
           if (message.role === "user" || message.role === "assistant") {
             const actions = doc.createElement("div");
-            actions.className = "cacts";
-            const copyButton = doc.createElement("button");
-            copyButton.className = "cico";
-            copyButton.textContent = "📋";
-            copyButton.title = "复制这条消息";
-            copyButton.onclick = async () => { if (await copy(message.text || "")) notify("消息已复制"); };
-            actions.appendChild(copyButton);
-            const editButton = doc.createElement("button");
-            editButton.className = "cico";
-            editButton.textContent = "✏️";
-            editButton.title = message.role === "user" ? "修改并重新发送" : "修改 AI 输出";
-            editButton.onclick = () => editTalkMessage(row, message);
-            actions.appendChild(editButton);
-            const deleteButton = doc.createElement("button");
-            deleteButton.className = "cico";
-            deleteButton.textContent = "🗑️";
-            deleteButton.title = "删除这条消息";
-            deleteButton.onclick = () => confirm("确定删除这条消息吗？", () => {
-              assistant?.deleteMessage?.(message.id);
-              renderTalk();
-            });
-            actions.appendChild(deleteButton);
-            if (message.role === "assistant") {
+            actions.className = "cacts cmsg-actions-row " + (message.role === "user" ? "user-actions" : "ai-actions");
+            if (message.role === "assistant" && message.status !== "streaming") {
               const regenButton = doc.createElement("button");
-              regenButton.className = "cico";
-              regenButton.textContent = "🔄";
-              regenButton.title = "重新生成";
+              setMessageActionIcon(regenButton, "regenerate", "重新生成");
               regenButton.onclick = () => regenerateTalkMessage(message, index, session);
               actions.appendChild(regenButton);
+            }
+            const copyButton = doc.createElement("button");
+            setMessageActionIcon(copyButton, "copy", "复制这条消息");
+            copyButton.onclick = async () => { if (await copy(message.text || "")) notify("消息已复制"); };
+            actions.appendChild(copyButton);
+            if (message.role === "user") {
+              const editButton = doc.createElement("button");
+              setMessageActionIcon(editButton, "edit", "修改并重新发送");
+              editButton.onclick = () => editTalkMessage(row, message);
+              actions.appendChild(editButton);
             }
             row.appendChild(actions);
           }
@@ -1913,6 +2470,7 @@
         });
       talkScroll();
       renderTalkSessions();
+      renderConversationRepository();
     }
     function updateStreamingTalk() {
       const host = $("#talkConv");
@@ -1961,6 +2519,19 @@
       updateActivityTimeline();
       talkScroll();
     }
+    function conversationDeleteImpact(session) {
+      const refs = imageRepository?.listConversation?.(session?.id)?.items || [];
+      const shared = refs.filter(item => item.ownership === "shared-gallery").length;
+      const owned = refs.length - shared;
+      return {
+        refs,
+        message: localized("ui.ai.deleteConversationImpact", `消息 ${session?.messages?.length || 0} 条 · 专属图片 ${owned} 张 · 共享图片 ${shared} 张`, { messages: session?.messages?.length || 0, owned, shared })
+      };
+    }
+    function confirmDeleteConversation(session, onDone) {
+      const impact = conversationDeleteImpact(session);
+      confirm(`${localized("ui.ai.deleteConversation", "确定删除对话“{title}”吗？", { title: session?.title || localized("ui.ai.newChatTitle", "新对话") })}\n${impact.message}`, retainImages => onDone?.(retainImages), { retainImages: true });
+    }
     function renderTalkSessions() {
       const host = $("#talkSessionList");
       if (!host) return;
@@ -1977,16 +2548,17 @@
         title.textContent = session.title || "新对话";
         const del = doc.createElement("button");
         del.type = "button";
-        del.className = "tdel";
+        del.className = "tdel btn btn-icon btn-danger";
         del.textContent = "🗑️";
         del.title = "删除这条对话";
         del.onclick = (event) => {
           event.stopPropagation();
-          confirm(`确定删除对话「${session.title || "新对话"}」吗？`, () => {
-            assistant?.deleteSession?.(session.id);
+          confirmDeleteConversation(session, retainImages => {
+            assistant?.deleteSession?.(session.id, { retainImages });
             renderTalk();
+            renderConversationRepository();
             renderManager();
-          });
+          }, { retainImages: true });
         };
         row.onclick = (event) => {
           if (event.target.closest(".tdel")) return;
@@ -2030,6 +2602,7 @@
       if (item.type === "candidate") return `第 ${item.iteration || 1} 次返图已显示`;
       if (item.type === "evaluation") return `已评估 ${item.candidateId || "候选结果"}`;
       if (item.type === "recommendation") return `AI 推荐 ${item.candidateId || "候选结果"}`;
+      if (item.type === "event") return item.name ? `${item.name} 事件` : "任务事件";
       return item.message || name || "任务事件";
     }
     function renderActivityTimeline(row, message) {
@@ -2156,26 +2729,26 @@
         actions.className = "draw-candidate-actions";
         const copyPrompt = doc.createElement("button");
         copyPrompt.type = "button";
-        copyPrompt.className = "cico";
+        copyPrompt.className = "cico btn btn-secondary";
         copyPrompt.textContent = "完整";
         copyPrompt.title = "复制本轮完整提示词";
         copyPrompt.onclick = async () => { if (await copy(candidatePromptText(candidate))) notify("本轮提示词已复制"); };
         const copyPositive = doc.createElement("button");
         copyPositive.type = "button";
-        copyPositive.className = "cico";
+        copyPositive.className = "cico btn btn-secondary";
         copyPositive.textContent = "正向";
         copyPositive.title = "复制本轮正向 Tag";
         copyPositive.onclick = async () => { if (await copy(candidate.prompt)) notify("正向 Tag 已复制"); };
         const copyNegative = doc.createElement("button");
         copyNegative.type = "button";
-        copyNegative.className = "cico";
+        copyNegative.className = "cico btn btn-secondary";
         copyNegative.textContent = "负向";
         copyNegative.title = "复制本轮负向 Tag";
         copyNegative.disabled = !str(candidate.negative);
         copyNegative.onclick = async () => { if (await copy(candidate.negative)) notify("负向 Tag 已复制"); };
         const choose = doc.createElement("button");
         choose.type = "button";
-        choose.className = "draw-candidate-choose";
+        choose.className = "draw-candidate-choose btn btn-primary";
         choose.textContent = candidate.id === selectedId || candidate.selected ? "已选为最终结果" : "设为最终结果";
         choose.disabled = candidate.id === selectedId || candidate.selected;
         choose.onclick = () => {
@@ -2208,6 +2781,7 @@
       if (event?.name !== "comfy.render") return;
       if (event.type === "start") put("#talkStatus", "ComfyUI 渲染中…");
       if (event.type === "complete" && event.result?.ok !== false) put("#talkStatus", "已收到 ComfyUI 返图");
+      if (event.type === "complete" && (event.result?.code === "COMFY_CALL_LIMIT" || event.result?.status === "tool_limit")) put("#talkStatus", `已达到 AI 出图调用上限（${Number(settings().maxComfyCalls) || 3} 次）`);
       if (event.type === "candidate-ready") {
         if (event.candidate?.id && event.candidate?.previewUrl) ui.candidatePreviews[event.candidate.id] = event.candidate.previewUrl;
         updateStreamingCandidates();
@@ -2231,15 +2805,16 @@
     }
     async function sendTalk() {
       const text = str($("#talkIn")?.value);
-      const name = "talk";
-      const ids = bucketIds(name);
+      const sessionId = currentTalkSessionId();
+      const pendingRefs = sessionId ? (imageRepository?.pendingConversationReferences?.(sessionId) || conversationRows().filter(item => item.pending)) : [];
+      const ids = pendingRefs.map(item => item.imageId).filter(Boolean);
       if (!text && !ids.length) return notify("请输入内容或先添加图片");
       const s = configFromView();
       const input = talkContext(text, ids, s);
       input.mode = ui.talkMode === "draw" ? "draw" : "assistant";
       input.task = ui.talkMode === "draw" ? (drawContextTask() === "comfy" ? "comfy" : "draw") : "assistant";
       input.autoLocalVision = input.mode === "draw" && ids.length > 0;
-      input.maxIterations = Number(s.comfyIters) || 3;
+      input.maxComfyCalls = Number(s.maxComfyCalls) || Number(s.comfyIters) || 3;
       let streamRenderPending = false;
       input.onStart = () => renderTalk();
       input.onDelta = () => {
@@ -2275,8 +2850,8 @@
         result = { ok: false, text: error.message || String(error), error: error.message || String(error) };
       }
       if (result?.ok !== false) {
-        bucket("talk").clear?.();
-        renderImages("talk", "#talkImgRow");
+        imageRepository?.markSent?.(sessionId, pendingRefs.map(item => item.refId));
+        renderConversationRepository();
       }
       renderTalk();
       put("#talkStatus", result?.ok === false ? result.text || result.error || "发送失败" : "完成");
@@ -2294,7 +2869,7 @@
         actions.id = "mgrActions";
         actions.className = "row";
         actions.innerHTML =
-          '<button class="abtn" id="mgrExport">📋 导出对话</button><button class="abtn" id="mgrImport">📥 导入对话</button><button class="abtn ghost" id="mgrClear">🗑 清空当前</button><input id="mgrImportFile" type="file" accept=".json,application/json" hidden>';
+          '<button class="abtn btn btn-secondary" id="mgrExport">📋 导出对话</button><button class="abtn btn btn-secondary" id="mgrImport">📥 导入对话</button><button class="abtn ghost btn btn-danger" id="mgrClear">🗑 清空当前</button><input id="mgrImportFile" type="file" accept=".json,application/json" hidden>';
         host.parentElement?.insertBefore(actions, host);
         $("#mgrExport").onclick = () => {
           const blob = new Blob([assistant?.exportSessions?.() || "[]"], {
@@ -2321,19 +2896,21 @@
           if (current) assistant?.clearSession?.(current.id);
           renderManager();
           renderTalk();
+          renderConversationRepository();
         };
       }
       host.replaceChildren();
       (assistant?.sessions?.() || []).forEach((session) => {
         const row = doc.createElement("div");
         row.className = "fav";
-        row.innerHTML = `<b>${session.title || "对话"}</b><span class="muted"> ${(session.messages || []).length} 条</span><div class="row"><button class="abtn load">载入</button><button class="abtn ghost del">删除</button></div>`;
+        row.innerHTML = `<b>${session.title || "对话"}</b><span class="muted"> ${(session.messages || []).length} 条</span><div class="row"><button class="abtn btn btn-secondary load">载入</button><button class="abtn ghost btn btn-danger del">删除</button></div>`;
         row.querySelector(".load").onclick = () => {
           assistant.switchSession?.(session.id);
           renderTalk();
+          renderConversationRepository();
           showAi("talk");
         };
-        row.querySelector(".del").onclick = () => confirm(`确定删除对话「${session.title || "新对话"}」吗？`, () => { assistant.deleteSession?.(session.id); renderManager(); renderTalk(); });
+        row.querySelector(".del").onclick = () => confirmDeleteConversation(session, retainImages => { assistant.deleteSession?.(session.id, { retainImages }); renderManager(); renderTalk(); renderConversationRepository(); });
         host.appendChild(row);
       });
     }
@@ -2345,14 +2922,15 @@
       const thumb = $("#tkThumb");
       if (thumb) { thumb.style.left = `${active.offsetLeft}px`; thumb.style.width = `${active.offsetWidth}px`; }
     }
-    function setTalkMode(mode) {
+    function setTalkMode(mode, options = {}) {
       const normalized = mode === "draw" ? "draw" : "assistant";
       ui.talkMode = ["assistant", "draw"].includes(normalized) ? normalized : "assistant";
+      if (options.persist !== false) storage.set("app.talkMode", ui.talkMode);
       syncTalkMode();
       syncDrawControls();
     }
     function showAi(tab) {
-      ui.aiTab = [
+      const nextTab = [
         "talk",
         "prompt",
         "api",
@@ -2360,6 +2938,8 @@
       ].includes(tab)
         ? tab
         : "talk";
+      if (ui.aiTab === "api" && nextTab !== "api") flushSettingsSave();
+      ui.aiTab = nextTab;
       const views = {
         talk: "#tabTalk",
         prompt: "#tabPrompt",
@@ -2387,38 +2967,52 @@
     }
     function ensureVisionPanePlacement() {
       const pane = $("#tagPane");
-      const talkShell = $("#tabTalk .tkshell");
       const tagSlot = $("#tagVisionSlot");
-      if (!pane || !talkShell || !tagSlot) return;
-      const target = ui.route === "tags" ? tagSlot : talkShell;
+      const workspace = doc.body;
+      if (!pane || !tagSlot || !workspace) return;
+      // Keep the drawer outside route-specific containers. In particular, the
+      // AI view is hidden on the translation page; a fixed descendant of that
+      // hidden subtree would not be paintable when the nav button is clicked.
+      const target = workspace;
       if (pane.parentElement !== target) target.appendChild(pane);
       tagSlot.classList.toggle("active", ui.route === "tags");
-      setVisionCollapsed(ui.visionCollapsed);
+      setVisionOpen(ui.visionOpen);
     }
     function route(route) {
+      if (ui.route === "ai" && ui.aiTab === "api" && route !== "ai") flushSettingsSave();
       const wasAi = ui.route === "ai";
+      const wasTags = ui.route === "tags";
+      const wasGallery = ui.route === "gallery";
+      if (route === "gallery" && wasAi) ui.aiTabBeforeGallery = ui.aiTab;
       ui.route = route;
+      if (route === "tags" && !wasTags) {
+        ui.subcategory = "";
+        ui.visible = 400;
+      }
       const ai = route === "ai";
-      if (ai && !wasAi) { setTalkMode("assistant"); ui.aiTab = "talk"; }
+      if (ai && !wasAi) ui.aiTab = wasGallery ? ui.aiTabBeforeGallery : ui.aiTab;
       const shell = $("#wrapEl");
       const aiView = $("#aiView");
       if (shell && aiView && aiView.parentElement !== shell)
         shell.appendChild(aiView);
       show("#tagLibraryView", route === "tags");
+      const galleryView = $("#galleryView");
+      if (galleryView) { galleryView.hidden = route !== "gallery"; galleryView.style.display = route === "gallery" ? "" : "none"; }
       show(".main", !ai);
       show("#aiView", ai);
       show("#aiCfgBtns", ai);
-      show("#sidebar", route !== "translation");
+      show("#sidebar", route !== "translation" && route !== "gallery");
       show("#catList", route === "tags");
       show("#addTagBtn", route === "tags");
       show("#sideAi", ai);
       // 选择栏是全局工作区底栏，切换翻译/AI 时仍保留当前 Tag 组合。
-      show(".bar", true);
+      show(".bar", route !== "gallery");
       const search = $("#searchWrap");
       if (search) {
-        search.style.visibility = ai || route === "translation" ? "hidden" : "";
-        search.style.pointerEvents =
-          ai || route === "translation" ? "none" : "";
+        const searchHidden = ai || route === "gallery";
+        search.style.display = searchHidden ? "none" : "";
+        search.style.visibility = searchHidden ? "hidden" : "";
+        search.style.pointerEvents = searchHidden ? "none" : "";
       }
       const tv = $("#translateView");
       // index.html keeps the translation pane hidden for the initial paint.
@@ -2429,10 +3023,9 @@
         tv.hidden = !active;
         tv.style.display = active ? "" : "none";
       }
-      const aiButton = $("#aiBtn");
-      if (aiButton) aiButton.textContent = ai ? localized("ui.header.backHome", ui.locale === "en-US" ? "← Back home" : "↩ 返回标签") : localized("ui.header.aiAssistant", ui.locale === "en-US" ? "🤖 AI Assistant" : "🤖 AI 助手");
       doc.body.classList.toggle("aiview", ai);
       doc.body.classList.toggle("translation-mode", route === "translation");
+      syncNavigationStates();
       ensureVisionPanePlacement();
       if (ai) {
         renderVisionPreview();
@@ -2440,6 +3033,7 @@
         scheduleCapabilitiesStatus();
         showAi(ui.aiTab);
       }
+      if (route === "gallery") renderGallery();
     }
     function applyTheme(value) {
       const theme = str(value, "light");
@@ -2476,26 +3070,84 @@
         const value = lookup(el.dataset.i18nAria);
         if (value != null) el.setAttribute("aria-label", value);
       });
+      const precision = $("#searchPrecision");
+      if (precision) precision.value = ui.searchPrecision;
       doc.documentElement.lang = id;
       ui.locale = id;
       storage.set("app.locale", id);
       const localizedTitle = localized("ui.document.title", doc.title);
       if (localizedTitle) doc.title = localizedTitle.replace(/V1\.4\.1/g, `V${modules.version || "1.4.92"}`);
-      put("#brandSub", `V${modules.version || "1.4.92"} · 简洁模块化`);
-      const aiButton = $("#aiBtn");
-      if (aiButton) aiButton.textContent = ui.route === "ai" ? localized("ui.header.backHome", id === "en-US" ? "← Back home" : "↩ 返回标签") : localized("ui.header.aiAssistant", id === "en-US" ? "🤖 AI Assistant" : "🤖 AI 助手");
+      put("#brandSub", `V${modules.version || "1.4.92"}`);
+      syncNavigationStates();
       syncApiMode();
+      renderConversationRepository();
       renderCategories();
       renderTags();
       renderCustomCategories();
       renderTalkVisionPanel();
-      setVisionCollapsed(ui.visionCollapsed);
+      setVisionOpen(ui.visionOpen);
+      if (ui.route === "gallery") renderGallery();
       if (ui.aiTab === "prompt") renderPrompt();
     }
 
+    function toggleThemeMenu(event) {
+      event?.stopPropagation?.();
+      const pop = $("#themePop");
+      if (pop) pop.hidden = !pop.hidden;
+    }
+    function toggleLocaleMenu() {
+      const pop = $("#localePop");
+      if (!pop) return locale(ui.locale === "zh-CN" ? "en-US" : "zh-CN");
+      if (!pop.childElementCount) {
+        [
+          ["zh-CN", "简体中文"],
+          ["en-US", "English"],
+        ].forEach(([id, label]) => {
+          const option = doc.createElement("button");
+          option.className = "popitem btn btn-menu";
+          option.dataset.locale = id;
+          option.innerHTML = '<span class="ck"></span><span></span>';
+          $("span:last-child", option).textContent = label;
+          option.onclick = () => {
+            locale(id);
+            pop.hidden = true;
+          };
+          pop.appendChild(option);
+        });
+      }
+      $$(".popitem[data-locale]", pop).forEach((option) => {
+        $(".ck", option).textContent = option.dataset.locale === ui.locale ? "✓" : "";
+      });
+      pop.hidden = !pop.hidden;
+    }
+    function bindNavigation() {
+      Object.entries(navActionConfig).forEach(([name, config]) => {
+        const button = $(config.selector);
+        if (!button || typeof config.run !== "function") return;
+        button.dataset.navAction = name;
+        button.addEventListener("click", event => {
+          config.run(event);
+          syncNavigationStates();
+        });
+      });
+      syncNavigationStates();
+    }
+
     function bind() {
-      $("#q")?.addEventListener("input", (event) => {
+      $("#searchPrecision")?.addEventListener("change", (event) => {
+        ui.searchPrecision = normaliseSearchPrecision(event.target.value);
+        event.target.value = ui.searchPrecision;
+        storage.set("app.searchPrecision", ui.searchPrecision);
+        tags?.setSearchPrecision?.(ui.searchPrecision);
+        ui.tagPageCache.clear();
         ui.visible = 400;
+        renderCategories();
+        renderTags();
+      });
+      $("#q")?.addEventListener("input", (event) => {
+        ui.subcategory = "";
+        ui.visible = 400;
+        ui.tagPageCache.clear();
         clearTimeout(ui.searchTimer);
         ui.searchTimer = setTimeout(() => {
           tags?.setQuery?.(event.target.value);
@@ -2503,17 +3155,47 @@
           renderTags();
         }, 120);
       });
+      $("#q")?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          clearTimeout(ui.searchTimer);
+          executeSearch();
+        }
+      });
+      $("#searchBtn")?.addEventListener("click", () => {
+        clearTimeout(ui.searchTimer);
+        executeSearch();
+      });
       $("#clearQ")?.addEventListener("click", () => {
         $("#q").value = "";
+        ui.subcategory = "";
+        ui.tagPageCache.clear();
         tags?.setQuery?.("");
+        renderCategories();
         renderTags();
       });
       $("#catList")?.addEventListener("click", (event) => {
         const button = event.target.closest("[data-cat]");
         if (!button) return;
+        if (ui.route !== "tags") route("tags");
+        clearTimeout(ui.searchTimer);
         tags?.setCategory?.(button.dataset.cat);
+        // Keep the text as a reusable draft, but leave the active result set
+        // so the selected category can be browsed before searching again.
+        tags?.setQuery?.("");
+        ui.subcategory = "";
         ui.visible = 400;
+        ui.tagPageCache.clear();
         renderCategories();
+        renderTags();
+      });
+      $("#subcatNav")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-subcategory]");
+        if (!button) return;
+        ui.subcategory = str(button.dataset.subcategory);
+        ui.visible = 400;
+        ui.tagPageCache.clear();
+        renderSubcategoryNav(tagSnapshot());
         renderTags();
       });
       $("#chips")?.addEventListener("click", (event) => {
@@ -2550,20 +3232,17 @@
           notify("Prompt 已复制");
         else notify("复制失败，请检查剪贴板权限");
       });
-      $("#nsfwBtn")?.addEventListener("click", () => {
-        tags?.setAdult?.(!tagSnapshot().adult);
-        renderCategories();
-        renderTags();
-      });
       $("#aiNsfwChk")?.addEventListener("change", (event) => {
         tags?.setAdult?.(event.target.checked);
         renderCategories();
         renderTags();
       });
-      $("#favBtn")?.addEventListener("click", openDrawer);
       $("#saveFav")?.addEventListener("click", openDrawer);
       $("#drawerClose")?.addEventListener("click", closeDrawer);
-      $("#scrim")?.addEventListener("click", closeDrawer);
+      $("#scrim")?.addEventListener("click", () => {
+        closeDrawer();
+        setVisionOpen(false);
+      });
       $("#favSave")?.addEventListener("click", () => {
         const ids = selectedIds();
         if (!ids.length) return notify("请先选择 Tag");
@@ -2609,17 +3288,46 @@
         renderCategories();
         renderTags();
       });
-      $("#themeBtn")?.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const pop = $("#themePop");
-        if (pop) pop.hidden = !pop.hidden;
-      });
       $$(".popitem[data-theme]").forEach((item) =>
         item.addEventListener("click", () => {
           applyTheme(item.dataset.theme);
           $("#themePop").hidden = true;
         }),
       );
+      bindNavigation();
+      galleryPreferences();
+      $("#galleryUpload")?.addEventListener("click", () => $("#galleryFile")?.click());
+      $("#galleryFile")?.addEventListener("change", async event => {
+        let added = 0;
+        try {
+          for (const file of [...(event.target.files || [])].filter(item => item.type?.startsWith("image/"))) {
+            const item = await addImage(file, "gallery");
+            if (item?.id && imageRepository?.addToGallery?.(item.id, { source: "upload" })) added += 1;
+          }
+          if (!added && event.target.files?.length) notify(galleryText("uploadFailed", "图片上传失败，请检查文件格式或权限"));
+        } catch (error) {
+          notify(error?.message || String(error));
+        }
+        event.target.value = "";
+        renderGallery();
+      });
+      $("#galleryOrder")?.addEventListener("change", event => { ui.galleryOrder = ["oldest", "newest"].includes(event.target.value) ? event.target.value : "oldest"; storage.set("gallery.order", ui.galleryOrder); renderGallery(); });
+      $("#galleryColumns")?.addEventListener("change", event => { ui.galleryColumns = ["two", "single"].includes(event.target.value) ? event.target.value : "two"; storage.set("gallery.columns", ui.galleryColumns); renderGallery(); });
+      $("#gallerySize")?.addEventListener("change", event => { ui.gallerySize = ["compact", "standard", "large"].includes(event.target.value) ? event.target.value : "standard"; storage.set("gallery.size", ui.gallerySize); renderGallery(); });
+      $("#galleryQuery")?.addEventListener("input", event => { ui.galleryQuery = String(event.target.value || "").trim(); renderGallery(); });
+      $("#galleryDownload")?.addEventListener("click", () => {
+        const selected = galleryRows().filter(item => ui.gallerySelected.has(item.imageId));
+        if (!selected.length) return notify(galleryText("selectFirst", "请先选择图片"));
+        selected.forEach(galleryDownloadItem);
+      });
+      $("#galleryDelete")?.addEventListener("click", () => {
+        const selected = galleryRows().filter(item => ui.gallerySelected.has(item.imageId));
+        if (!selected.length) return notify(galleryText("selectFirst", "请先选择图片"));
+        const details = selected.map(item => { const refs = imageRepository?.referenceCount?.(item.imageId) || {}; return `${item.displayName || item.filename || item.imageId}: ${galleryText("deleteImpact", "会话引用 {conversations}，消息引用 {messages}。", refs)}`; }).join("\n");
+        const choice = typeof global.prompt === "function" ? global.prompt(`${galleryText("batchDeleteConfirm", "确定处理 {count} 张图片吗？", { count: selected.length })}\n${details}\n1. ${galleryText("removeOnly", "仅移除图库关联")}\n2. ${galleryText("purge", "彻底删除（无引用时）")}`, "1") : "1";
+        if (!["1", "2"].includes(choice)) return;
+        selected.forEach(item => imageRepository?.removeFromGallery?.(item.imageId, { purge: choice === "2", retain: choice !== "2" })); ui.gallerySelected.clear(); renderGallery();
+      });
       $("#menuBtn")?.addEventListener("click", () => {
         const sidebar = $("#sidebar");
         if (!sidebar) return;
@@ -2627,59 +3335,24 @@
         // 移动端使用 show 控制滑入；桌面端使用 hide 收起侧栏。
         if (global.innerWidth <= 860) sidebar.classList.toggle("show", !sidebar.classList.contains("hide"));
       });
-      $("#helpBtn")?.addEventListener("click", () =>
-        $("#helpModal")?.classList.add("show"),
-      );
-      $("#helpClose")?.addEventListener("click", () =>
-        $("#helpModal")?.classList.remove("show"),
-      );
-      $("#sponsorBtn")?.addEventListener("click", () =>
-        $("#sponsorModal")?.classList.add("show"),
-      );
       $("#sponsorClose")?.addEventListener("click", () =>
         $("#sponsorModal")?.classList.remove("show"),
       );
-      $("#translateBtn")?.addEventListener("click", () =>
-        route(ui.route === "translation" ? "tags" : "translation"),
-      );
       $("#translateBack")?.addEventListener("click", () => route("tags"));
-      $("#aiBtn")?.addEventListener("click", () =>
-        route(ui.route === "ai" ? "tags" : "ai"),
-      );
       $("#aiClose")?.addEventListener("click", () => route("tags"));
       $$(".ai-module-tab").forEach((button) =>
         button.addEventListener("click", () => {
-          route("ai");
-          showAi(button.dataset.panel);
+          const panel = button.dataset.panel;
+          if (ui.route === "ai") showAi(panel);
+          else {
+            ui.aiTab = panel;
+            if (ui.route === "gallery") ui.aiTabBeforeGallery = panel;
+            route("ai");
+          }
         }),
       );
       $("#apiBack")?.addEventListener("click", () => showAi("talk"));
       $("#promptBack")?.addEventListener("click", () => showAi("talk"));
-      $("#localeBtn")?.addEventListener("click", () => {
-        const pop = $("#localePop");
-        if (!pop) return locale(ui.locale === "zh-CN" ? "en-US" : "zh-CN");
-        if (!pop.childElementCount) {
-          [
-            ["zh-CN", "简体中文"],
-            ["en-US", "English"],
-          ].forEach(([id, label]) => {
-            const option = doc.createElement("button");
-            option.className = "popitem";
-            option.dataset.locale = id;
-            option.innerHTML = '<span class="ck"></span><span></span>';
-            $("span:last-child", option).textContent = label;
-            option.onclick = () => {
-              locale(id);
-              pop.hidden = true;
-            };
-            pop.appendChild(option);
-          });
-        }
-        $$(".popitem[data-locale]", pop).forEach((option) => {
-          $(".ck", option).textContent = option.dataset.locale === ui.locale ? "✓" : "";
-        });
-        pop.hidden = !pop.hidden;
-      });
       doc.addEventListener("click", (event) => {
         if (!event.target.closest(".popwrap")) {
           $("#themePop")?.setAttribute("hidden", "");
@@ -2692,11 +3365,19 @@
           setTalkMode(button.dataset.mode || "assist");
         }),
       );
-      global.addEventListener("resize", syncTalkMode);
-      $("#comfyIters")?.addEventListener("change", () => {
-        configFromView();
-        if (ui.talkMode === "draw") syncDrawControls(ui.comfyCapabilities);
+      syncVisionPaneOffset();
+      global.addEventListener("resize", () => {
+        syncTalkMode();
+        syncVisionPaneOffset();
       });
+      const persistedComfyFields = ["#comfyBase", "#comfyPos", "#comfyNeg", "#comfyW", "#comfyH", "#comfySteps", "#comfyCfg", "#comfyIters", "#batchCount", "#maxComfyCalls", "#generateNegativeTags", "#comfyWf"];
+      persistedComfyFields.forEach(selector => $(selector)?.addEventListener("change", () => {
+        configFromView();
+        if (selector === "#comfyIters" && ui.talkMode === "draw") syncDrawControls(ui.comfyCapabilities);
+      }));
+      ["#comfyBase", "#comfyPos", "#comfyNeg", "#comfyWf"].forEach(selector =>
+        $(selector)?.addEventListener("input", scheduleSettingsSave),
+      );
       $("#talkConv")?.addEventListener("scroll", event => {
         const host = event.currentTarget;
         ui.comfyFollow["#talkConv"] = host.scrollHeight - host.scrollTop - host.clientHeight < 40;
@@ -2722,23 +3403,30 @@
       $("#talkNew")?.addEventListener("click", () => {
         assistant?.newSession?.();
         renderTalk();
+        renderConversationRepository();
       });
       $("#talkManage")?.addEventListener("click", () => showAi("mgr"));
       $("#talkClearBtn")?.addEventListener("click", () => {
         const session = assistant?.currentSession?.();
         if (session) assistant?.clearSession?.(session.id);
         renderTalk();
+        renderConversationRepository();
       });
       $("#talkImgBtn")?.addEventListener("click", () =>
         $("#talkImgFile")?.click(),
       );
       $("#talkImgFile")?.addEventListener("change", (event) =>
-        addFiles(event.target.files, "talk"),
+        addConversationImages(event.target.files)
+          .catch(error => notify(error?.message || String(error)))
+          .finally(() => { event.target.value = ""; }),
       );
+      $("#talkRepositoryColumns")?.addEventListener("change", event => { const value = event.target.value === "single" ? "single" : "two"; storage.set("conversation.columns", value); renderConversationRepository(); });
+      $("#talkRepositorySize")?.addEventListener("change", event => { const value = ["compact", "standard", "large"].includes(event.target.value) ? event.target.value : "standard"; storage.set("conversation.size", value); renderConversationRepository(); });
+      $("#talkRepositoryClearPending")?.addEventListener("click", () => { imageRepository?.resetPending?.(currentTalkSessionId()); renderConversationRepository(); });
       $("#tpUpload")?.addEventListener("click", () => $("#tpFile")?.click());
       $("#tpFile")?.addEventListener("change", (event) => {
         const input = event.target;
-        Promise.resolve().then(() => addFiles(input.files, "vision")).catch(error => notify(error?.message || String(error))).finally(() => { input.value = ""; });
+        Promise.resolve().then(() => addVisionFiles(input.files)).catch(error => notify(error?.message || String(error))).finally(() => { input.value = ""; });
       });
       $("#tpIdentify")?.addEventListener("click", () => localVision());
       $("#tpWdModel")?.addEventListener("change", () => {
@@ -2755,14 +3443,11 @@
         renderTalkVisionPanel();
         show("#tpStop", false);
       });
-      $("#tpVisionToggle")?.addEventListener("click", () => setVisionCollapsed(!ui.visionCollapsed));
       $("#tpClearImg")?.addEventListener("click", () => {
         ui.visionUploadId += 1;
-        const previousId = currentVisionId();
         cancelVisionRequest(true);
         clearVisionResult();
-        removeTransientVisionImage(previousId);
-        ui.currentVisionImageId = "";
+        visionTempStore?.clear?.();
         renderVisionPreview();
         renderTalkVisionPanel();
         refreshCapabilitiesStatus();
@@ -2773,26 +3458,26 @@
           if ($("#aiBase")) $("#aiBase").value = event.target.value;
           configFromView();
           syncApiMode();
-          populateModels({ reset: true }).then(() => configFromView());
+          populateModels({ selectedModel: settings().model });
         }
       });
       $("#aiBase")?.addEventListener("change", () => {
         configFromView();
         syncApiMode();
-        if ($("#visionInheritPrimary")?.checked) assistant?.setSettings?.({ visionModel: "" });
-        populateModels({ reset: true }).then(() => { populateVisionModels({ reset: true, fetch: false }); configFromView(); });
+        populateModels({ selectedModel: settings().model });
+        populateVisionModels({ selectedModel: $("#visionInheritPrimary")?.checked ? settings().model : settings().visionModel, fetch: false });
       });
       $("#aiModel")?.addEventListener("change", () => {
         syncCustomModelInput();
         configFromView();
-        if ($("#visionInheritPrimary")?.checked) populateVisionModels({ reset: true, fetch: false });
+        if ($("#visionInheritPrimary")?.checked) populateVisionModels({ selectedModel: settings().model, fetch: false });
       });
       $("#aiModelCustom")?.addEventListener("input", configFromView);
       $("#aiModelCustom")?.addEventListener("change", configFromView);
       $("#visionInheritPrimary")?.addEventListener("change", () => {
-        configFromView();
+        configFromView({ preserveVisionModel: true });
         syncApiMode();
-        populateVisionModels({ reset: true, fetch: false });
+        populateVisionModels({ selectedModel: settings().visionModel, fetch: false });
       });
       $("#visionBase")?.addEventListener("change", () => { configFromView(); populateVisionModels(); });
       $("#visionModel")?.addEventListener("change", () => { syncVisionCustomModelInput(); configFromView(); });
@@ -2831,18 +3516,14 @@
       $("#aiTimeoutEnabled")?.addEventListener("change", configFromView);
       $("#aiTimeoutSec")?.addEventListener("change", configFromView);
       $("#aiStrict")?.addEventListener("change", configFromView);
-      $("#agentWriteEnabled")?.addEventListener("change", configFromView);
-      $("#comfyOn")?.addEventListener("change", () => {
-        configFromView();
-        if (ui.talkMode === "draw") syncDrawControls(ui.comfyCapabilities);
-      });
       $("#aiTest")?.addEventListener("click", async () => {
-        const s = configFromView();
+        configFromView();
         try {
-          await assistant?.ai?.complete?.(
+          const result = await assistant?.ai?.complete?.(
             [{ role: "user", content: "ping" }],
             currentConfig(),
           );
+          if (!result || result.ok === false) throw new Error(result?.text || result?.error || "AI 连接失败");
           notify("AI 连接成功");
         } catch (error) {
           notify(error.message || String(error));
@@ -2859,11 +3540,9 @@
           visionKey: "",
           visionTemperature: 0.2,
           visionTimeoutMs: 120000,
-          agentWriteEnabled: false,
           timeoutEnabled: false,
           timeoutSec: 300,
           comfyBase: "http://127.0.0.1:8188",
-          comfyOn: false,
           comfyIters: 3,
           comfyWorkflow: "",
           comfyPos: "",
@@ -2947,6 +3626,19 @@
         renderPrompt();
         notify("已恢复当前预设的提示词启用对象");
       });
+      const syncPromptPanels = () => {
+        const p = modules.prompts;
+        if (!p) return;
+        ["main", "generate", "vision"].forEach(key => { const el = $("#internalPrompt" + key[0].toUpperCase() + key.slice(1)); if (el) el.value = p.get(key, ""); });
+        const ext = $("#externalPromptText"); if (ext) ext.value = p.get("chat", "");
+      };
+      ["main", "generate", "vision"].forEach(key => $("#internalPrompt" + key[0].toUpperCase() + key.slice(1))?.addEventListener("change", e => modules.prompts?.set?.(key, e.target.value)));
+      $("#externalPromptText")?.addEventListener("change", e => modules.prompts?.set?.("chat", e.target.value));
+      $("#internalPromptReset")?.addEventListener("click", () => { modules.prompts?.resetBlock?.("internal"); syncPromptPanels(); });
+      $("#internalPromptExport")?.addEventListener("click", () => { const blob = new Blob([JSON.stringify(modules.prompts?.exportBlock?.("internal") || {}, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "internal-prompts.json"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
+      $("#internalPromptImport")?.addEventListener("click", () => $("#internalPromptFile")?.click());
+      $("#internalPromptFile")?.addEventListener("change", event => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { try { const result = modules.prompts?.importBlock?.(JSON.parse(reader.result), "internal"); if (!result?.ok) throw new Error("内部提示词文件格式无效"); syncPromptPanels(); } catch { /* invalid bundle is rejected without changing state */ } }; reader.readAsText(file); event.target.value = ""; });
+      syncPromptPanels();
       $("#pcolExport")?.addEventListener("click", () => {
         savePreset();
         download("ai-tag-prompt-collection.json", {
@@ -3087,11 +3779,17 @@
         ),
       );
       $("#comfyTest")?.addEventListener("click", async () => {
-        const connected = await comfy?.check?.();
-        notify(connected
-          ? "ComfyUI 已连接 · 地址可访问"
-          : "ComfyUI 未连接 · 请确认 ComfyUI 已启动，并检查「API 设置 → ComfyUI 地址」");
-        refreshCapabilitiesStatus({ force: true });
+        configFromView();
+        try {
+          const connected = await comfy?.check?.();
+          notify(connected
+            ? "ComfyUI 已连接 · 地址可访问"
+            : "ComfyUI 未连接 · 请确认 ComfyUI 已启动，并检查「API 设置 → ComfyUI 地址」");
+        } catch (error) {
+          notify(error?.message || String(error));
+        } finally {
+          refreshCapabilitiesStatus({ force: true });
+        }
       });
       $("#comfyWfClear")?.addEventListener("click", () => {
         if ($("#comfyWf")) $("#comfyWf").value = "";
@@ -3100,7 +3798,6 @@
       $("#comfyClearCfg")?.addEventListener("click", () => {
         assistant?.setSettings?.({
           comfyBase: "http://127.0.0.1:8188",
-          comfyOn: false,
           comfyIters: 3,
           comfyWorkflow: "",
           comfyPos: "",
@@ -3115,7 +3812,6 @@
           visionKey: "",
           visionTemperature: 0.2,
           visionTimeoutMs: 120000,
-          agentWriteEnabled: false,
         });
         loadSettings();
       });
@@ -3154,7 +3850,7 @@
       });
       $$('[data-image-context]').forEach(zone => {
         zone.addEventListener("dragover", event => {
-          if ([...(event.dataTransfer?.files || [])].some(file => file?.type?.startsWith("image/"))) {
+          if (event.dataTransfer?.types?.includes("application/x-ai-tag-conversation-ref") || event.dataTransfer?.types?.includes("application/x-ai-tag-image-id") || [...(event.dataTransfer?.files || [])].some(file => file?.type?.startsWith("image/"))) {
             event.preventDefault();
             event.stopPropagation();
             zone.classList.add("image-drag-over");
@@ -3165,12 +3861,49 @@
         });
         zone.addEventListener("drop", event => {
           zone.classList.remove("image-drag-over");
+          const context = zone.dataset.imageContext;
+          const conversationPayload = event.dataTransfer?.getData("application/x-ai-tag-conversation-ref");
+          const imageId = event.dataTransfer?.getData("application/x-ai-tag-image-id") || event.dataTransfer?.getData("text/plain");
+          if ((conversationPayload || imageId) && (context === "conversation" || context === "vision")) {
+            event.preventDefault();
+            event.stopPropagation();
+            let ref = null;
+            try { ref = conversationPayload ? JSON.parse(conversationPayload) : null; } catch { ref = null; }
+            const id = str(ref?.imageId || imageId);
+            if (!id) return;
+            if (context === "conversation") {
+              const attached = imageRepository?.attachToConversation?.(currentTalkSessionId(), id, { source: imageRepository?.listGallery?.()?.items?.some(item => item.imageId === id) ? "gallery" : "upload" });
+              if (attached) renderConversationRepository();
+            } else if (ref?.refId && ref.sessionId) {
+              const active = visionTempStore?.setConversationReference?.(id, { sessionId: ref.sessionId, refId: ref.refId });
+              if (active) { clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true); }
+            } else if (imageRepository?.listGallery?.()?.items?.some(item => item.imageId === id)) {
+              visionTempStore?.setLibraryReference?.(id); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true);
+            }
+            return;
+          }
           const files = [...(event.dataTransfer?.files || [])].filter(file => file?.type?.startsWith("image/"));
           if (!files.length) return;
           event.preventDefault();
           event.stopPropagation();
-          Promise.resolve(addFilesForContext(files, zone.dataset.imageContext)).catch(error => notify(error?.message || String(error)));
+          Promise.resolve(addFilesForContext(files, context)).catch(error => notify(error?.message || String(error)));
         });
+      });
+      $("#tagPane")?.addEventListener("dragover", event => { if (event.dataTransfer?.types?.includes("application/x-ai-tag-image-id")) { event.preventDefault(); event.stopPropagation(); $("#tagPane").classList.add("image-drag-over"); } });
+      $("#tagPane")?.addEventListener("dragleave", event => { if (!$("#tagPane").contains(event.relatedTarget)) $("#tagPane").classList.remove("image-drag-over"); });
+      $("#tagPane")?.addEventListener("drop", event => {
+        $("#tagPane").classList.remove("image-drag-over");
+        const conversationPayload = event.dataTransfer?.getData("application/x-ai-tag-conversation-ref");
+        if (conversationPayload) {
+          let ref = null; try { ref = JSON.parse(conversationPayload); } catch { ref = null; }
+          const id = str(ref?.imageId);
+          if (id && ref?.refId) { event.preventDefault(); event.stopPropagation(); visionTempStore?.setConversationReference?.(id, { sessionId: ref.sessionId, refId: ref.refId }); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true); }
+          return;
+        }
+        const id = event.dataTransfer?.getData("application/x-ai-tag-image-id");
+        if (!id || !imageRepository?.listGallery?.()?.items?.some(item => item.imageId === id)) return;
+        event.preventDefault(); event.stopPropagation();
+        visionTempStore?.setLibraryReference?.(id); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true);
       });
       $("#mgrExport")?.addEventListener("click", () => {
         const blob = new Blob([assistant?.exportSessions?.() || "[]"], {
@@ -3236,6 +3969,7 @@
         }
         if (event.key === "Escape") {
           closeDrawer();
+          setVisionOpen(false);
           $("#themePop")?.setAttribute("hidden", "");
           $("#localePop")?.setAttribute("hidden", "");
           $$(".modal.show").forEach((el) => el.classList.remove("show"));
@@ -3255,7 +3989,7 @@
       put("#translateTagCount", `${refs.length} 个`);
       refs.slice(0, 60).forEach((ref) => {
         const button = doc.createElement("button");
-        button.className = "translate-tag";
+        button.className = "translate-tag btn btn-chip";
         button.textContent = `${ref.en || ref.tag?.en || ""}${ref.zhPrimary ? ` · ${ref.zhPrimary}` : ""}`;
         button.onclick = () => {
           const id = ref.tag?.id || ref.en;
@@ -3271,10 +4005,13 @@
       const body = $("#translateThinkingBody");
       const title = $("#translateThinkingTitle");
       if (!box) return;
+      const wasHidden = box.hidden;
       box.hidden = !visible;
       if (body && text != null) body.textContent = text;
       if (title) title.textContent = localized(done ? "ui.translation.aiThinkingDone" : "ui.translation.aiThinkingNow", done ? "💭 AI 思考完成" : "💭 AI 正在思考…");
-      if (visible && !done) box.open = false;
+      // Initialize a new thinking panel as collapsed, but never overwrite the
+      // user's toggle while streaming new reasoning chunks into it.
+      if (visible && !done && wasHidden) box.open = false;
     }
     async function translate(useAi) {
       const input = str($("#translateInput")?.value);
@@ -3322,6 +4059,10 @@
       if (ui.started) return;
       ui.started = true;
       restoreTags();
+      ui.searchPrecision = normaliseSearchPrecision(storage.get("app.searchPrecision", "standard"));
+      $("#searchPrecision")?.setAttribute("value", ui.searchPrecision);
+      if ($("#searchPrecision")) $("#searchPrecision").value = ui.searchPrecision;
+      tags?.setSearchPrecision?.(ui.searchPrecision);
       const theme = storage.get(
         "app.theme",
         storage.get("rewrite_theme", "light"),
@@ -3329,7 +4070,7 @@
       applyTheme(theme);
       ensurePromptState();
       bind();
-      setTalkMode("assistant");
+      setTalkMode(storage.get("app.talkMode", "assistant"), { persist: false });
       resizeTalkInput();
       loadSettings({ fetch: false });
       refreshCapabilitiesStatus({ force: true });
@@ -3340,7 +4081,7 @@
       renderSelection();
       renderPrompt();
       renderTalk();
-      renderImages("talk", "#talkImgRow");
+      renderConversationRepository();
       renderVisionPreview();
       renderEmbeddedVision();
       locale(storage.get("app.locale", storage.get("rewrite_locale", "zh-CN")));

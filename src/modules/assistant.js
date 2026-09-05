@@ -15,6 +15,8 @@ const { createComfy } = require('./comfy');
 const { createCalls } = require('./calls');
 const { createAiRunner } = require('./ai-runner');
 const { addCandidate, evaluateCandidate, markRecommended, selectCandidate, snapshot: candidateSnapshot, finalCandidate } = require('./draw-candidates');
+const { createImageRepository } = require('./image-repository');
+const { createVisionTempStore } = require('./vision-temp-store');
 
 const PROMPT_FILES = Object.freeze({
   main: '01-内部主提示词-MAIN_PROMPT.txt',
@@ -56,10 +58,9 @@ const DEFAULT_PROMPT_MODS = Object.freeze({
   comfy: ['draw']
 });
 
-const TOOL_GUIDANCE = `【可调用工具与硬性调用规则】
-工具名称以函数 schema 中的 name 为准（界面显示名中的点号会转换为下划线，例如 tags.search=tags_search、comfy.render=comfy_render、vision.processOne=vision_processOne）。需要使用工具时，必须返回原生 tool_calls/function call，不要只在普通文字中说“我将调用工具”。
-遇到不确定、可能不是标准的站内 Tag 时，先调用 tags_search（query 填待确认的 Tag）；查询结果只作辅助参考，用户明确给出的 Tag 优先。需要识图时必须调用 vision_processOne，并传入明确的单个 imageId 与 mode（metadata、local 或 ai）；不要传 imageIds 数组，也不要让工具猜图片。识图结果只提供常见绘图 Tag 辅助参考，可能漏掉细节、误判或识别过多，不能当作绝对事实。
-调用工具时只传递完成当前任务所需的参数，不要伪造工具结果。`;
+const TOOL_GUIDANCE = `【Compact JSON 调用规则】
+需要查询 Tag、读取当前会话图片、识图、出图或设置会话图片标题时，只返回独立一行 JSON（或 json 代码块），根对象使用稳定的 call 字段：search、images、vision、render、title。只填写对应调用表声明的少量字段；不要返回原生 tool_calls/function_call，不要提交工作流、节点参数、本地路径、Data URL 或完整工具结果。
+search 只传 query 和可选 precision；vision 的 image 必须是当前会话编号、候选编号、唯一标题或当前临时图，一次只读一张；render 只传 prompt、negative、iterations、seed；title 只修改当前会话关联。调用结果会以短摘要回注，图片和工具数据由程序按需读取。`;
 const VISION_MODEL_HINT = /vision|[-_]?vl(?:[-_]|$)|gpt-4o|gpt-4\.1|qwen.*vl|llava|moondream|internvl|minicpm[-_]?v|pixtral|gemma.*vision|gemini|claude-3|claude.*sonnet|glm-4v|qvq|deepseek.*(?:vision|vl)|kimi.*vision/i;
 const TEXT_ONLY_MODEL_HINT = /deepseek-(?:chat|reasoner|v[23](?:\.\d+)?)(?:$|[-_:])|deepseek-v4-(?:flash|pro)(?![-_]vision)(?:$|[-_:])|gpt-3\.5|text-embedding|(?:^|\/)qwen(?:2(?:\.5)?|3)(?:$|[-_:])|(?:^|\/)llama3(?:$|[-_:])/i;
 
@@ -213,6 +214,24 @@ function imageUrl(value) {
   return text(value.dataUrl || value.url || value.src || value.previewUrl || value.viewUrl);
 }
 
+function safeRemoteImageUrl(value) {
+  const source = text(value);
+  if (!source) return '';
+  if (/^data:image\/[a-z0-9.+-]+(?:;[a-z0-9._=-]+)*,/i.test(source)) return source;
+  try {
+    const parsed = new URL(source);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? source : '';
+  } catch { return ''; }
+}
+
+function imageBytesDataUrl(value) {
+  if (!isObject(value) || !value.bytes || typeof Buffer === 'undefined') return '';
+  try {
+    const mime = /^image\//i.test(text(value.mime || value.type)) ? text(value.mime || value.type) : 'image/png';
+    return `data:${mime};base64,${Buffer.from(value.bytes).toString('base64')}`;
+  } catch { return ''; }
+}
+
 function contentToolCalls(value) {
   if (!Array.isArray(value)) return [];
   return value.filter(item => isObject(item) && /^(?:tool_use|tool_call|function_call|function)$/i.test(text(item.type)))
@@ -221,9 +240,30 @@ function contentToolCalls(value) {
 
 function normaliseImages(value) {
   return list(value).map((item) => {
-    if (typeof item === 'string') return { dataUrl: item };
-    return isObject(item) ? item : null;
-  }).filter((item) => item && imageUrl(item));
+    if (typeof item === 'string') {
+      const safe = safeRemoteImageUrl(item);
+      return safe ? { dataUrl: safe } : null;
+    }
+    if (!isObject(item)) return null;
+    const safe = [item.dataUrl, item.url, item.src, item.previewUrl, item.viewUrl]
+      .map(safeRemoteImageUrl).find(Boolean) || '';
+    if (safe) return { ...item, dataUrl: safe };
+    const materialised = imageBytesDataUrl(item);
+    return materialised ? { ...item, dataUrl: materialised } : null;
+  }).filter(Boolean);
+}
+
+function strictToolCalls(value) {
+  const rows = Array.isArray(value) ? value : value == null ? [] : [value];
+  return rows.map((item, index) => {
+    if (!isObject(item) || !text(item.id || item.call_id || item.callId)) return null;
+    const call = normaliseToolCall(item, index);
+    if (!call?.id || !call.function?.name) return null;
+    try {
+      if (!isObject(JSON.parse(call.function.arguments))) return null;
+    } catch { return null; }
+    return call;
+  }).filter(Boolean);
 }
 
 /** OpenAI-compatible multimodal content. */
@@ -240,45 +280,114 @@ function messageForApi(message, imageResolver) {
   if (!['system', 'user', 'assistant', 'tool'].includes(role)) return null;
   if (role === 'tool') {
     const toolBody = message.content != null ? message.content : message.text;
+    const toolCallId = text(message.tool_call_id || message.toolCallId);
+    // OpenAI-compatible APIs reject an isolated role:tool message. Drop it at
+    // the adapter boundary instead of forwarding an empty tool_call_id.
+    if (!toolCallId) return null;
     return {
       role,
-      tool_call_id: text(message.tool_call_id || message.toolCallId),
-      name: text(message.name),
-      content: Array.isArray(toolBody) ? clone(toolBody) : contentText(toolBody)
+      tool_call_id: toolCallId,
+      ...(text(message.name) ? { name: text(message.name) } : {}),
+      content: Array.isArray(toolBody) ? sessionClone(toolBody, 'result') : redactHistoryString(contentText(toolBody))
     };
   }
   let body = message.content != null ? message.content : message.text;
+  // Most OpenAI-compatible APIs only accept image parts on user messages.
+  // Generated images are kept on assistant history entries for UI/candidate
+  // rendering, but must not be sent back as assistant message content.
+  const allowImages = role === 'user';
   const ref = text(message.imageReference || message.imageRef || message.imgRef);
   if (Array.isArray(body)) {
     body = body.map((part) => {
       if (!isObject(part)) return { type: 'text', text: contentText(part) };
-      if (part.type === 'image_url' && part.image_url) return { type: 'image_url', image_url: { url: imageUrl(part.image_url) || imageUrl(part) } };
+      if (part.type === 'image_url' && part.image_url) {
+        const url = safeRemoteImageUrl(imageUrl(part.image_url) || imageUrl(part));
+        return url ? { type: 'image_url', image_url: { url } } : { type: 'text', text: '' };
+      }
       if (part.type === 'text') return { type: 'text', text: contentText(part.text) };
       return { type: 'text', text: contentText(part) };
-    }).filter((part) => part.type !== 'text' || part.text);
+    }).filter((part) => (allowImages || (part.type !== 'image_url' && part.type !== 'image')) && (part.type !== 'text' || part.text));
     if (ref) body.unshift({ type: 'text', text: ref });
   } else if (ref) body = `${contentText(body)}\n\n${ref}`.trim();
-  let images = normaliseImages(message.images || message.imgs);
-  if (!images.length && imageResolver && message.imageIds) images = normaliseImages(list(message.imageIds).map(imageResolver));
+  let images = allowImages ? normaliseImages(message.images || message.imgs) : [];
+  if (allowImages && !images.length && imageResolver && message.imageIds) images = normaliseImages(list(message.imageIds).map(imageResolver));
   if (Array.isArray(body)) {
-    if (images.length && !body.some((part) => part.type === 'image_url')) body = [...body, ...normaliseImages(images).map((item) => ({ type: 'image_url', image_url: { url: imageUrl(item) } }))];
+    if (allowImages && images.length && !body.some((part) => part.type === 'image_url')) body = [...body, ...normaliseImages(images).map((item) => ({ type: 'image_url', image_url: { url: imageUrl(item) } }))];
     return { role, content: body.length ? body : [{ type: 'text', text: '' }] };
   }
   const output = { role, content: images.length ? contentParts(body, images) : contentText(body) };
-  const calls = message.tool_calls || message.toolCalls;
-  if (role === 'assistant' && Array.isArray(calls) && calls.length) output.tool_calls = clone(calls);
+  // `toolCalls` (camelCase) is the persisted UI trace and contains results,
+  // artifacts and candidates; it is not an OpenAI protocol `tool_calls`
+  // array. Only an explicitly supplied snake_case array belongs in the API
+  // payload, and normalize it to the required id/function shape.
+  const calls = message.tool_calls;
+  if (role === 'assistant' && Array.isArray(calls) && calls.length) {
+    const protocolCalls = strictToolCalls(calls);
+    if (protocolCalls.length) output.tool_calls = protocolCalls;
+  }
   return output;
 }
 
-function sessionClone(value) {
-  if (value == null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(sessionClone);
+const PRIVATE_HISTORY_KEYS = new Set([
+  'bytes', 'dataUrl', 'path', 'filePath', 'workflow', 'viewUrl', 'url',
+  'src', 'previewUrl', 'objectUrl', 'thumbnailUrl', 'blob', 'blobId',
+  'data_url', 'file_path', 'view_url', 'preview_url', 'object_url', 'image_url', 'imageUrl'
+]);
+
+function redactHistoryString(value) {
+  return String(value || '')
+    .replace(/data:[^\s,)]+/gi, '[image]')
+    .replace(/(?:file|blob):[^\s,)]+/gi, '[url]')
+    .replace(/https?:\/\/[^\s,)]+/gi, '[url]')
+    .replace(/(?:[A-Za-z]:[\\/]|\\\\)[^\s,)]+/g, '[path]');
+}
+
+function sessionClone(value, context = '') {
+  if (value == null || typeof value !== 'object') {
+    return context === 'result' || context === 'toolCalls' || context === 'artifact' || context === 'raw'
+      ? (typeof value === 'string' ? redactHistoryString(value) : value)
+      : value;
+  }
+  if (Array.isArray(value)) return value.map(item => sessionClone(item, context)).filter(item => item !== undefined);
   const output = {};
   for (const [key, item] of Object.entries(value)) {
-    if (key === 'bytes' || key === 'dataUrl') continue;
-    output[key] = sessionClone(item);
+    const lowerKey = String(key).toLowerCase();
+    if (PRIVATE_HISTORY_KEYS.has(key) || /^(?:bytes|dataurl|data_url|path|filepath|file_path|workflow|viewurl|view_url|url|src|previewurl|preview_url|objecturl|object_url|thumbnailurl|image_url|imageurl|blob|blobid)$/.test(lowerKey)) continue;
+    if (['result', 'toolcalls', 'artifact', 'raw', 'resolved'].includes(String(context).toLowerCase())
+      && /^(?:imageid|refid|artifactid|promptid|finalimageid|imageids|refids)$/.test(lowerKey)) continue;
+    const nextContext = /^(?:result|toolCalls|artifact|raw|resolved)$/i.test(key) || context === 'toolCalls' ? key : context;
+    if (typeof item === 'string' && (context === 'toolCalls' || context === 'result' || context === 'artifact' || context === 'raw' || key === 'arguments')) {
+      // Native tool arguments are often JSON strings; sanitize both the JSON
+      // fields and any plain provider text before it reaches session storage.
+      let parsed = null;
+      try { parsed = JSON.parse(item); } catch { /* plain text */ }
+      output[key] = parsed && typeof parsed === 'object'
+        ? sessionClone(parsed, 'result')
+        : redactHistoryString(item);
+      continue;
+    }
+    output[key] = sessionClone(item, nextContext);
   }
   return output;
+}
+
+function sanitiseApiMessages(messages) {
+  const rows = list(messages).filter(Boolean);
+  const assistantCallIds = new Set();
+  const toolCallIds = new Set();
+  for (const message of rows) {
+    if (message.role === 'assistant') for (const call of message.tool_calls || []) if (call?.id) assistantCallIds.add(String(call.id));
+    if (message.role === 'tool' && message.tool_call_id) toolCallIds.add(String(message.tool_call_id));
+  }
+  return rows.map(message => {
+    if (message.role === 'tool') return assistantCallIds.has(String(message.tool_call_id)) ? message : null;
+    if (message.role !== 'assistant' || !Array.isArray(message.tool_calls)) return message;
+    const paired = message.tool_calls.filter(call => call?.id && toolCallIds.has(String(call.id)));
+    if (paired.length) return { ...message, tool_calls: paired };
+    const output = { ...message };
+    delete output.tool_calls;
+    return output;
+  }).filter(Boolean);
 }
 
 function splitThink(value) {
@@ -521,13 +630,15 @@ function createAiService(owner, initialConfig = {}, injectedGateway = null) {
 
   function getConfig() { return clone(config); }
 
-  function modelsUrl(base) {
+  function modelsUrls(base) {
     const value = text(base).replace(/\/+$/, '');
-    if (!value) return '';
+    if (!value) return [];
+    if (/\/models$/i.test(value)) return [value];
     if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/v1)?$/i.test(value)) {
-      return value.replace(/\/v1$/i, '') + '/api/tags';
+      const origin = value.replace(/\/v1$/i, '');
+      return [`${origin}/v1/models`, `${origin}/api/tags`];
     }
-    return value + '/models';
+    return [value + '/models'];
   }
 
   function modelNames(payload) {
@@ -551,7 +662,7 @@ function createAiService(owner, initialConfig = {}, injectedGateway = null) {
     if (typeof messages === 'string') messages = [{ role: 'user', content: messages }];
     else if (isObject(messages) && !Array.isArray(messages)) messages = [{ role: 'user', content: text(messages.text || messages.prompt) }];
     const opts = mergedOptions(options);
-    const apiMessages = list(messages).map((item) => messageForApi(item, owner && owner.resolveImage)).filter(Boolean);
+    const apiMessages = sanitiseApiMessages(list(messages).map((item) => messageForApi(item, owner && owner.resolveImage)).filter(Boolean));
     if (!apiMessages.length) apiMessages.push({ role: 'user', content: '' });
     if (gateway) {
       const startedAt = Date.now();
@@ -588,6 +699,12 @@ function createAiService(owner, initialConfig = {}, injectedGateway = null) {
     if (Array.isArray(opts.tools) && opts.tools.length) body.tools = clone(opts.tools);
     if (opts.tool_choice != null) body.tool_choice = opts.tool_choice;
     if (opts.maxTokens != null && Number(opts.maxTokens) > 0) body.max_tokens = Number(opts.maxTokens);
+    // Some OpenAI-compatible providers expose a standard switch for their
+    // reasoning budget. Keep it opt-in so ordinary chat requests remain
+    // unchanged; translation passes `none` to request direct output.
+    if (opts.reasoning_effort != null) body.reasoning_effort = opts.reasoning_effort;
+    if (opts.enable_thinking != null) body.enable_thinking = opts.enable_thinking;
+    if (opts.thinking != null) body.thinking = clone(opts.thinking);
     try {
       const response = await fetch(requestUrl(opts.base), {
         method: 'POST',
@@ -630,23 +747,30 @@ function createAiService(owner, initialConfig = {}, injectedGateway = null) {
 
   async function listModels(options = {}) {
     const opts = mergedOptions(options);
-    const url = modelsUrl(opts.base);
-    if (!url) return { ok: false, models: [], status: 'config', error: '请先填写 API 地址' };
+    const urls = modelsUrls(opts.base);
+    if (!urls.length) return { ok: false, models: [], status: 'config', error: '请先填写 API 地址' };
     if (typeof fetch !== 'function') return { ok: false, models: [], status: 'unavailable', error: '当前环境没有 fetch' };
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
     const timeout = setTimeout(() => controller?.abort?.(), Number(options.timeoutMs) || 8000);
+    let lastError = null;
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json', ...(opts.key ? { Authorization: 'Bearer ' + opts.key } : {}) },
-        signal: controller?.signal
-      });
-      if (!response.ok) throw new Error('模型列表请求失败：HTTP ' + response.status);
-      const payload = await response.json();
-      const models = [...new Set(modelNames(payload))];
-      return { ok: true, models, url };
-    } catch (error) {
-      return { ok: false, models: [], status: 'error', error: text(error?.message, String(error || '模型列表请求失败')), url };
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: { Accept: 'application/json', ...(opts.key ? { Authorization: 'Bearer ' + opts.key } : {}) },
+            signal: controller?.signal
+          });
+          if (!response.ok) throw new Error('模型列表请求失败：HTTP ' + response.status);
+          const payload = await response.json();
+          const models = [...new Set(modelNames(payload))];
+          if (models.length || urls.length === 1) return { ok: true, models, url };
+          lastError = new Error('模型列表为空');
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      return { ok: false, models: [], status: 'error', error: text(lastError?.message, '模型列表请求失败'), url: urls[0] };
     } finally {
       clearTimeout(timeout);
     }
@@ -762,6 +886,11 @@ function createAssistant(options = {}) {
   let calls = null;
   let visionService = options.visionService || null;
   let runner = null;
+  // The repository is created after the AI/call adapters. Keep a late-bound
+  // reference so the Vision temp store can still enforce conversation scope
+  // without exposing a global Images fallback during startup.
+  let imageRepository = null;
+  const compactCallCache = new Map();
   const comfy = options.comfy && typeof options.comfy.render === 'function' ? options.comfy : createComfy(options.comfyOptions || {});
   if (options.comfyBase) comfy.setBase?.(options.comfyBase);
   if (options.comfyWorkflow) comfy.setWorkflow?.(options.comfyWorkflow);
@@ -815,8 +944,7 @@ function createAssistant(options = {}) {
       visionInheritPrimary: options.visionApi?.inheritPrimary === undefined ? !options.visionApi : Boolean(options.visionApi.inheritPrimary),
       visionBase: text(options.visionApi?.base || options.visionApi?.apiBase), visionModel: text(options.visionApi?.model), visionKey: text(options.visionApi?.key || options.visionApi?.apiKey), visionTemperature: Number(options.visionApi?.temperature) || 0.2, visionTimeoutMs: Number(options.visionApi?.timeoutMs) || 120000,
       strict: true, nsfwEnabled: false,
-      agentWriteEnabled: false,
-      comfyOn: false, comfyBase: 'http://127.0.0.1:8188', comfyWorkflow: '', comfyIters: 3,
+      comfyOn: false, comfyBase: 'http://127.0.0.1:8188', comfyWorkflow: '', comfyIters: 3, batchCount: 1, maxComfyCalls: 3, generateNegativeTags: false,
       comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, comfyNeg: '', comfySampler: '', comfyScheduler: ''
     };
     state.settings = { ...defaults, ...(isObject(readStored('rewrite_settings', {})) ? readStored('rewrite_settings', {}) : {}) };
@@ -830,29 +958,60 @@ function createAssistant(options = {}) {
     writeStored('rewrite_settings', state.settings); writeStored('rewrite_presets', state.presets); writeStored('rewrite_worlds', state.worlds); writeStored('rewrite_favorites', state.favorites);
     writeStored('rewrite_active_preset', state.activePreset); writeStored('rewrite_active_world', state.activeWorld);
   }
-  function newSession(title = '新对话') {
+  function newSession(title = '新对话', options2 = {}) {
+    if (activeJob && options2.cancelActive !== false) {
+      try { activeJob.controller?.abort?.(); } catch { /* best effort */ }
+    }
     const now = Date.now();
-    const session = { id: uid('session', sequence), title: text(title, '新对话'), messages: [], createdAt: now, updatedAt: now };
+    const used = new Set(state.sessions.map(item => text(item.id)).filter(Boolean));
+    let id = uid('session', sequence);
+    let suffix = 1;
+    while (used.has(id)) id = `${id}-new-${suffix++}`;
+    const session = { id, title: text(title, '新对话'), messages: [], createdAt: now, updatedAt: now };
     state.sessions.unshift(session); state.currentId = session.id; storageWrite(); return clone(session);
   }
-  function restoreSessions(value) {
+  function normaliseSessionList(value, usedSessionIds = new Set(), usedMessageIds = new Set()) {
+    const sessions = [];
+    const mapping = [];
+    if (!Array.isArray(value)) return { sessions, mapping };
+    for (const raw of value.filter(isObject)) {
+      const originalId = text(raw.id);
+      const baseId = originalId || uid('session', sequence);
+      let id = baseId;
+      let suffix = 1;
+      while (usedSessionIds.has(id)) id = `${baseId}-import-${suffix++}`;
+      usedSessionIds.add(id);
+      if (originalId) mapping.push({ from: originalId, to: id });
+      const messages = list(raw.messages).filter(isObject).map(message => {
+        const originalMessageId = text(message.id);
+        const baseMessageId = originalMessageId || uid('message', sequence);
+        let messageId = baseMessageId;
+        let messageSuffix = 1;
+        while (usedMessageIds.has(messageId)) messageId = `${baseMessageId}-import-${messageSuffix++}`;
+        usedMessageIds.add(messageId);
+        return {
+          id: messageId, role: normaliseRole(message.role) || 'user',
+          text: contentText(message.text != null ? message.text : message.content), imageIds: list(message.imageIds).filter(Boolean),
+          imageReference: text(message.imageReference || message.imageRef), mode: migrateLegacyMode(message.mode || message.profile), task: migrateLegacyTask(message.task || message.context || message.mode), result: sessionClone(message.result, 'result'),
+          reasoning: text(message.reasoning), toolCalls: Array.isArray(message.toolCalls) ? sessionClone(message.toolCalls, 'toolCalls') : [], candidates: candidateSnapshot(message.candidates), activity: activitySnapshot(message.activity), status: text(message.status, 'done'), createdAt: message.createdAt || Date.now()
+        };
+      });
+      sessions.push({ id, title: text(raw.title, '新对话'), messages, createdAt: raw.createdAt || Date.now(), updatedAt: raw.updatedAt || Date.now() });
+    }
+    return { sessions, mapping };
+  }
+  function restoreSessions(value, options2 = {}) {
     if (!Array.isArray(value)) return false;
-    state.sessions = value.filter(isObject).map((session) => ({
-      id: text(session.id, uid('session', sequence)), title: text(session.title, '新对话'),
-      messages: list(session.messages).filter(isObject).map((message) => ({
-        id: text(message.id, uid('message', sequence)), role: normaliseRole(message.role) || 'user',
-        text: contentText(message.text != null ? message.text : message.content), imageIds: list(message.imageIds).filter(Boolean),
-        imageReference: text(message.imageReference || message.imageRef), mode: migrateLegacyMode(message.mode || message.profile), task: migrateLegacyTask(message.task || message.context || message.mode), result: clone(message.result),
-        reasoning: text(message.reasoning), toolCalls: Array.isArray(message.toolCalls) ? clone(message.toolCalls) : [], candidates: candidateSnapshot(message.candidates), activity: activitySnapshot(message.activity), status: text(message.status, 'done'), createdAt: message.createdAt || Date.now()
-      })), createdAt: session.createdAt || Date.now(), updatedAt: session.updatedAt || Date.now()
-    }));
+    const normalised = normaliseSessionList(value, options2.usedSessionIds || new Set(), options2.usedMessageIds || new Set());
+    state.sessions = normalised.sessions;
     state.currentId = text(state.currentId) || state.sessions[0]?.id || ''; return true;
   }
   function sessionById(id) { return state.sessions.find((session) => session.id === (id || state.currentId)); }
   function currentSession() {
     const existing = sessionById();
-    if (existing) return existing;
-    newSession();
+    if (existing) { imageRepository?.finalizeMigration?.(); return existing; }
+    newSession('新对话', { cancelActive: false });
+    imageRepository?.finalizeMigration?.();
     return sessionById();
   }
   function resolveImage(value) {
@@ -877,18 +1036,26 @@ function createAssistant(options = {}) {
     return result;
   }
   function imageIds(items) { return items.map((item) => text(item && item.id)).filter(Boolean); }
+  function safeImageReference(value) {
+    return text(value)
+      .replace(/data:[^\s,)]+/gi, '[image]')
+      .replace(/(?:file|blob):[^\s,)]+/gi, '[url]')
+      .replace(/https?:\/\/[^\s,)]+/gi, '[url]')
+      .replace(/(?:imageId|refId)\s*[:=]\s*[^\s,;)]+/gi, '')
+      .replace(/(?:[A-Za-z]:[\\/]|\\\\)[^\s,)]+/g, '[path]')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
   function imageReference(items, analysis) {
     if (!items.length) return '';
-    if (analysis && text(analysis.referenceText)) return text(analysis.referenceText);
+    if (analysis && text(analysis.referenceText)) return safeImageReference(analysis.referenceText);
     const lines = [
       `【附图组 共${items.length}张】（按消息附件顺序编号）`,
-      '【Vision 调用规则】“图片1”等只是显示编号；调用 vision_processOne 时，imageId 必须原样使用下方括号中的真实 ID。'
+      '【Vision 调用规则】请使用“图N”、候选编号或明确标题引用图片；内部图片标识由程序在会话范围内解析。'
     ];
     items.forEach((item, index) => {
-      let label = '';
-      if (images && typeof images.reference === 'function' && item.id) { try { label = images.reference(item.id, index); } catch { /* fallback */ } }
-      const imageId = text(item.id);
-      lines.push(`${label || `图片${index + 1}`}：${item.filename || item.name || '用户附图'}${imageId ? `（imageId: ${imageId}）` : ''}`);
+      const title = safeImageReference(text(item.displayTitle || item.displayName || item.filename || item.name, '用户附图')).slice(0, 120);
+      lines.push(`图${index + 1}：${title}`);
     });
     return lines.join('\n');
   }
@@ -997,18 +1164,25 @@ function createAssistant(options = {}) {
     }
     return parts.filter(Boolean).join('\n\n');
   }
-  function sessionMessages(session) { return list(session && session.messages).map((message) => messageForApi(message, resolveImage)).filter(Boolean); }
+  function sessionMessages(session) { return sanitiseApiMessages(list(session && session.messages).map((message) => messageForApi(message, resolveImage)).filter(Boolean)); }
   function normaliseInput(value) {
-    const input = isObject(value) ? { ...value } : { text: value }; input.text = text(input.text != null ? input.text : input.prompt); input.imageIds = list(input.imageIds).filter(Boolean); input.images = resolveInputImages(input); if (!input.imageIds.length) input.imageIds = imageIds(input.images); return input;
+    const input = isObject(value) ? { ...value } : { text: value };
+    input.text = text(input.text != null ? input.text : input.prompt);
+    input.imageIds = list(input.imageIds).filter(Boolean);
+    input.pendingRefIds = list(input.pendingRefIds || input.pendingRefs).filter(Boolean);
+    input.explicitImageRefs = list(input.explicitImageRefs || input.imageRefs).filter(Boolean);
+    input.images = resolveInputImages(input);
+    if (!input.imageIds.length) input.imageIds = imageIds(input.images);
+    return input;
   }
   function currentUserMessage(input, body, imagesForMessage) {
-    const content = text(body != null ? body : input.text); const reference = text(input.imageReference || input.imageRef); const full = [content, reference].filter(Boolean).join('\n\n');
+    const content = text(body != null ? body : input.text); const reference = safeImageReference(input.imageReference || input.imageRef); const full = [content, reference].filter(Boolean).join('\n\n');
     if (!full && !imagesForMessage.length) return null; return { role: 'user', content: imagesForMessage.length ? contentParts(full, imagesForMessage) : full };
   }
   function append(role, value, extra = {}, sessionId) {
     const session = sessionById(sessionId) || currentSession();
     const message = { id: uid('message', sequence), role: normaliseRole(role) || 'user', text: contentText(value), imageIds: list(extra.imageIds).filter(Boolean), imageReference: text(extra.imageReference || extra.imageRef), mode: normaliseMode(extra.mode), task: normaliseTask(extra.task || extra.context || extra.mode), result: clone(extra.result), reasoning: text(extra.reasoning), toolCalls: Array.isArray(extra.toolCalls) ? clone(extra.toolCalls) : [], candidates: candidateSnapshot(extra.candidates), activity: activitySnapshot(extra.activity), status: text(extra.status, 'done'), createdAt: Date.now() };
-    session.messages.push(message); session.updatedAt = Date.now(); storageWrite(); return clone(message);
+    session.messages.push(message); session.updatedAt = Date.now(); storageWrite(); return sessionClone(message);
   }
   function messageLocation(value, sessionId) {
     const session = sessionById(sessionId) || currentSession();
@@ -1085,13 +1259,81 @@ function createAssistant(options = {}) {
     const mode = normaliseMode(input.mode || input.profile);
     const task = normaliseTask(input.task || input.context || (mode === 'draw' ? input.mode : 'assistant'));
     return withJob(mode, input, config, async (job) => {
-      if (!input.text && !input.images.length) return { ok: false, status: 'empty', text: mode === 'draw' ? '请输入画面描述或添加图片' : '请输入内容或添加图片', mode };
       const session = sessionById(input.sessionId) || currentSession();
+      const repository = imageRepository;
+      const pendingRefs = input.pendingRefIds.length
+        ? input.pendingRefIds
+        : (repository?.pendingConversationReferences?.(session.id) || []).map(item => item.refId);
+      input.pendingRefIds = [...new Set(pendingRefs.map(String).filter(Boolean))];
+      input.imageRepository = repository;
+      input.visionTempStore = visionTempStore;
+      input.requestId = job.id;
+      input.sessionId = session.id;
+      // The only compact write exposed to the main Assistant is a
+      // conversation-scoped temporary title. Keep it enabled by default while
+      // still honoring an explicit false from callers; gallery/global writes
+      // remain unavailable through this adapter.
+      input.allowToolWrite = input.allowToolWrite !== false;
+      input.isCurrent = () => state.currentId === session.id && activeJob === job && !job.signal?.aborted;
+      input.resolveImage = input.resolveImage || (id => {
+        const resolved = resolveImage(id);
+        if (resolved && imageUrl(resolved)) return resolved;
+        try { return images?.preview?.(id) || resolved; } catch { return resolved; }
+      });
+      // The UI normally sends pending image IDs, but programmatic callers and
+      // restored sessions may provide only repository refs. Materialise just
+      // those refs for the current request; historical conversation images
+      // remain lightweight IDs and are not implicitly re-attached.
+      let conversationRows = [];
+      try {
+        const listed = repository?.listConversation?.(session.id, { includePending: true });
+        conversationRows = Array.isArray(listed) ? listed : (listed?.items || []);
+      } catch { /* optional repository */ }
+      // Programmatic callers may pass an explicit imageId before creating a
+      // ConversationImageRef. If it resolves through the controlled Images
+      // store, establish that relationship here; arbitrary paths/URLs never
+      // reach this branch. Gallery-owned assets remain shared references.
+      if (repository?.attachToConversation && input.imageIds.length) {
+        let galleryIds = new Set();
+        try {
+          const listedGallery = repository.listGallery?.({ order: 'oldest' });
+          const galleryRows = Array.isArray(listedGallery) ? listedGallery : (listedGallery?.items || []);
+          galleryIds = new Set(galleryRows.map(item => String(item.imageId || item.id)).filter(Boolean));
+        } catch { /* optional gallery adapter */ }
+        for (const value of input.imageIds) {
+          const id = text(value);
+          if (!id || conversationRows.some(row => String(row.imageId) === id || String(row.refId) === id)) continue;
+          const resolved = input.resolveImage(id);
+          if (!resolved || resolved.source === 'workflow') continue;
+          try {
+            const attached = repository.attachToConversation(session.id, id, { source: galleryIds.has(id) ? 'gallery' : 'upload', pending: true });
+            if (attached) conversationRows.push(attached);
+          } catch { /* malformed/unknown IDs remain rejected by the Runner */ }
+        }
+      }
+      const requestedRefs = new Set(input.pendingRefIds);
+      if (input.imageIds.length) for (const id of input.imageIds) {
+        const row = conversationRows.find(item => String(item.imageId) === String(id) || String(item.refId) === String(id));
+        if (row?.refId) requestedRefs.add(String(row.refId));
+      }
+      if (!input.imageIds.length) input.imageIds = conversationRows.filter(item => requestedRefs.has(String(item.refId))).map(item => item.imageId).filter(Boolean);
+      const materialised = input.imageIds.map(id => input.resolveImage(id)).filter(item => item && item.source !== 'workflow');
+      if (materialised.length) {
+        input.images = materialised;
+        input.imageIds = materialised.map(item => item.id || item.imageId).filter(Boolean);
+      } else if (input.imageIds.length) {
+        input.imageIds = [];
+      }
+      if (!input.text && !input.images.length) return { ok: false, status: 'empty', text: mode === 'draw' ? '请输入画面描述或添加图片' : '请输入内容或添加图片', mode };
       const historyMessages = sessionMessages(session);
       const analysis = input.images.length && input.autoLocalVision === true ? await analyseImages(input.images, input, job) : null;
       input.imageReference = input.imageReference || imageReference(input.images, analysis);
       input.comfyWorkflow = input.comfyWorkflow != null ? input.comfyWorkflow : (config.comfyWorkflow != null ? config.comfyWorkflow : state.settings.comfyWorkflow);
       input.maxIterations = Math.max(1, Math.min(10, Number(input.maxIterations || config.maxIterations || state.settings.comfyIters || 3)));
+      // Bind Vision cache entries to the effective prompt text. This catches
+      // prompt-source edits even when callers do not provide an explicit
+      // numeric prompt version.
+      input.promptVersion = text(input.promptVersion || input.promptOverrides?.vision || prompt('vision'));
       if (task === 'comfy') {
         if (config.comfyBase || config.comfyUrl || config.url) comfy.setBase?.(config.comfyBase || config.comfyUrl || config.url);
         if (input.comfyWorkflow != null) comfy.setWorkflow?.(input.comfyWorkflow);
@@ -1102,7 +1344,7 @@ function createAssistant(options = {}) {
         systemParts.push(compose('generate', input, { localTags: local, imageReference: input.imageReference }));
         if (task === 'comfy') {
           const maxIterations = Math.max(1, Math.min(10, Number(config.maxIterations || input.maxIterations || state.settings.comfyIters || 3)));
-          systemParts.push(`【ComfyUI 绘图任务（最多 ${maxIterations} 次渲染）】\n需要实际出图时调用 comfy_render；只传正向和负向 Tag，尺寸、步数、CFG、工作流等使用用户设置。每次返图都会成为一个候选结果，必须结合用户要求、参考图（如有）和返图质量判断是否继续。结束时如果已有候选，请在回复末尾写出唯一的“【最佳候选】candidate-N”（N 为实际生成轮次）；不要根据最后一张图片重新臆造提示词。返图后如需分析，调用 vision_processOne 并传入明确 imageId。`);
+          systemParts.push(`【ComfyUI 绘图任务（最多 ${maxIterations} 次渲染）】\n需要实际出图时返回独立 JSON：{"call":"render","prompt":"正向 Tag","negative":"可选负向 Tag"}；尺寸、步数、CFG、工作流等使用用户设置。每次返图都会成为一个候选结果，必须结合用户要求、参考图（如有）和返图质量判断是否继续。结束时如果已有候选，请在回复末尾写出唯一的“【最佳候选】candidate-N”（N 为实际生成轮次）；不要根据最后一张图片重新臆造提示词。返图后如需分析，返回 {"call":"vision","image":"candidate-N"}。`);
         }
       }
       systemParts.push(TOOL_GUIDANCE);
@@ -1115,6 +1357,7 @@ function createAssistant(options = {}) {
       append('user', input.text || '（附图）', { mode, task, imageIds: input.imageIds, imageReference: input.imageReference }, session.id);
       const live = append('assistant', '', { mode, status: 'streaming' }, session.id);
       const liveMessage = session.messages[session.messages.length - 1];
+      input.messageId = liveMessage.id;
       let liveCandidates = candidateSnapshot(liveMessage.candidates);
       let liveActivity = activitySnapshot(liveMessage.activity);
       input.onStart?.({ user: session.messages[session.messages.length - 2], assistant: live });
@@ -1131,6 +1374,7 @@ function createAssistant(options = {}) {
         input.onDelta?.(content, reasoning, clone(liveMessage));
       };
       const onToolEvent = event => {
+        if (input.isCurrent && !input.isCurrent()) return;
         const eventType = text(event?.type);
         if (['ai-start', 'ai-complete', 'start', 'complete', 'event', 'candidate-ready', 'candidate-evaluated', 'candidate-recommended', 'tool-required', 'tool-choice-fallback'].includes(eventType)) {
           if (eventType === 'ai-complete') {
@@ -1173,6 +1417,12 @@ function createAssistant(options = {}) {
         }
         if (event?.type === 'candidate-ready' && event.candidate) {
           liveCandidates = addCandidate(liveCandidates, event.candidate);
+          const generatedImageId = text(event.candidate.imageId);
+          if (generatedImageId && event.repositoryAttached !== true) imageRepository?.attachToConversation?.(session.id, generatedImageId, {
+            source: 'comfy',
+            messageId: liveMessage.id,
+            candidateId: text(event.candidate.id)
+          });
           liveMessage.candidates = candidateSnapshot(liveCandidates);
           liveMessage.imageIds = [...new Set(liveCandidates.map(item => text(item.imageId)).filter(Boolean))];
           liveMessage.result = { ...(liveMessage.result || {}), candidates: candidateSnapshot(liveCandidates) };
@@ -1204,6 +1454,9 @@ function createAssistant(options = {}) {
         liveMessage.result = { ...sessionClone(failed), candidates: candidateSnapshot(liveCandidates) };
         storageWrite();
         return { ...failed, mode, analysis, sessionId: session.id };
+      }
+      if (result?.ok !== false && input.pendingRefIds.length && (!input.isCurrent || input.isCurrent())) {
+        try { imageRepository?.markSent?.(session.id, input.pendingRefIds); } catch { /* persistence is best effort */ }
       }
       const renderedImageIds = [
         ...liveCandidates.map(item => item.imageId),
@@ -1341,17 +1594,35 @@ function createAssistant(options = {}) {
   restoreBusinessState();
   ai.configure({ base: state.settings.base, model: state.settings.model, key: state.settings.key, temperature: state.settings.temperature, timeoutMs: state.settings.timeoutMs });
   visionAi.configure(visionProfile());
+  const visionTempStore = options.visionTempStore || createVisionTempStore({
+    images,
+    authorizeReference: reference => imageRepository?.authorizeVisionReference?.(reference) || null
+  });
   calls = options.calls || createCalls({
     tags,
     images,
+    visionTempStore,
     visionService: options.visionService,
     localVision: options.localVision || options.vision,
     comfy,
     prompts: promptSource,
     primaryAI: ai,
     visionAI: visionClient(),
+    getImageRepository: () => imageRepository,
+    generateTags: async input => {
+      const systemPrompt = prompt('generateTags') || '只返回 JSON：{"positiveTags":[]}。不要解释、建议或思维过程。';
+      const content = [input.requirements || input.description || '', Array.isArray(input.positiveTags) ? `已有Tag：${input.positiveTags.join(', ')}` : '', Array.isArray(input.referenceTags) ? `参考Tag：${input.referenceTags.join(', ')}` : ''].filter(Boolean).join('\n');
+      const image = input.imageId ? images?.get?.(String(input.imageId)) : null;
+      const userContent = image?.dataUrl
+        ? [{ type: 'text', text: content }, { type: 'image_url', image_url: { url: image.dataUrl } }]
+        : content;
+      const result = await visionClient().complete([{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }], { stream: false });
+      if (!result?.ok) return { ok: false, error: result?.error || 'Tag 子代理请求失败' };
+      try { const parsed = JSON.parse(String(result.text || '').match(/\{[\s\S]*\}/)?.[0] || '{}'); return { ok: true, positiveTags: Array.isArray(parsed.positiveTags) ? parsed.positiveTags : [], ...(input.allowNegativeTags && Array.isArray(parsed.negativeTags) ? { negativeTags: parsed.negativeTags } : {}) }; } catch { return { ok: false, error: 'Tag 子代理返回格式无效' }; }
+    },
     getPrompt: (key, version = 'effective') => version === 'default' && promptSource?.getDefault ? promptSource.getDefault(key) : prompt(key),
     getSettings: () => state.settings,
+    getCurrentSessionId: () => state.currentId,
     setSettings: value => {
       if (isObject(value)) state.settings = { ...state.settings, ...clone(value) };
       calls?.invalidateCapabilities?.();
@@ -1364,9 +1635,27 @@ function createAssistant(options = {}) {
     ai,
     calls,
     getSettings: () => state.settings,
-    toolNames: ['tags.search', 'vision.processOne', 'comfy.render']
+    toolNames: ['tags.search', 'vision.processOne', 'comfy.render'],
+    // The main Assistant speaks compact JSON. Legacy/native tool calls remain
+    // accepted by the runner's adapter and are only selected explicitly by
+    // compatibility callers.
+    compact: options.compact !== false,
+    callCache: compactCallCache,
+    visionCache: compactCallCache,
+    isCurrent: ({ sessionId, job }) => state.currentId === sessionId && (!activeJob || activeJob === job)
   });
-  const restored = storageRead(); if (!restoreSessions(restored)) newSession();
+  const restored = storageRead(); const restoredSessions = restoreSessions(restored); if (!restoredSessions) newSession();
+  const legacySessionImportPending = readStored('rewrite_migrated_v142', false) === true && readStored('rewrite_sessions_migrated', false) !== true;
+  imageRepository = createImageRepository({
+    images,
+    storage: options.storage,
+    sessions: () => state.sessions,
+    saveSessions: storageWrite,
+    currentSessionId: () => state.currentId,
+    deferCollectionMigration: !restoredSessions || legacySessionImportPending,
+    onReferenceRemoved: reference => visionTempStore?.invalidateReference?.(reference)
+  });
+  visionTempStore?.setAuthorizer?.(reference => imageRepository?.authorizeVisionReference?.(reference) || null);
   const api = {
     state, ai, prompts: clone(prompts), prompt: (key) => prompt(key), compose, parseReply,
     run: runUnified,
@@ -1375,28 +1664,52 @@ function createAssistant(options = {}) {
     getCapabilities: () => calls?.getCapabilities?.() || null,
     refreshCapabilities: options2 => calls?.refreshCapabilities?.(options2) || Promise.resolve(null),
     newSession,
-    currentSession: () => clone(currentSession()), sessions: () => state.sessions.map(clone),
+    currentSession: () => sessionClone(currentSession()), sessions: () => state.sessions.map(sessionClone),
     getSettings: () => clone(state.settings), setSettings(value = {}) { if (isObject(value)) state.settings = { ...state.settings, ...clone(value) }; ai.configure?.({ base: state.settings.base, model: state.settings.model, key: state.settings.key, temperature: state.settings.temperature, timeoutMs: state.settings.timeoutMs }); visionAi.configure?.(visionProfile()); calls?.invalidateCapabilities?.(); saveBusinessState(); return clone(state.settings); }, updateSettings(value = {}) { return api.setSettings(value); },
     listPresets: () => state.presets.map(clone), getPresets: () => state.presets.map(clone), setPresets(value) { state.presets = (Array.isArray(value) ? value : []).map(normalisePreset); state.activePreset = state.presets.find(item => item.id === state.activePreset)?.id || state.presets[0]?.id || ''; saveBusinessState(); return api.listPresets(); },
     addPreset(value) { const item = normalisePreset(value, state.presets.length); state.presets.push(item); state.activePreset = item.id; saveBusinessState(); return clone(item); }, removePreset(id) { if (state.presets.length <= 1) return false; const index = state.presets.findIndex(item => item.id === text(id)); if (index < 0) return false; state.presets.splice(index, 1); state.activePreset = state.presets[0]?.id || ''; saveBusinessState(); return true; }, getActivePreset: () => clone(state.presets.find(item => item.id === state.activePreset) || state.presets[0] || null), selectPreset(id) { if (!state.presets.some(item => item.id === text(id))) return false; state.activePreset = text(id); saveBusinessState(); return true; },
     listWorlds: () => state.worlds.map(clone), getWorlds: () => state.worlds.map(clone), setWorlds(value) { state.worlds = (Array.isArray(value) ? value : []).map(normaliseWorld); state.activeWorld = state.worlds.find(item => item.id === state.activeWorld)?.id || state.worlds[0]?.id || ''; saveBusinessState(); return api.listWorlds(); },
     addWorld(value) { const item = normaliseWorld(value, state.worlds.length); state.worlds.push(item); state.activeWorld = item.id; saveBusinessState(); return clone(item); }, removeWorld(id) { if (state.worlds.length <= 1) return false; const index = state.worlds.findIndex(item => item.id === text(id)); if (index < 0) return false; state.worlds.splice(index, 1); state.activeWorld = state.worlds[0]?.id || ''; saveBusinessState(); return true; }, getActiveWorld: () => clone(state.worlds.find(item => item.id === state.activeWorld) || state.worlds[0] || null), selectWorld(id) { if (!state.worlds.some(item => item.id === text(id))) return false; state.activeWorld = text(id); saveBusinessState(); return true; },
     listFavorites: () => state.favorites.map(clone), getFavorites: () => state.favorites.map(clone), setFavorites(value) { state.favorites = Array.isArray(value) ? value.map(clone) : []; saveBusinessState(); return api.listFavorites(); }, addFavorite(value) { const item = isObject(value) ? clone(value) : { id: uid('favorite', sequence), name: text(value, '未命名收藏') }; item.id = text(item.id, uid('favorite', sequence)); state.favorites.push(item); saveBusinessState(); return clone(item); }, removeFavorite(id) { const index = state.favorites.findIndex(item => item.id === text(id)); if (index < 0) return false; state.favorites.splice(index, 1); saveBusinessState(); return true; },
-    snapshot: () => ({ ...clone(state), sessions: state.sessions.map(clone), config: ai.getConfig(), visionConfig: visionClient().getConfig(), settings: clone(state.settings), presets: state.presets.map(clone), worlds: state.worlds.map(clone), favorites: state.favorites.map(clone) }),
+    snapshot: () => ({ ...clone(state), sessions: state.sessions.map(sessionClone), config: ai.getConfig(), visionConfig: visionClient().getConfig(), settings: clone(state.settings), presets: state.presets.map(clone), worlds: state.worlds.map(clone), favorites: state.favorites.map(clone) }),
     calls,
     visionService: calls?.visionService || null,
     visionAi: visionClient(),
-    switchSession(id) { if (!sessionById(id)) return false; state.currentId = id; return true; },
+     switchSession(id) {
+       if (!sessionById(id)) return false;
+       if (activeJob) {
+         try { activeJob.controller?.abort?.(); } catch { /* best effort */ }
+         state.status = 'cancelled';
+       }
+       state.currentId = id;
+       return true;
+     },
     renameSession(id, title) { const session = sessionById(id); if (!session) return false; session.title = text(title, session.title); session.updatedAt = Date.now(); storageWrite(); return clone(session); },
-    deleteSession(id) { const target = id || state.currentId; const index = state.sessions.findIndex((session) => session.id === target); if (index < 0) return false; state.sessions.splice(index, 1); state.currentId = state.sessions[0]?.id || ''; storageWrite(); return true; },
-    clearSession(id) { const session = sessionById(id); if (!session) return false; session.messages = []; session.updatedAt = Date.now(); storageWrite(); return clone(session); },
+    imageRepository,
+    visionTempStore,
+    deleteSession(id, options = {}) { const target = id || state.currentId; if (!sessionById(target)) return false; const result = imageRepository.deleteSession(target, { retainImages: options.retainImages === true }); state.currentId = state.sessions[0]?.id || ''; storageWrite(); return result; },
+    clearSession(id) { const target = id || state.currentId; if (!sessionById(target)) return false; imageRepository.clearSessionContent(target); return clone(sessionById(target)); },
     append: (role, value, extra, sessionId) => append(role, value, extra, sessionId),
     editMessage,
     deleteMessage,
     rerunFromMessage,
     regenerateMessage: rerunFromMessage,
-    exportSessions: () => JSON.stringify(state.sessions.map(clone), null, 2),
-    importSessions(value, replace = false) { let parsed = value; try { if (typeof value === 'string') parsed = JSON.parse(value); } catch { return false; } const incoming = Array.isArray(parsed) ? parsed : parsed?.sessions; if (!Array.isArray(incoming)) return false; if (replace) state.sessions = []; restoreSessions([...state.sessions, ...incoming]); if (!state.currentId) state.currentId = state.sessions[0]?.id || ''; storageWrite(); return api.sessions(); },
+    exportSessions: () => JSON.stringify(state.sessions.map(sessionClone), null, 2),
+    importSessions(value, replace = false) {
+      let parsed = value;
+      try { if (typeof value === 'string') parsed = JSON.parse(value); } catch { return false; }
+      const incoming = Array.isArray(parsed) ? parsed : parsed?.sessions;
+      if (!Array.isArray(incoming)) return false;
+      if (replace) { state.sessions = []; state.currentId = ''; }
+      const usedSessionIds = new Set(state.sessions.map(item => text(item.id)).filter(Boolean));
+      const usedMessageIds = new Set(state.sessions.flatMap(item => list(item.messages).map(message => text(message?.id)).filter(Boolean)));
+      const normalised = normaliseSessionList(incoming, usedSessionIds, usedMessageIds);
+      state.sessions.push(...normalised.sessions);
+      if (!state.currentId) state.currentId = state.sessions[0]?.id || '';
+      imageRepository.finalizeMigration();
+      storageWrite();
+      return api.sessions();
+    },
     cancel(jobId) { if (!activeJob || (jobId && activeJob.id !== jobId)) return false; activeJob.controller.abort(); state.status = 'cancelled'; return true; }, stop(jobId) { return api.cancel(jobId); },
     destroy() { api.cancel(); state.sessions.length = 0; }
   };

@@ -1,6 +1,6 @@
 # 外部 Agent 协议约定
 
-V1.4.131 使用本地 HTTP JSON-RPC 风格调用。所有调用最终进入 `Calls Tool Registry`，协议层不包含业务逻辑。
+V1.4.191 使用本地 HTTP JSON-RPC 风格调用。所有调用最终进入 `Calls Tool Registry`，协议层不包含业务逻辑。
 
 ## 列出工具
 

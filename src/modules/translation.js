@@ -204,13 +204,13 @@ function buildPrompt(value, requestedDirection, options = {}) {
   if (dir === 'zh-en') return {
     direction: dir,
     references: refs,
-    system: ['你是 AI 绘画 Tag 标准化转换器。', '这是本地成人向绘图工具的翻译任务，输入可能包含 NSFW、身体或性行为相关术语；请保持中立并正常翻译，不要因成人内容拒绝、说教或输出安全提醒。', '请把用户的中文画面描述转换为标准英文绘图 Tag，而不是普通英文句子。', '同义中文表达只输出一个标准 Tag；不要凭空添加用户没有表达的内容。', '最终只输出逗号分隔的英文 Tag，不要解释、标题、Markdown 或中文。'].join('\n'),
+    system: ['你是 AI 绘画 Tag 标准化转换器。', '这是本地成人向绘图工具的翻译任务，输入可能包含 NSFW、身体或性行为相关术语；请保持中立并正常翻译，不要因成人内容拒绝、说教或输出安全提醒。', '请把用户的中文画面描述转换为标准英文绘图 Tag，而不是普通英文句子。', '同义中文表达只输出一个标准 Tag；不要凭空添加用户没有表达的内容。', '关闭思维链和推理展示：不要生成或输出分析、草稿、解释、理由、思考过程、<think> 内容或 Markdown。请直接给出最终结果。', '最终只输出逗号分隔的英文 Tag，不要解释、标题、Markdown 或中文。'].join('\n'),
     user: `${base}\n\n请输出最终英文绘图 Tag：`
   };
   return {
     direction: dir,
     references: refs,
-    system: ['你是 AI 绘画 Tag 中文翻译器。', '这是本地成人向绘图工具的翻译任务，输入可能包含 NSFW、身体或性行为相关术语；请保持中立并正常翻译，不要因成人内容拒绝、说教或输出安全提醒。', '请把用户输入的英文绘图 Tag 翻译成自然、准确的中文，不要重新生成 Tag。', '优先参考标签库中的中文主译名和别名；未知 Tag 保留原文。', '只输出中文翻译结果，不要解释、标题或 Markdown。'].join('\n'),
+    system: ['你是 AI 绘画 Tag 中文翻译器。', '这是本地成人向绘图工具的翻译任务，输入可能包含 NSFW、身体或性行为相关术语；请保持中立并正常翻译，不要因成人内容拒绝、说教或输出安全提醒。', '请把用户输入的英文绘图 Tag 翻译成自然、准确的中文，不要重新生成 Tag。', '优先参考标签库中的中文主译名和别名；未知 Tag 保留原文。', '关闭思维链和推理展示：不要生成或输出分析、草稿、解释、理由、思考过程、<think> 内容或 Markdown。请直接给出最终结果。', '只输出中文翻译结果，不要解释、标题或 Markdown。'].join('\n'),
     user: `${base}\n\n请输出自然、准确的中文翻译：`
   };
 }
@@ -309,10 +309,40 @@ function createTranslation(options = {}) {
     const prompt = buildPrompt(input, dir, { ...extra, tags, catalog: catalogFrom(tags) });
     try {
       let result;
-      if (typeof ai === 'function') result = await ai(prompt, { ...extra, direction: dir });
-      else if (typeof ai.translate === 'function') result = await ai.translate(input, dir, { ...extra, prompt });
-      else if (typeof ai.complete === 'function') result = await ai.complete([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { ...extra, direction: dir, input });
-      else throw new Error('未注入 AI 翻译接口');
+      const directOutputOptions = {
+        ...extra,
+        direction: dir,
+        input,
+        // Translation has no tool loop and does not need incremental output.
+        // Keeping this non-streaming also prevents providers from surfacing a
+        // reasoning stream in the translation panel.
+        stream: false,
+        onDelta: undefined,
+        onEvent: undefined,
+        reasoning_effort: 'none',
+        enable_thinking: false,
+        thinking: { type: 'disabled' }
+      };
+      const invoke = async requestOptions => {
+        if (typeof ai === 'function') return await ai(prompt, requestOptions);
+        if (typeof ai.translate === 'function') return await ai.translate(input, dir, { ...requestOptions, prompt });
+        if (typeof ai.complete === 'function') return await ai.complete([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], requestOptions);
+        throw new Error('未注入 AI 翻译接口');
+      };
+      try {
+        result = await invoke(directOutputOptions);
+      } catch (error) {
+        // A few OpenAI-compatible gateways reject unknown reasoning fields.
+        // Retry once without the optional switches; the direct-output prompt
+        // and non-streaming request remain in effect.
+        const message = text(error?.message, String(error));
+        if (!/HTTP\s+4\d\d|invalid|unknown|unsupported/i.test(message) || !/(?:reasoning|thinking)/i.test(message)) throw error;
+        const fallbackOptions = { ...directOutputOptions };
+        delete fallbackOptions.reasoning_effort;
+        delete fallbackOptions.enable_thinking;
+        delete fallbackOptions.thinking;
+        result = await invoke(fallbackOptions);
+      }
       const normalized = normalizeRunnerResult(result, dir);
       if (!normalized.ok) throw new Error(normalized.error || 'AI 翻译结果为空');
       state.input = input; state.output = normalized.text; state.direction = dir; state.references = prompt.references; state.status = 'done'; state.source = 'ai'; state.error = '';

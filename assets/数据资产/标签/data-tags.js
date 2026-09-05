@@ -25,6 +25,7 @@ var BASE_CATEGORIES = [
 {id:'other',name:'其他',icon:'🏷️'},
 {id:'rating',name:'内容分级',icon:'🅰️'},
 {id:'nsfw',name:'成人标签',icon:'🔞',nsfw:true},
+{id:'character_names',name:'角色名',icon:'🏷️'},
 ];
 var BASE_CAT_MAP = new Map(BASE_CATEGORIES.map(c => [c.id, c]));
 
@@ -5070,4 +5071,3 @@ var TAGS = [
 ["x-ray","透视人体内部","","nsfw","默认",1],
 
 ];
-
