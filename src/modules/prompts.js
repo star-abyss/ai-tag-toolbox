@@ -258,6 +258,36 @@ function createPrompts(options = {}) {
     return parseAppendices(get('appendices'));
   }
 
+  function exportBundle() {
+    return {
+      format: 'ai-tag-prompts',
+      version: 1,
+      internal: Object.fromEntries(['primary', 'vision', 'translation', 'generateTags'].map(key => [key, { text: get(key), enabled: enabled(key) }])),
+      external: Object.values(state.custom).map(item => clone(item))
+    };
+  }
+
+  function importBundle(value) {
+    const source = typeof value === 'string' ? JSON.parse(value) : value;
+    if (!source || source.format !== 'ai-tag-prompts' || source.version !== 1) throw new Error('提示词包格式无效');
+    const internal = source.internal && typeof source.internal === 'object' ? source.internal : {};
+    for (const key of ['primary', 'vision', 'translation', 'generateTags']) {
+      const itemValue = internal[key];
+      if (!itemValue || typeof itemValue !== 'object') continue;
+      if (itemValue.text != null) set(key, itemValue.text);
+      if (itemValue.enabled != null) setEnabled(key, itemValue.enabled === true);
+    }
+    state.custom = {};
+    for (const itemValue of Array.isArray(source.external) ? source.external : []) {
+      const item = isObject(itemValue) ? itemValue : {};
+      const id = text(item.id || item.name).replace(/[^\w-]+/g, '-').toLowerCase();
+      if (!id || Object.prototype.hasOwnProperty.call(defaults, id)) continue;
+      state.custom[id] = { id, name: text(item.name, id), text: text(item.text || item.content), enabled: item.enabled !== false, kind: 'custom' };
+    }
+    writeState();
+    return api.snapshot();
+  }
+
 
 
   const api = {
@@ -283,6 +313,8 @@ function createPrompts(options = {}) {
     meta,
     metadata: meta,
     appendices,
+    exportBundle,
+    importBundle,
     snapshot: () => ({ values: Object.fromEntries(keys().map(key => [key, get(key)])), defaults: clone(defaults), state: clone(state), metadata: Object.fromEntries(keys().map(key => [key, meta(key)])), appendices: appendices() })
   };
 

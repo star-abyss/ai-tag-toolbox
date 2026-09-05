@@ -653,325 +653,10 @@
       clearTimeout(capabilityTimer);
       capabilityTimer = setTimeout(() => refreshCapabilitiesStatus(), 180);
     }
-    function activePreset() {
-      return assistant?.getActivePreset?.() || null;
-    }
-    function activeWorld() {
-      return assistant?.getActiveWorld?.() || null;
-    }
-    function renderWorldMatch(value, selector) {
-      const input = str(value).toLowerCase();
-      const entries = activeWorld()?.entries || [];
-      const matched = entries.filter((entry) => {
-        if (!entry || entry.enabled === false) return false;
-        if (entry.constant === true) return true;
-        const keys = String(entry.keys || entry.key || "").split(/[\s,，、;；]+/).map((item) => item.trim().toLowerCase()).filter(Boolean);
-        return !keys.length || (input && keys.some((key) => input.includes(key)));
-      });
-      put(selector, matched.length ? `世界书命中：${matched.map((entry) => entry.name || "未命名条目").join("、")}` : "");
-    }
-    function ensurePromptState() {
-      if (assistant && !(assistant.listPresets?.() || []).length)
-        assistant.setPresets?.([
-          {
-            id: "preset_default",
-            name: "默认主提示词",
-            main: prompts?.get?.("main") || "",
-            generate: prompts?.get?.("generate") || "",
-            vision: prompts?.get?.("vision") || "",
-            quality: prompts?.get?.("quality") || "",
-          },
-        ]);
-      if (assistant && !(assistant.listWorlds?.() || []).length)
-        assistant.setWorlds?.([
-          {
-            id: "world_default",
-            name: "默认世界书（附录）",
-            enabled: true,
-            entries: (prompts?.appendices?.() || []).map((item) => ({
-              id: item.id,
-              name: item.title,
-              content: item.text,
-              keys: "",
-              enabled: true,
-              constant: false,
-            })),
-          },
-        ]);
-    }
     function renderPrompt() {
       views.prompt?.render();
-      $("#worldBookCard")?.setAttribute("hidden", "");
-      ensurePromptState();
-      const preset = activePreset() || {};
-      const worlds = assistant?.listWorlds?.() || [];
-      const presets = assistant?.listPresets?.() || [];
-      const ps = $("#presetSel");
-      if (ps) {
-        ps.replaceChildren();
-        presets.forEach((item) => {
-          const option = doc.createElement("option");
-          option.value = item.id;
-          option.textContent = item.name;
-          ps.appendChild(option);
-        });
-        ps.value = preset.id || "";
-      }
-      [
-        ["#aiSys", "main"],
-        ["#genTask", "generate"],
-        ["#qpText", "quality"],
-        ["#aiVision", "vision"],
-      ].forEach(([selector, key]) => {
-        const el = $(selector);
-        if (el) el.value = preset[key] || prompts?.get?.(key) || "";
-        const enabled = $(selector === "#aiSys" ? "#aiSysEnabled" : selector === "#genTask" ? "#genTaskEnabled" : selector === "#qpText" ? "#qpEnabled" : "#aiVisionEnabled");
-        if (enabled) enabled.checked = prompts?.item?.(key)?.enabled !== false;
-      });
-      const ws = $("#worldSel");
-      if (ws) {
-        ws.replaceChildren();
-        worlds.forEach((item) => {
-          const option = doc.createElement("option");
-          option.value = item.id;
-          option.textContent = item.name;
-          ws.appendChild(option);
-        });
-        ws.value = activeWorld()?.id || "";
-      }
-      const check = $("#worldEnabled");
-      if (check) check.checked = activeWorld()?.enabled !== false;
-      renderPromptModules();
-      renderWorldCallMods();
-      renderWorldCards();
-      renderWorldEntries();
+      return views.prompt?.snapshot?.() || {};
     }
-    const promptModuleDefs = [
-      ["primary", "ui.prompt.main"],
-      ["vision", "ui.prompt.vision"],
-      ["translation", "ui.translation.title"],
-      ["generateTags", "ui.prompt.genTask"],
-    ];
-    const promptSlotMap = { base: "primary", genTask: "generateTags", quality: "primary", vision: "vision", system: "translation" };
-    const defaultPromptMods = {
-      primary: ["primary"],
-      generateTags: ["generateTags"],
-      vision: ["vision"],
-      translation: ["translation"],
-    };
-    function presetSlotMods(preset, slot) {
-      const value = preset?.mods?.[slot];
-      return Array.isArray(value) ? value : (defaultPromptMods[slot] || []).slice();
-    }
-    function renderPromptModules() {
-      const preset = activePreset();
-      $$(".pmod-lead .pmod-mods").forEach((host) => {
-        const slot = promptSlotMap[host.parentElement?.dataset.special] || "main";
-        const selected = new Set(presetSlotMods(preset, slot));
-        host.replaceChildren();
-        const label = doc.createElement("span");
-        label.className = "pmod-mods-label";
-        label.textContent = localized("ui.prompt.enabledObjects", "启用对象") + "：";
-        host.appendChild(label);
-        promptModuleDefs.forEach(([mod, key]) => {
-          const item = doc.createElement("label");
-          item.className = "pmod-chk";
-          const input = doc.createElement("input");
-          input.type = "checkbox";
-          input.checked = selected.has(mod);
-          input.onchange = () => {
-            const presets = assistant?.listPresets?.() || [];
-            const target = presets.find((row) => row.id === preset?.id);
-            if (!target) return;
-            target.mods = { ...(target.mods || {}), [slot]: [...selected] };
-            if (input.checked) target.mods[slot] = [...new Set([...target.mods[slot], mod])];
-            else target.mods[slot] = target.mods[slot].filter((value) => value !== mod);
-            assistant?.setPresets?.(presets);
-          };
-          const textEl = doc.createElement("span");
-          textEl.textContent = localized(key, mod);
-          item.append(input, textEl);
-          host.appendChild(item);
-        });
-      });
-    }
-    function renderWorldCallMods() {
-      const host = $("#wbCallMods");
-      if (!host) return;
-      const world = activeWorld();
-      host.replaceChildren();
-      if (!world) return;
-      const selected = new Set(Array.isArray(world.mods) && world.mods.length ? world.mods : promptModuleDefs.map(([mod]) => mod));
-      promptModuleDefs.forEach(([mod, key]) => {
-        const item = doc.createElement("label");
-        item.className = "pmod-chk";
-        const input = doc.createElement("input");
-        input.type = "checkbox";
-        input.checked = selected.has(mod);
-        input.onchange = () => {
-          const worlds = assistant?.listWorlds?.() || [];
-          const target = worlds.find((row) => row.id === world.id);
-          if (!target) return;
-          const values = new Set(Array.isArray(target.mods) && target.mods.length ? target.mods : promptModuleDefs.map(([name]) => name));
-          if (input.checked) values.add(mod); else values.delete(mod);
-          target.mods = [...values];
-          assistant?.setWorlds?.(worlds);
-        };
-        const textEl = doc.createElement("span");
-        textEl.textContent = localized(key, mod);
-        item.append(input, textEl);
-        host.appendChild(item);
-      });
-    }
-    function renderWorldCards() {
-      const host = $("#worldCards");
-      if (!host) return;
-      host.replaceChildren();
-      (assistant?.listWorlds?.() || []).forEach((world) => {
-        const card = doc.createElement("div");
-        card.className = `world-card${world.id === activeWorld()?.id ? " on" : ""}`;
-        card.innerHTML = `<span>${world.name}</span><span class="muted">${(world.entries || []).length} 条</span><button class="abtn ghost btn btn-danger">删除</button>`;
-        $("span", card).onclick = () => {
-          assistant?.selectWorld?.(world.id);
-          renderPrompt();
-        };
-        $("button", card).onclick = () => {
-          if ((assistant?.listWorlds?.() || []).length <= 1) return notify("至少保留一本世界书");
-          confirm(`确定删除世界书「${world.name}」吗？`, () => { assistant?.removeWorld?.(world.id); renderPrompt(); });
-        };
-        host.appendChild(card);
-      });
-    }
-    function renderWorldEntries() {
-      const host = $("#wbList");
-      const world = activeWorld();
-      if (!host || !world) return;
-      host.replaceChildren();
-      (world.entries || []).forEach((entry, index) => {
-        const row = doc.createElement("div");
-        row.className = "wbi";
-        row.innerHTML = `<div class="wi-head"><input class="wi-name"><label><input class="wi-enabled" type="checkbox">启用</label><label><input class="wi-constant" type="checkbox">常驻</label><button class="abtn ghost btn btn-danger wi-del">删除</button></div><input class="wi-keys" placeholder="触发关键词（空=常驻）"><textarea class="wi-content" rows="3"></textarea>`;
-        $(".wi-name", row).value = entry.name || "";
-        $(".wi-keys", row).value = entry.keys || "";
-        $(".wi-content", row).value = entry.content || "";
-        $(".wi-enabled", row).checked = entry.enabled !== false;
-        $(".wi-constant", row).checked = entry.constant === true;
-        const update = (patch) => {
-          const worlds = assistant?.listWorlds?.() || [];
-          const target = worlds.find((item) => item.id === world.id);
-          if (!target) return;
-          target.entries[index] = { ...target.entries[index], ...patch };
-          assistant?.setWorlds?.(worlds);
-        };
-        $(".wi-name", row).onchange = (e) => update({ name: e.target.value });
-        $(".wi-keys", row).onchange = (e) => update({ keys: e.target.value });
-        $(".wi-content", row).onchange = (e) =>
-          update({ content: e.target.value });
-        $(".wi-enabled", row).onchange = (e) =>
-          update({ enabled: e.target.checked });
-        $(".wi-constant", row).onchange = (e) =>
-          update({ constant: e.target.checked });
-        $(".wi-del", row).onclick = () => confirm(`确定删除条目「${entry.name || "未命名条目"}」吗？`, () => {
-          const worlds = assistant?.listWorlds?.() || [];
-          const target = worlds.find((item) => item.id === world.id);
-          if (target) { target.entries.splice(index, 1); assistant?.setWorlds?.(worlds); renderWorldEntries(); }
-        });
-        host.appendChild(row);
-      });
-    }
-    function savePreset() {
-      const current = activePreset();
-      if (!current) return;
-      const all = assistant?.listPresets?.() || [];
-      const target = all.find((item) => item.id === current.id);
-      if (!target) return;
-      target.main = $("#aiSys")?.value || "";
-      target.generate = $("#genTask")?.value || "";
-      target.quality = $("#qpText")?.value || "";
-      target.vision = $("#aiVision")?.value || "";
-      assistant?.setPresets?.(all);
-      notify("提示词预设已保存");
-    }
-    function download(name, value) {
-      const link = doc.createElement("a");
-      link.href = URL.createObjectURL(
-        new Blob(
-          [typeof value === "string" ? value : JSON.stringify(value, null, 2)],
-          { type: "application/json" },
-        ),
-      );
-      link.download = name;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 500);
-    }
-    function readJson(file, callback) {
-      if (!file) return;
-      readText(file).then((value) => {
-        try {
-          callback(JSON.parse(value));
-        } catch {
-          notify("JSON 文件格式不正确");
-        }
-      });
-    }
-    function normaliseImportedEntry(entry, index) {
-      const value = entry && typeof entry === "object" ? entry : { content: entry };
-      return {
-        id: str(value.id, `entry_import_${Date.now()}_${index}`),
-        name: str(value.name || value.title, `条目 ${index + 1}`),
-        keys: Array.isArray(value.key) ? value.key.join(" ") : str(value.keys || value.key),
-        content: str(value.content || value.text || value.value),
-        enabled: value.enabled !== false,
-        constant: Boolean(value.constant),
-      };
-    }
-    function openWorldImport(data) {
-      const incoming = Array.isArray(data) ? data : data?.worlds || [data];
-      ui.pendingWorldEntries = [];
-      incoming.filter((world) => world && world.entries).forEach((world, wi) => {
-        const entries = Array.isArray(world.entries) ? world.entries : Object.values(world.entries || {});
-        entries.forEach((entry, ei) => ui.pendingWorldEntries.push({
-          ...normaliseImportedEntry(entry, `${wi}_${ei}`),
-          worldName: str(world.name, "导入世界书"),
-        }));
-      });
-      const list = $("#wbImportList");
-      if (!list || !ui.pendingWorldEntries.length) return notify("没有找到可导入的世界书条目");
-      list.replaceChildren();
-      ui.pendingWorldEntries.forEach((entry, index) => {
-        const row = doc.createElement("label");
-        row.className = "wbimp";
-        row.innerHTML = '<input type="checkbox" checked><div class="wi-body"><div class="wi-name"></div><div class="wi-prev"></div></div>';
-        $("input", row).dataset.index = String(index);
-        $(".wi-name", row).textContent = `${entry.worldName} · ${entry.name}`;
-        $(".wi-prev", row).textContent = entry.content || "（空内容）";
-        list.appendChild(row);
-      });
-      $("#wbModal")?.classList.add("show");
-    }
-    function closeWorldImport() { $("#wbModal")?.classList.remove("show"); ui.pendingWorldEntries = []; }
-    function importSelectedWorldEntries() {
-      const selected = $$("#wbImportList input[type=checkbox]").filter((input) => input.checked).map((input) => ui.pendingWorldEntries[Number(input.dataset.index)]).filter(Boolean);
-      if (!selected.length) return notify("请至少选择一条世界书条目");
-      const grouped = new Map();
-      selected.forEach((entry) => { const key = entry.worldName || "导入世界书"; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(entry); });
-      grouped.forEach((entries, name) => assistant?.addWorld?.({ name, enabled: true, entries }));
-      closeWorldImport();
-      renderPrompt();
-      notify(`已导入 ${selected.length} 条世界书条目`);
-    }
-    function confirm(message, action, options = {}) {
-      const modal = $("#cfmModal");
-      if (!modal) return action?.();
-      const retainWrap = $("#cfmRetainImagesWrap");
-      const retain = $("#cfmRetainImages");
-      if (retainWrap) retainWrap.hidden = options.retainImages !== true;
-      if (retain) retain.checked = false;
-      ui.confirmAction = () => action?.(Boolean(retain?.checked));
-      put("#cfmText", message);
-      modal.classList.add("show");
-    }
-
     function formValue(selector, fallback = "") {
       const field = $(selector);
       return field ? String(field.value ?? "").trim() : String(fallback ?? "").trim();
@@ -1677,11 +1362,10 @@
       talkVisionFold.description = false;
     }
     async function loadVisionMetadata(imageId, requestId, controller) {
-      const call = assistant?.calls?.call;
       let result = null;
       try {
-        result = call
-          ? await call("vision.processOne", { imageId, mode: "metadata" }, { caller: "ui", signal: controller.signal })
+        result = runtime?.callTool
+          ? await runtime.callTool("vision.processOne", { imageId, mode: "metadata" }, { caller: "ui", sessionId: currentTalkSessionId(), signal: controller.signal })
           : { ok: true, data: await Promise.resolve(visionTempStore?.get?.(imageId)?.metadata || images?.metadata?.(imageId) || {}) };
       } catch (error) {
         result = { ok: false, error: error?.message || String(error) };
@@ -1925,9 +1609,8 @@
       ui.visionAbort = controller;
       ui.visionBusy = true;
       try {
-        const call = assistant?.calls?.call;
-        if (!call) throw new Error("Calls 网关不可用");
-        const result = await call("vision.processOne", { imageId, mode: "local", model: modelId }, { caller: "ui", signal: controller.signal });
+        const result = await runtime?.callTool?.("vision.processOne", { imageId, mode: "local", model: modelId }, { caller: "ui", sessionId: currentTalkSessionId(), signal: controller.signal });
+        if (!result) throw new Error("统一 Agent Runtime 不可用");
         if (requestId !== ui.visionRequestId || imageId !== currentVisionId()) return result;
         ui.visionResult = result?.data || result?.analysis || null;
         const embedded = embeddedTags();
@@ -1972,9 +1655,8 @@
       try {
         const capabilities = await assistant?.refreshCapabilities?.({ force: true }) || assistant?.getCapabilities?.() || {};
         if (capabilities.vision && capabilities.vision.ai !== true) throw new Error(capabilities.vision.aiError || "请先配置支持图片输入的独立识图 API");
-        const call = assistant?.calls?.call;
-        if (typeof call !== "function") throw new Error("Calls 网关不可用，无法执行 AI 识图");
-        const result = await call("vision.processOne", { imageId, mode: "ai", instruction: "请按图片中可见内容进行详细描述：主体、人物外观、服装、姿势表情、构图视角、场景物体、光影色彩与画风；以精炼绘图 Tag 为主，如实包含可见 NSFW 内容，只输出结果。", includeLocalTags: true }, { caller: "ui", signal: controller.signal });
+        const result = await runtime?.callTool?.("vision.processOne", { imageId, mode: "ai", instruction: "请按图片中可见内容进行详细描述：主体、人物外观、服装、姿势表情、构图视角、场景物体、光影色彩与画风；以精炼绘图 Tag 为主，如实包含可见 NSFW 内容，只输出结果。", includeLocalTags: true }, { caller: "ui", sessionId: currentTalkSessionId(), signal: controller.signal });
+        if (!result) throw new Error("统一 Agent Runtime 不可用");
         if (ui.visionRequestId === requestId) {
           ui.visionResult = result?.data || null;
           ui.visionDescription = result?.data?.text || result?.text || result?.data?.error || result?.error || "没有返回描述";
@@ -2296,8 +1978,6 @@
       renderRichMessage(host, raw);
     }
     function talkContext(text, imageIds, config = settings()) {
-      const world = activeWorld();
-      const preset = activePreset();
       return {
         text,
         imageIds,
@@ -2308,17 +1988,8 @@
         currentCategory: tagSnapshot().category,
         tagRevision: tagSnapshot().revision,
         strict: config.strict !== false,
-        worldbookEntries: world?.enabled === false ? [] : world?.entries || [],
-        worldbookMods: world?.enabled === false ? [] : world?.mods || [],
-        promptMods: preset?.mods || {},
-        qualityPrefix: preset?.quality || "",
-        promptOverrides: {
-          main: preset?.main,
-          chat: preset?.chat,
-          generate: preset?.generate,
-          vision: preset?.vision,
-          comfy: preset?.comfy,
-        },
+        batchCount: Number(config.batchCount) || 1,
+        maxComfyCalls: Number(config.maxComfyCalls) || 3,
       };
     }
     let talkRenderPending = false;
@@ -3578,181 +3249,6 @@
         });
         loadSettings();
       });
-      $("#presetSave")?.addEventListener("click", savePreset);
-      $("#presetSel")?.addEventListener("change", (event) => {
-        assistant?.selectPreset?.(event.target.value);
-        renderPrompt();
-      });
-      $("#presetDelete")?.addEventListener("click", () => {
-        const current = activePreset();
-        if ((assistant?.listPresets?.() || []).length <= 1)
-          return notify("至少保留一个预设");
-        assistant?.removePreset?.(current?.id);
-        renderPrompt();
-      });
-      $("#presetExport")?.addEventListener("click", () => {
-        savePreset();
-        download("ai-tag-preset.json", {
-          format: "ai-tag-preset",
-          version: 1,
-          presets: assistant?.listPresets?.() || [],
-        });
-      });
-      $("#presetImport")?.addEventListener("click", () => {
-        const input = doc.createElement("input");
-        input.type = "file";
-        input.accept = ".json,application/json";
-        input.onchange = () =>
-          readJson(input.files?.[0], (data) => {
-            const list = Array.isArray(data) ? data : data?.presets || [];
-            const merged = [
-              ...(assistant?.listPresets?.() || []),
-              ...list.filter((item) => item && item.name),
-            ];
-            assistant?.setPresets?.(merged);
-            renderPrompt();
-          });
-        input.click();
-      });
-      $("#aiSysReset")?.addEventListener("click", () => {
-        prompts?.reset?.("main");
-        renderPrompt();
-        notify("主提示词已恢复默认");
-      });
-      $("#genTaskReset")?.addEventListener("click", () => {
-        prompts?.reset?.("generate");
-        renderPrompt();
-        notify("生成提示词已恢复默认");
-      });
-      $("#qpReset")?.addEventListener("click", () => {
-        prompts?.reset?.("quality");
-        renderPrompt();
-        notify("质量提示词已恢复默认");
-      });
-      $("#aiVisionReset")?.addEventListener("click", () => {
-        prompts?.reset?.("vision");
-        renderPrompt();
-        notify("识图提示词已恢复默认");
-      });
-      [["#aiSysEnabled", "main"], ["#genTaskEnabled", "generate"], ["#qpEnabled", "quality"], ["#aiVisionEnabled", "vision"]].forEach(([selector, key]) => {
-        $(selector)?.addEventListener("change", event => {
-          prompts?.setEnabled?.(key, event.target.checked);
-          renderPrompt();
-        });
-      });
-      $("#promptModReset")?.addEventListener("click", () => {
-        const current = activePreset();
-        const presets = assistant?.listPresets?.() || [];
-        const target = presets.find((item) => item.id === current?.id);
-        if (!target) return;
-        target.mods = JSON.parse(JSON.stringify(defaultPromptMods));
-        assistant?.setPresets?.(presets);
-        renderPrompt();
-        notify("已恢复当前预设的提示词启用对象");
-      });
-      $("#pcolExport")?.addEventListener("click", () => {
-        savePreset();
-        download("ai-tag-prompt-collection.json", {
-          format: "ai-tag-prompt-collections",
-          version: 1,
-          presets: assistant?.listPresets?.() || [],
-          worlds: assistant?.listWorlds?.() || [],
-        });
-      });
-      $("#pcolImport")?.addEventListener("click", () =>
-        $("#pcolFile")?.click(),
-      );
-      $("#pcolFile")?.addEventListener("change", (event) =>
-        readJson(event.target.files?.[0], (data) => {
-          if (Array.isArray(data?.presets))
-            assistant?.setPresets?.([
-              ...(assistant?.listPresets?.() || []),
-              ...data.presets,
-            ]);
-          if (Array.isArray(data?.worlds))
-            assistant?.setWorlds?.([
-              ...(assistant?.listWorlds?.() || []),
-              ...data.worlds,
-            ]);
-          renderPrompt();
-        }),
-      );
-      $("#worldSel")?.addEventListener("change", (event) => {
-        assistant?.selectWorld?.(event.target.value);
-        renderPrompt();
-      });
-      $("#worldEnabled")?.addEventListener("change", (event) => {
-        const worlds = assistant?.listWorlds?.() || [];
-        const world = worlds.find((item) => item.id === activeWorld()?.id);
-        if (world) {
-          world.enabled = event.target.checked;
-          assistant?.setWorlds?.(worlds);
-        }
-      });
-      $("#wbAdd")?.addEventListener("click", () => {
-        const world = activeWorld();
-        if (!world) return;
-        const worlds = assistant?.listWorlds?.() || [];
-        const target = worlds.find((item) => item.id === world.id);
-        target?.entries?.push({
-          id: `entry_${Date.now()}`,
-          name: "新条目",
-          keys: "",
-          content: "",
-          enabled: true,
-          constant: false,
-        });
-        assistant?.setWorlds?.(worlds);
-        renderWorldEntries();
-        renderWorldCards();
-      });
-      $("#worldAdd")?.addEventListener("click", () => {
-        const name = global.prompt("世界书名称", "新世界书");
-        if (name) {
-          assistant?.addWorld?.({ name, enabled: true, entries: [] });
-          renderPrompt();
-        }
-      });
-      $("#wbExport")?.addEventListener("click", () => {
-        const world = activeWorld();
-        if (world)
-          download(`${world.name || "worldbook"}.json`, {
-            name: world.name,
-            entries: world.entries || [],
-          });
-      });
-      $("#wbBundle")?.addEventListener("click", () =>
-        download("ai-tag-worldbooks.json", {
-          format: "dbt-worldbooks",
-          version: 1,
-          worlds: assistant?.listWorlds?.() || [],
-        }),
-      );
-      $("#wbImport")?.addEventListener("click", () =>
-        $("#wbImportFile")?.click(),
-      );
-      $("#wbImportFile")?.addEventListener("change", (event) =>
-        readJson(event.target.files?.[0], openWorldImport),
-      );
-      $("#wbModalClose")?.addEventListener("click", closeWorldImport);
-      $("#wbImportCancel")?.addEventListener("click", closeWorldImport);
-      $("#wbSelAll")?.addEventListener("click", () => $$("#wbImportList input[type=checkbox]").forEach((input) => { input.checked = true; }));
-      $("#wbSelNone")?.addEventListener("click", () => $$("#wbImportList input[type=checkbox]").forEach((input) => { input.checked = false; }));
-      $("#wbImportGo")?.addEventListener("click", importSelectedWorldEntries);
-      $("#wbFoldAll")?.addEventListener("click", () =>
-        $$("#wbList .wbi").forEach((row) => {
-          row.hidden = !row.hidden;
-        }),
-      );
-      $("#previewWorld")?.addEventListener("click", () => {
-        const world = activeWorld();
-        global.alert(
-          (world?.entries || [])
-            .filter((item) => item.enabled !== false)
-            .map((item) => `【${item.name}】\n${item.content}`)
-            .join("\n\n") || "当前世界书没有启用条目",
-        );
-      });
       $("#cfmNo")?.addEventListener("click", () => { ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); });
       $("#cfmYes")?.addEventListener("click", () => { const action = ui.confirmAction; ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); action?.(); });
       $("#translateDirection")?.addEventListener("change", () => {
@@ -4084,7 +3580,7 @@
         preferences.get("rewrite_theme", "light"),
       );
       applyTheme(theme);
-      ensurePromptState();
+      views.prompt?.render();
       bind();
       resizeTalkInput();
       loadSettings({ fetch: false });

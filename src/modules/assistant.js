@@ -907,7 +907,7 @@ function createAssistant(options = {}) {
   const state = {
     sessions: [], currentId: '', busy: false, status: 'idle', jobId: '', lastError: '', lastMode: '',
     config: { base: text(options.base || options.apiBase), model: text(options.model), temperature: Number(options.temperature) || 0.7, timeoutMs: Number(options.timeoutMs) || 120000 },
-    settings: {}, presets: [], worlds: [], favorites: [], activePreset: '', activeWorld: ''
+    settings: {}, favorites: []
   };
   let activeJob = null;
   let ai = null;
@@ -958,15 +958,6 @@ function createAssistant(options = {}) {
     } catch { /* optional persistence */ }
     return null;
   }
-  function normalisePreset(value, index = 0) {
-    const item = isObject(value) ? value : {};
-    return { id: text(item.id, `preset_${Date.now()}_${index}`), name: text(item.name, '未命名预设'), primary: text(item.primary || item.main || item.sysPrompt), vision: text(item.vision || item.visionPrompt), translation: text(item.translation), generateTags: text(item.generateTags || item.generate || item.genTask) };
-  }
-  function normaliseWorld(value, index = 0) {
-    const item = isObject(value) ? value : {};
-    const entries = Array.isArray(item.entries) ? item.entries : Object.values(item.entries || {});
-    return { id: text(item.id, `world_${Date.now()}_${index}`), name: text(item.name, '未命名世界书'), enabled: item.enabled !== false, entries: entries.filter(isObject).map((entry, ei) => ({ id: text(entry.id, `entry_${Date.now()}_${ei}`), name: text(entry.name, '条目'), keys: text(entry.keys || entry.key), content: text(entry.content || entry.text), enabled: entry.enabled !== false, constant: Boolean(entry.constant) })) };
-  }
   function restoreBusinessState() {
     const stored = readStored('rewrite_settings', {});
     state.settings = normaliseSettings(isObject(stored) ? stored : {}, {
@@ -974,15 +965,10 @@ function createAssistant(options = {}) {
       model: state.config.model,
       visionApi: options.visionApi
     });
-    const presets = readStored('rewrite_presets', []); state.presets = (Array.isArray(presets) ? presets : []).map(normalisePreset);
-    const worlds = readStored('rewrite_worlds', []); state.worlds = (Array.isArray(worlds) ? worlds : []).map(normaliseWorld);
     const favorites = readStored('rewrite_favorites', []); state.favorites = Array.isArray(favorites) ? favorites.map(clone) : [];
-    state.activePreset = text(readStored('rewrite_active_preset', ''), state.presets[0]?.id || '');
-    state.activeWorld = text(readStored('rewrite_active_world', ''), state.worlds[0]?.id || '');
   }
   function saveBusinessState() {
-    writeStored('rewrite_settings', state.settings); writeStored('rewrite_presets', state.presets); writeStored('rewrite_worlds', state.worlds); writeStored('rewrite_favorites', state.favorites);
-    writeStored('rewrite_active_preset', state.activePreset); writeStored('rewrite_active_world', state.activeWorld);
+    writeStored('rewrite_settings', state.settings); writeStored('rewrite_favorites', state.favorites);
   }
   function newSession(title = '新对话', options2 = {}) {
     if (activeJob && options2.cancelActive !== false) {
@@ -1421,12 +1407,8 @@ function createAssistant(options = {}) {
     newSession,
     currentSession: () => sessionClone(currentSession()), sessions: () => state.sessions.map(sessionClone),
     getSettings: () => clone(state.settings), setSettings(value = {}) { if (isObject(value)) state.settings = normaliseSettings(mergeSettingsPatch(state.settings, value)); ai.configure?.({ base: state.settings.base, model: state.settings.model, key: state.settings.key, temperature: state.settings.temperature, timeoutMs: state.settings.timeoutMs }); visionAi.configure?.(visionProfile()); calls?.invalidateCapabilities?.(); saveBusinessState(); return clone(state.settings); }, updateSettings(value = {}) { return api.setSettings(value); },
-    listPresets: () => state.presets.map(clone), getPresets: () => state.presets.map(clone), setPresets(value) { state.presets = (Array.isArray(value) ? value : []).map(normalisePreset); state.activePreset = state.presets.find(item => item.id === state.activePreset)?.id || state.presets[0]?.id || ''; saveBusinessState(); return api.listPresets(); },
-    addPreset(value) { const item = normalisePreset(value, state.presets.length); state.presets.push(item); state.activePreset = item.id; saveBusinessState(); return clone(item); }, removePreset(id) { if (state.presets.length <= 1) return false; const index = state.presets.findIndex(item => item.id === text(id)); if (index < 0) return false; state.presets.splice(index, 1); state.activePreset = state.presets[0]?.id || ''; saveBusinessState(); return true; }, getActivePreset: () => clone(state.presets.find(item => item.id === state.activePreset) || state.presets[0] || null), selectPreset(id) { if (!state.presets.some(item => item.id === text(id))) return false; state.activePreset = text(id); saveBusinessState(); return true; },
-    listWorlds: () => state.worlds.map(clone), getWorlds: () => state.worlds.map(clone), setWorlds(value) { state.worlds = (Array.isArray(value) ? value : []).map(normaliseWorld); state.activeWorld = state.worlds.find(item => item.id === state.activeWorld)?.id || state.worlds[0]?.id || ''; saveBusinessState(); return api.listWorlds(); },
-    addWorld(value) { const item = normaliseWorld(value, state.worlds.length); state.worlds.push(item); state.activeWorld = item.id; saveBusinessState(); return clone(item); }, removeWorld(id) { if (state.worlds.length <= 1) return false; const index = state.worlds.findIndex(item => item.id === text(id)); if (index < 0) return false; state.worlds.splice(index, 1); state.activeWorld = state.worlds[0]?.id || ''; saveBusinessState(); return true; }, getActiveWorld: () => clone(state.worlds.find(item => item.id === state.activeWorld) || state.worlds[0] || null), selectWorld(id) { if (!state.worlds.some(item => item.id === text(id))) return false; state.activeWorld = text(id); saveBusinessState(); return true; },
     listFavorites: () => state.favorites.map(clone), getFavorites: () => state.favorites.map(clone), setFavorites(value) { state.favorites = Array.isArray(value) ? value.map(clone) : []; saveBusinessState(); return api.listFavorites(); }, addFavorite(value) { const item = isObject(value) ? clone(value) : { id: uid('favorite', sequence), name: text(value, '未命名收藏') }; item.id = text(item.id, uid('favorite', sequence)); state.favorites.push(item); saveBusinessState(); return clone(item); }, removeFavorite(id) { const index = state.favorites.findIndex(item => item.id === text(id)); if (index < 0) return false; state.favorites.splice(index, 1); saveBusinessState(); return true; },
-    snapshot: () => ({ ...clone(state), sessions: state.sessions.map(sessionClone), config: ai.getConfig(), visionConfig: visionClient().getConfig(), settings: clone(state.settings), presets: state.presets.map(clone), worlds: state.worlds.map(clone), favorites: state.favorites.map(clone) }),
+    snapshot: () => ({ ...clone(state), sessions: state.sessions.map(sessionClone), config: ai.getConfig(), visionConfig: visionClient().getConfig(), settings: clone(state.settings), favorites: state.favorites.map(clone) }),
     calls,
     visionService: calls?.visionService || null,
     visionAi: visionClient(),
