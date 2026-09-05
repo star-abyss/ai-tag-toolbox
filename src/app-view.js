@@ -1200,7 +1200,7 @@
       select.value = "__loading__";
       const fallback = fallbackModels(base);
       let values = fallback;
-      const result = options.fetch === false ? null : await assistant?.ai?.listModels?.({ base, key: str($("#aiKey")?.value, s.key) });
+      const result = options.fetch === false ? null : await assistant?.listModels?.({ base, key: str($("#aiKey")?.value, s.key) });
       if (requestId !== modelRequestId) return values;
       if (result?.ok && Array.isArray(result.models) && result.models.length) values = result.models;
       if (result && !result.ok && options.fetch !== false) {
@@ -1259,13 +1259,13 @@
       select.replaceChildren(loading);
       const fallback = fallbackModels(base);
       let values = fallback;
-      const client = inherited ? assistant?.ai : assistant?.visionAi;
+      const listModels = inherited ? assistant?.listModels : assistant?.listVisionModels;
       const key = inherited ? str($("#aiKey")?.value, s.key) : str($("#visionKey")?.value, s.visionKey);
       // Do not make an unnecessary network request while the primary model is
       // still blank or already known to be vision-capable. Fetch the provider
       // list only when it can help replace a likely text-only model.
       const shouldFetch = options.fetch !== false && (!inherited || (Boolean(s.model) && !modelIsVision(s.model)));
-      const result = shouldFetch ? await client?.listModels?.({ base, key }) : null;
+      const result = shouldFetch ? await listModels?.({ base, key }) : null;
       if (requestId !== visionModelRequestId) return values;
       if (result?.ok && Array.isArray(result.models) && result.models.length) values = result.models;
       if (inherited && primaryModel && !values.includes(primaryModel)) values = [primaryModel, ...values];
@@ -3560,20 +3560,11 @@
       $("#visionKey")?.addEventListener("change", () => { configFromView(); populateVisionModels(); });
       $("#visionTest")?.addEventListener("click", async () => {
         const s = configFromView();
-        const client = assistant?.visionAi;
-        if (!client?.complete) return notify("识图 API 不可用");
+        if (!assistant?.runVision) return notify("识图 API 不可用");
         try {
-          const testImage = currentVisionImage()?.dataUrl || "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-          const result = await client.complete([{ role: "user", content: [
-            { type: "text", text: "请只回复 OK，确认当前模型支持图片输入。" },
-            { type: "image_url", image_url: { url: testImage } }
-          ] }], {
-            base: s.visionInheritPrimary ? s.base : s.visionBase,
-            key: s.visionInheritPrimary ? s.key : s.visionKey,
-            model: s.visionInheritPrimary ? s.model : s.visionModel,
-            stream: false,
-            timeoutMs: 10000,
-          });
+          const imageId = currentVisionId();
+          if (!imageId) return notify("请先选择一张图片");
+          const result = await assistant.runVision({ imageId, mode: "ai", instruction: "请只回复 OK，确认当前模型支持图片输入。" }, { caller: "ui", signal: new AbortController().signal });
           notify(result?.ok === false ? result.error || result.text || "当前模型不支持图片输入" : "识图 API 图片测试成功");
         } catch (error) { notify(error?.message || String(error)); }
       });
@@ -3593,10 +3584,7 @@
       $("#aiTest")?.addEventListener("click", async () => {
         configFromView();
         try {
-          const result = await assistant?.ai?.complete?.(
-            [{ role: "user", content: "ping" }],
-            currentConfig(),
-          );
+          const result = await assistant?.testConnection?.(currentConfig());
           if (!result || result.ok === false) throw new Error(result?.text || result?.error || "AI 连接失败");
           notify("AI 连接成功");
         } catch (error) {

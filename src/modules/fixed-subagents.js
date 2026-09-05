@@ -169,7 +169,14 @@ function createFixedSubagents(options = {}) {
     options: Object.freeze({ stream: false, reasoning_effort: 'none', enable_thinking: false, thinking: { type: 'disabled' } }),
     async run(input, context = {}) {
       const request = validateInput(SCHEMAS.translation, input);
-      if (!translation) throw error('SUBAGENT_UNAVAILABLE', '翻译子代理不可用');
+      if (!translation && !(ai && typeof ai.complete === 'function')) throw error('SUBAGENT_UNAVAILABLE', '翻译子代理不可用');
+      if (!translation && ai && typeof ai.complete === 'function') {
+        const prompt = `${translationEntry.systemPrompt}\n方向：${request.direction || 'auto'}\n文本：${request.text}`;
+        const direct = await ai.complete([{ role: 'system', content: translationEntry.systemPrompt }, { role: 'user', content: prompt }], { ...translationEntry.options, signal: context.signal });
+        if (direct?.ok === false) throw Object.assign(new Error(direct.error || '翻译失败'), { code: direct.code || 'TRANSLATION_FAILED' });
+        const output = unwrap(direct) || {};
+        return { text: text(output.text || output.translation || direct.text), direction: text(output.direction, request.direction || 'auto'), references: [], source: 'ai' };
+      }
       const extra = { signal: context.signal, includeAdult: request.includeAdult === true, ...translationEntry.options };
       const method = typeof translation.translateWithAI === 'function' && (translation.ai || ai)
         ? translation.translateWithAI

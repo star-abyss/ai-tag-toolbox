@@ -74,6 +74,7 @@ function createAgentRuntime(options = {}) {
     else if (item.status === 'completed') status.complete(item.requestId, item);
   }});
   const limit = () => Math.max(1, Math.min(100, Number(getSettings()?.limits?.maxComfyCalls ?? getSettings()?.maxComfyCalls) || Number(options.maxComfyCalls) || 3));
+  const callCounts = new Map();
 
   function findTool(name) {
     if (tools && typeof tools.resolve === 'function') return tools.resolve(name);
@@ -101,6 +102,11 @@ function createAgentRuntime(options = {}) {
     const definition = findTool(name);
     if (!definition) return resultError({ code: 'TOOL_UNAVAILABLE', message: `工具不可用：${text(name)}` }, requestId);
     if (context.signal?.aborted) return resultError({ code: 'CANCELLED', message: '请求已取消' }, requestId);
+    if (name === 'comfy.render') {
+      const used = Number(callCounts.get(requestId) || 0);
+      if (used >= limit()) return resultError({ code: 'COMFY_CALL_LIMIT', message: `ComfyUI 调用次数超过限制（${limit()}）` }, requestId);
+      callCounts.set(requestId, used + 1);
+    }
     try {
       let value;
       if (typeof tools.call === 'function') value = await tools.call(name, clone(args), { ...context, requestId, signal: context.signal });
@@ -161,7 +167,6 @@ function createAgentRuntime(options = {}) {
           const name = callName(call);
           if (name === 'comfy.render' || name === 'comfy_render') {
             comfyCalls += 1;
-            if (comfyCalls > limit()) throw Object.assign(new Error(`ComfyUI 调用次数超过限制（${limit()}）`), { code: 'COMFY_CALL_LIMIT' });
           }
           const outcome = await callTool(name, callArgs(call), { requestId: id, signal: handle.signal, sessionId: request.sessionId, caller: 'primary' });
           if (!outcome.ok) throw outcome.error;

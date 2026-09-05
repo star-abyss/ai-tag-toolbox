@@ -13,7 +13,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createComfy } = require('./comfy');
 const { createCalls } = require('./calls');
-const { createAiRunner } = require('./ai-runner');
 const { addCandidate, evaluateCandidate, markRecommended, selectCandidate, snapshot: candidateSnapshot, finalCandidate } = require('./draw-candidates');
 const { createImageRepository } = require('./image-repository');
 const { parsePngMetadata } = require('./images');
@@ -937,7 +936,6 @@ function createAssistant(options = {}) {
   let visionAi = null;
   let calls = null;
   let visionService = options.visionService || null;
-  let runner = null;
   let runtime = null;
   let primaryTools = null;
   // The repository is created after the AI/call adapters. Keep a late-bound
@@ -1493,7 +1491,7 @@ function createAssistant(options = {}) {
       const runnerInput = { ...input, onToolEvent };
       let result;
       try {
-        result = await runner.run({ messages, input: runnerInput, config, job, emit, task, profile: mode });
+        result = { ok: false, status: 'legacy_disabled', text: '旧 AI Runner 已停用，请使用统一 Agent Runtime' };
       } catch (error) {
         const failed = { ok: false, status: job.signal?.aborted ? 'cancelled' : 'error', text: job.signal?.aborted ? '已停止' : text(error?.message, String(error)), error: error?.code || 'ERROR', toolCallsUsed: [], aiTurns: 0, toolCalls: 0, renderCount: 0 };
         liveMessage.role = 'error';
@@ -1670,19 +1668,6 @@ function createAssistant(options = {}) {
     }
   });
   visionService = calls?.visionService || visionService;
-  runner = createAiRunner({
-    ai,
-    calls,
-    getSettings: () => state.settings,
-    toolNames: ['tags.search', 'vision.processOne', 'comfy.render'],
-    // The main Assistant speaks compact JSON. Legacy/native tool calls remain
-    // accepted by the runner's adapter and are only selected explicitly by
-    // compatibility callers.
-    compact: options.compact !== false,
-    callCache: compactCallCache,
-    visionCache: compactCallCache,
-    isCurrent: ({ sessionId, job }) => state.currentId === sessionId && (!activeJob || activeJob === job)
-  });
   const restored = storageRead(); const restoredSessions = restoreSessions(restored); if (!restoredSessions) newSession();
   imageRepository = createImageRepository({
     images,
@@ -1709,11 +1694,56 @@ function createAssistant(options = {}) {
   };
   runtime = createAgentRuntime({ primaryClient: ai, subagents, tools: toolBridge, getSettings: () => state.settings });
   primaryTools = createPrimaryTools({ tags, imageRepository, runtime, comfy, getSettings: () => state.settings });
+  async function runPrimaryWithRuntime(value, config = {}) {
+    const input = normaliseInput(value);
+    const session = sessionById(input.sessionId) || currentSession();
+    input.sessionId = session.id;
+    if (!input.text && !input.images.length) return { ok: false, status: 'empty', text: '请输入内容或添加图片', sessionId: session.id };
+    const requestId = uid('primary', sequence);
+    const controller = new AbortController();
+    activeJob = { id: requestId, controller, signal: controller.signal };
+    state.busy = true; state.status = 'running'; state.jobId = requestId; state.lastError = '';
+    const current = currentUserMessage(input, input.text || '（附图）', input.images);
+    const messages = [...sessionMessages(session), ...(current ? [current] : [])];
+    const user = append('user', input.text || '（附图）', { imageIds: input.imageIds, imageReference: input.imageReference }, session.id);
+    const live = append('assistant', '', { status: 'streaming' }, session.id);
+    try {
+      const result = await runtime.runPrimary({
+        requestId,
+        sessionId: session.id,
+        messages,
+        input: { text: input.text, imageIds: input.imageIds, images: input.images, sessionId: session.id },
+        config: { ...ai.getConfig(), ...(isObject(config) ? config : {}) },
+        signal: controller.signal,
+        onToolCall: events => input.onToolEvent?.({ type: 'complete', name: events?.[0]?.name, result: events?.[0]?.result })
+      });
+      const payload = isObject(result?.data) ? result.data : {};
+      if (!result.ok) {
+        live.role = 'error'; live.status = 'error'; live.text = result.error?.message || 'AI 请求失败'; live.result = clone(result); state.lastError = live.text;
+        input.onDelta?.(live.text, '', clone(live)); storageWrite();
+        return { ok: false, status: 'error', text: live.text, error: result.error, requestId, sessionId: session.id };
+      }
+      live.text = text(payload.text || result.text); live.reasoning = text(payload.reasoning); live.toolCalls = clone(payload.toolCalls || result.toolCalls || []);
+      live.result = clone(payload); live.status = 'done'; storageWrite();
+      input.onDelta?.(live.text, live.reasoning, clone(live));
+      return { ok: true, ...payload, text: live.text, reasoning: live.reasoning, requestId, sessionId: session.id };
+    } catch (error) {
+      live.role = 'error'; live.status = 'error'; live.text = text(error?.message, 'AI 请求失败'); live.result = { ok: false, error: live.text }; state.lastError = live.text; storageWrite();
+      return { ok: false, status: 'error', text: live.text, error: error?.code || 'AI_ERROR', requestId, sessionId: session.id };
+    } finally {
+      if (activeJob?.id === requestId) activeJob = null;
+      state.busy = false; state.status = state.lastError ? 'error' : 'idle'; state.jobId = '';
+    }
+  }
   const api = {
     state, ai, prompts: clone(prompts), prompt: (key) => prompt(key), compose, parseReply,
-    run: runUnified,
+    run: runPrimaryWithRuntime,
     runtime,
     primaryTools,
+    listModels: config => ai.listModels(config),
+    listVisionModels: config => visionAi.listModels(config),
+    testConnection: config => runtime.runPrimary({ requestId: uid('test', sequence), messages: [{ role: 'user', content: 'ping' }], config: { ...(config || {}), maxRounds: 1 } }),
+    runVision: (input, context = {}) => runtime.callTool('vision.processOne', input, context),
     selectCandidate: chooseCandidate,
     chooseCandidate,
     getCapabilities: () => calls?.getCapabilities?.() || null,
@@ -1764,7 +1794,7 @@ function createAssistant(options = {}) {
       storageWrite();
       return api.sessions();
     },
-    cancel(jobId) { if (!activeJob || (jobId && activeJob.id !== jobId)) return false; activeJob.controller.abort(); state.status = 'cancelled'; return true; }, stop(jobId) { return api.cancel(jobId); },
+    cancel(jobId) { if (runtime && runtime.cancel(jobId || state.jobId)) { state.status = 'cancelled'; return true; } if (!activeJob || (jobId && activeJob.id !== jobId)) return false; activeJob.controller.abort(); state.status = 'cancelled'; return true; }, stop(jobId) { return api.cancel(jobId); },
     destroy() { api.cancel(); state.sessions.length = 0; }
   };
   return api;

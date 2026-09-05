@@ -121,8 +121,13 @@ assert.equal((await primaryTools.call('comfy.render', { prompt: 'raw workflow' }
 
 const appView = fs.readFileSync(path.join(root, 'src', 'app-view.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8');
+const assistantSource = fs.readFileSync(path.join(root, 'src', 'modules', 'assistant.js'), 'utf8');
+const runtimeSource = fs.readFileSync(path.join(root, 'src', 'modules', 'agent-runtime.js'), 'utf8');
 assert.doesNotMatch(html, /data-mode="draw"/);
 assert.doesNotMatch(appView, /input\.mode\s*=|input\.task\s*=/);
+assert.match(assistantSource, /run:\s*runPrimaryWithRuntime/);
+assert.doesNotMatch(assistantSource, /createAiRunner|runner\.run/);
+assert.match(runtimeSource, /COMFY_CALL_LIMIT/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /createCallServer|migrateLegacyData|agentWriteEnabled/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), /migrateLegacyUserData|config-migration/);
 

@@ -83,33 +83,8 @@ try {
   // Translation only needs the generic AiService, so it can be assembled
   // after Assistant without introducing a reverse dependency.
   translation = modules.createTranslation({ tags, runner: translationRunner, ai: assistant.ai });
-  const subagents = modules.createFixedSubagents({
-    vision: assistant.visionService || modules.createVisionService?.({ vision, images, visionAI: assistant.visionAi }),
-    translation,
-    ai: assistant.ai,
-    prompts,
-    getSettings: () => assistant.getSettings?.() || {}
-  });
-  const toolBridge = {
-    resolve: name => primaryTools?.resolve?.(name),
-    list: () => primaryTools?.list?.() || [],
-    openAiTools: () => primaryTools?.openAiTools?.() || [],
-    call: (name, args, context) => primaryTools?.call?.(name, args, context) || { ok: false, error: { code: 'TOOL_UNAVAILABLE', message: `工具不可用：${name}` } }
-  };
-  runtime = modules.createAgentRuntime({
-    primaryClient: assistant.ai,
-    subagents,
-    tools: toolBridge,
-    getSettings: () => assistant.getSettings?.() || {},
-    onStatus: status => { try { assistant.onAgentStatus?.(status); } catch { /* UI status is optional */ } }
-  });
-  primaryTools = modules.createPrimaryTools({
-    tags,
-    imageRepository: assistant.imageRepository,
-    runtime,
-    comfy,
-    getSettings: () => assistant.getSettings?.() || {}
-  });
+  runtime = assistant.runtime || null;
+  primaryTools = assistant.primaryTools || null;
 } catch (error) {
   // 标签模块加载失败时仍让页面打开，便于人工看到错误并继续迭代。
   console.warn('[V1.4.193] 业务模块加载失败：', error && error.message ? error.message : error);
@@ -197,7 +172,7 @@ function visionInputForRenderer(input = {}) {
 }
 function callForRenderer(name, args = {}, context = {}) {
   const scoped = { ...(context && typeof context === 'object' ? context : {}), sessionId: currentSessionId(), caller: 'ui' };
-  return assistant?.calls?.call?.(name, args, scoped);
+  return runtime?.callTool?.(name, args, scoped) || { ok: false, error: { code: 'RUNTIME_UNAVAILABLE', message: '统一 Agent Runtime 不可用' } };
 }
 function runForRenderer(input = {}, config = {}) {
   const value = input && typeof input === 'object' ? { ...input } : { text: input };
@@ -296,8 +271,12 @@ contextBridge.exposeInMainWorld('AppModules', {
     addFavorite: assistant.addFavorite,
     removeFavorite: assistant.removeFavorite,
     snapshot: assistant.snapshot,
-    ai: assistant.ai ? { complete: assistant.ai.complete, stream: assistant.ai.stream, listModels: assistant.ai.listModels, setConfig: assistant.ai.setConfig, getConfig: assistant.ai.getConfig } : null,
-    visionAi: assistant.visionAi ? { complete: assistant.visionAi.complete, stream: assistant.visionAi.stream, listModels: assistant.visionAi.listModels, setConfig: assistant.visionAi.setConfig, getConfig: assistant.visionAi.getConfig } : null,
+    listModels: assistant.listModels,
+    listVisionModels: assistant.listVisionModels,
+    testConnection: assistant.testConnection,
+    runVision: assistant.runVision,
+    ai: assistant.ai ? { listModels: assistant.listModels, getConfig: assistant.ai.getConfig } : null,
+    visionAi: assistant.visionAi ? { listModels: assistant.listVisionModels, getConfig: assistant.visionAi.getConfig } : null,
     visionService: assistant.visionService ? { processOne: input => assistant.visionService.processOne(visionInputForRenderer(input)), available: assistant.visionService.available } : null,
     calls: assistant.calls ? { call: callForRenderer, list: assistant.calls.list, listAvailable: assistant.calls.listAvailable, listAgent: assistant.calls.listAgent, agentNames: assistant.calls.agentNames, schemas: assistant.calls.schemas, schemasAvailable: assistant.calls.schemasAvailable, schemasAgent: assistant.calls.schemasAgent, openAiTools: assistant.calls.openAiTools, openAiToolsAvailable: assistant.calls.openAiToolsAvailable, openAiToolsAgent: assistant.calls.openAiToolsAgent, getCapabilities: assistant.calls.getCapabilities, refreshCapabilities: assistant.calls.refreshCapabilities, invalidateCapabilities: assistant.calls.invalidateCapabilities, describe: assistant.calls.describe } : null
   } : null,
