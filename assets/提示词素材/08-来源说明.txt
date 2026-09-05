@@ -1,0 +1,7 @@
+本目录的提示词素材从 AI 绘画 Tag 工具箱 V1.4.2 提取。
+
+来源：
+- V1.4.2 素材仓库中的 MAIN_PROMPT、GEN_TASK、CHAT_TASK、DEFAULT_VISION_PROMPT、DEFAULT_QP、APPENDIXES
+- V1.4.2 素材仓库中的 ComfyUI 任务说明
+
+这些文件只保留提示词文本，不包含旧版实现代码。V1.4.9 由 Prompts 模块读取有效值，Vision 通过 `getEffective("vision")` 使用识图提示词；用户覆盖值与启停状态独立保存。

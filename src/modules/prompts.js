@@ -18,7 +18,9 @@ const PROMPT_FILES = Object.freeze({
   vision: '04-识图描述提示词-DEFAULT_VISION_PROMPT.txt',
   comfy: '05-ComfyUI提示词协议.txt',
   quality: '06-默认质量前缀-DEFAULT_QP.txt',
-  appendices: '07-默认附录提示词.txt'
+  appendices: '07-默认附录提示词.txt',
+  translation: '08-固定翻译子代理-TRANSLATION_AGENT.txt',
+  generateTags: '09-固定生成Tag子代理-GENERATE_TAGS_AGENT.txt'
 });
 
 const PROMPT_ALIASES = Object.freeze({
@@ -43,7 +45,9 @@ const PROMPT_META = Object.freeze({
   vision: { label: '识图描述提示词', kind: 'task', role: 'system', mode: 'vision', editable: true, editableOverride: true, deletable: false },
   comfy: { label: 'ComfyUI 提示词协议', kind: 'protocol', role: 'system', mode: 'comfy', editable: false, editableOverride: false, deletable: false },
   quality: { label: '默认质量前缀', kind: 'prefix', role: 'system', mode: 'generate', editable: true, editableOverride: true, deletable: false },
-  appendices: { label: '默认附录提示词', kind: 'appendix-set', role: 'system', mode: 'optional', editable: false, editableOverride: false, deletable: false }
+  appendices: { label: '默认附录提示词', kind: 'appendix-set', role: 'system', mode: 'optional', editable: false, editableOverride: false, deletable: false },
+  translation: { label: '翻译子代理提示词', kind: 'fixed-subagent', role: 'system', editable: true, editableOverride: true, deletable: false },
+  generateTags: { label: '文生图 Tag 子代理提示词', kind: 'fixed-subagent', role: 'system', editable: true, editableOverride: true, deletable: false }
 });
 
 const MODE_KEYS = Object.freeze({
