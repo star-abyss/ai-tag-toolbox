@@ -168,30 +168,6 @@ function promptValues(source, promptDir) {
   return values;
 }
 
-function normaliseMode(value) {
-  const raw = text(value, 'assistant').toLowerCase();
-  return raw === 'draw' ? 'draw' : 'assistant';
-}
-
-function migrateLegacyMode(value) {
-  const raw = text(value, 'assistant').toLowerCase();
-  return LEGACY_MODE_MAP[raw] || 'assistant';
-}
-
-function normaliseTask(value) {
-  const raw = text(value).toLowerCase();
-  if (raw === 'comfy' || raw === 'comfyiteration') return 'comfy';
-  if (raw === 'draw' || raw === 'generate' || raw === 'generation' || raw === 'gen' || raw === 'recreate' || raw === 'rk' || raw === 'vision') return 'draw';
-  return 'assistant';
-}
-
-function migrateLegacyTask(value) {
-  const raw = text(value).toLowerCase();
-  if (raw === 'comfy' || raw === 'comfyiteration') return 'comfy';
-  if (raw === 'draw' || raw === 'generate' || raw === 'generation' || raw === 'gen' || raw === 'recreate' || raw === 'rk' || raw === 'vision') return 'draw';
-  return 'assistant';
-}
-
 function normaliseRole(value) {
   const role = text(value).toLowerCase();
   if (role === 'ai' || role === 'bot') return 'assistant';
@@ -1067,7 +1043,7 @@ function createAssistant(options = {}) {
         return {
           id: messageId, role: normaliseRole(message.role) || 'user',
           text: contentText(message.text != null ? message.text : message.content), imageIds: list(message.imageIds).filter(Boolean),
-          imageReference: text(message.imageReference || message.imageRef), mode: migrateLegacyMode(message.mode || message.profile), task: migrateLegacyTask(message.task || message.context || message.mode), result: sessionClone(message.result, 'result'),
+          imageReference: text(message.imageReference || message.imageRef), result: sessionClone(message.result, 'result'),
           reasoning: text(message.reasoning), toolCalls: Array.isArray(message.toolCalls) ? sessionClone(message.toolCalls, 'toolCalls') : [], candidates: candidateSnapshot(message.candidates), activity: activitySnapshot(message.activity), status: text(message.status, 'done'), createdAt: message.createdAt || Date.now()
         };
       });
@@ -1084,9 +1060,8 @@ function createAssistant(options = {}) {
   function sessionById(id) { return state.sessions.find((session) => session.id === (id || state.currentId)); }
   function currentSession() {
     const existing = sessionById();
-    if (existing) { imageRepository?.finalizeMigration?.(); return existing; }
+    if (existing) return existing;
     newSession('新对话', { cancelActive: false });
-    imageRepository?.finalizeMigration?.();
     return sessionById();
   }
   function resolveImage(value) {
@@ -1256,7 +1231,7 @@ function createAssistant(options = {}) {
   }
   function append(role, value, extra = {}, sessionId) {
     const session = sessionById(sessionId) || currentSession();
-    const message = { id: uid('message', sequence), role: normaliseRole(role) || 'user', text: contentText(value), imageIds: list(extra.imageIds).filter(Boolean), imageReference: text(extra.imageReference || extra.imageRef), mode: normaliseMode(extra.mode), task: normaliseTask(extra.task || extra.context || extra.mode), result: clone(extra.result), reasoning: text(extra.reasoning), toolCalls: Array.isArray(extra.toolCalls) ? clone(extra.toolCalls) : [], candidates: candidateSnapshot(extra.candidates), activity: activitySnapshot(extra.activity), status: text(extra.status, 'done'), createdAt: Date.now() };
+    const message = { id: uid('message', sequence), role: normaliseRole(role) || 'user', text: contentText(value), imageIds: list(extra.imageIds).filter(Boolean), imageReference: text(extra.imageReference || extra.imageRef), result: clone(extra.result), reasoning: text(extra.reasoning), toolCalls: Array.isArray(extra.toolCalls) ? clone(extra.toolCalls) : [], candidates: candidateSnapshot(extra.candidates), activity: activitySnapshot(extra.activity), status: text(extra.status, 'done'), createdAt: Date.now() };
     session.messages.push(message); session.updatedAt = Date.now(); storageWrite(); return sessionClone(message);
   }
   function messageLocation(value, sessionId) {
@@ -1302,11 +1277,9 @@ function createAssistant(options = {}) {
       imageIds: Array.isArray(inputPatch?.imageIds) ? inputPatch.imageIds : user.imageIds,
       sessionId: found.session.id,
     };
-    const mode = migrateLegacyMode(user.mode || 'assistant');
-    const task = migrateLegacyTask(user.task || user.context || user.mode);
     let result;
     try {
-      result = await runUnified({ ...input, mode, task }, config);
+      result = await runUnified(input, config);
     } catch (error) {
       found.session.messages = previousMessages;
       found.session.updatedAt = Date.now();
@@ -1331,8 +1304,8 @@ function createAssistant(options = {}) {
   }
   async function runUnified(value, config = {}) {
     const input = normaliseInput(value);
-    const mode = normaliseMode(input.mode || input.profile);
-    const task = normaliseTask(input.task || input.context || (mode === 'draw' ? input.mode : 'assistant'));
+    const mode = 'primary';
+    const task = 'primary';
     return withJob(mode, input, config, async (job) => {
       const session = sessionById(input.sessionId) || currentSession();
       const repository = imageRepository;
@@ -1609,7 +1582,7 @@ function createAssistant(options = {}) {
       prompt: selected.finalPrompt,
       negative: selected.finalNegative
     };
-    if (found.message.mode === 'draw') found.message.text = selected.finalPrompt;
+    if (found.message.result?.candidates) found.message.text = selected.finalPrompt;
     found.session.updatedAt = Date.now();
     storageWrite();
     return clone({ messageId: found.message.id, candidates, ...selected });
@@ -1788,7 +1761,6 @@ function createAssistant(options = {}) {
       const normalised = normaliseSessionList(incoming, usedSessionIds, usedMessageIds);
       state.sessions.push(...normalised.sessions);
       if (!state.currentId) state.currentId = state.sessions[0]?.id || '';
-      imageRepository.finalizeMigration();
       storageWrite();
       return api.sessions();
     },

@@ -212,6 +212,9 @@
         };
       return item || {};
     }
+    function messageHasRender(message) {
+      return Boolean(message?.toolCalls?.some?.(call => call?.name === "comfy.render" || call?.call === "comfy.render") || message?.result?.artifact || message?.result?.candidates?.length || message?.candidates?.length);
+    }
     const categoryColors = {
       quality: "#4967D8", negative: "#C2413A", character: "#6E5ACB", character_names: "#7659A8", body: "#258F83",
       expression: "#B9770E", eyes: "#1E8FA5", hair: "#8A5A9E", features: "#7A63B8",
@@ -2468,8 +2471,8 @@
           row.className = "cmsg " + (message.role === "assistant" ? "ai" : message.role === "error" ? "err" : message.role === "system" ? "sys" : "user");
           const body = doc.createElement("div");
           body.className = "body";
-          const candidateRows = message.mode === "draw" && (Array.isArray(message.candidates) ? message.candidates : message.result?.candidates || []);
-          const drawReply = message.mode === "draw" && message.role === "assistant";
+          const candidateRows = messageHasRender(message) && (Array.isArray(message.candidates) ? message.candidates : message.result?.candidates || []);
+          const drawReply = messageHasRender(message) && message.role === "assistant";
           const parsedDraw = drawReply && !message.result?.prompt && message.text
             ? assistant?.parseReply?.(message.text)
             : null;
@@ -2501,7 +2504,7 @@
             row.appendChild(details);
           }
           renderActivityTimeline(row, message);
-          const hasCandidates = message.mode === "draw" && renderCandidateCards(row, message);
+          const hasCandidates = messageHasRender(message) && renderCandidateCards(row, message);
           if (!hasCandidates && Array.isArray(message.imageIds) && message.imageIds.length) {
             const gallery = doc.createElement("div");
             gallery.className = "imgs";
@@ -2516,7 +2519,7 @@
             });
             if (gallery.childElementCount) row.appendChild(gallery);
           }
-          if (message.mode === "draw" && message.role === "assistant" && drawPrompt) {
+          if (messageHasRender(message) && message.role === "assistant" && drawPrompt) {
             const final = doc.createElement("pre");
             final.className = "genout";
             const negative = candidateRows.length
@@ -2551,7 +2554,7 @@
               // 内容——普通回复复制正文，绘图回复复制「最终提示词 + 负面提示词」。
               if (message.role === "assistant") {
                 const negative = message.result?.finalNegative || message.result?.negative || "";
-                const isDrawCopy = message.mode === "draw" && Boolean(drawPrompt);
+                const isDrawCopy = messageHasRender(message) && Boolean(drawPrompt);
                 const value = isDrawCopy
                   ? `${drawPrompt}${negative ? `\n\n【负面提示词】\n${negative}` : ""}`
                   : message.text || "";
@@ -2585,16 +2588,16 @@
       if (!row) return renderTalk();
       const body = $(".body", row);
       if (!body) return renderTalk();
-      const candidateRows = message.mode === "draw" && (Array.isArray(message.candidates) ? message.candidates : message.result?.candidates || []);
-      const parsedDraw = message.mode === "draw" && !message.result?.prompt && message.text
+      const candidateRows = messageHasRender(message) && (Array.isArray(message.candidates) ? message.candidates : message.result?.candidates || []);
+      const parsedDraw = messageHasRender(message) && !message.result?.prompt && message.text
         ? assistant?.parseReply?.(message.text)
         : null;
-      const drawPrompt = message.mode === "draw"
+      const drawPrompt = messageHasRender(message)
         ? candidateRows.length
           ? (message.result?.finalPrompt || (message.result?.finalCandidateId ? message.result?.prompt : ""))
           : message.result?.prompt || parsedDraw?.prompt
         : "";
-      const bodyText = message.mode === "draw" && message.role !== "error" && (candidateRows.length || drawPrompt) ? "" : message.text || "";
+      const bodyText = messageHasRender(message) && message.role !== "error" && (candidateRows.length || drawPrompt) ? "" : message.text || "";
       updateStreamingBody(body, bodyText);
       if (!bodyText && !message.reasoning) body.textContent = "🤔 AI 正在思考…";
       if (!bodyText && message.status === "done" && candidateRows.length && !drawPrompt)
@@ -2772,7 +2775,7 @@
       const message = session?.messages?.at(-1);
       if (!host || !message) return;
       const row = [...host.children].find(item => item.dataset?.messageId === message.id);
-      if (!row || message.mode !== "draw") return;
+      if (!row || !messageHasRender(message)) return;
       $(".draw-candidates", row)?.remove();
       renderCandidateCards(row, message);
       talkScroll();
@@ -2960,8 +2963,8 @@
       if (!host) return;
       const sessionList = assistant?.sessions?.() || [];
       const current = sessionList.length ? assistant?.currentSession?.() : null;
-      put("#mgrGenCur", current ? `${current.title || "当前对话"} · ${(current.messages || []).filter((item) => item.mode === "draw").length} 条绘图消息` : "暂无当前绘图对话");
-      put("#mgrChatCur", current ? `${current.title || "当前对话"} · ${(current.messages || []).filter((item) => item.mode === "assistant").length} 条助手消息` : "暂无当前助手对话");
+      put("#mgrGenCur", current ? `${current.title || "当前对话"} · ${(current.messages || []).filter(messageHasRender).length} 条出图消息` : "暂无当前出图消息");
+      put("#mgrChatCur", current ? `${current.title || "当前对话"} · ${(current.messages || []).filter((item) => item.role === "assistant").length} 条 AI 消息` : "暂无当前 AI 消息");
       if (!$("#mgrActions")) {
         const actions = doc.createElement("div");
         actions.id = "mgrActions";

@@ -234,7 +234,7 @@ function normaliseCall(call, context = {}) {
   if (used >= definition.maxPerRound) return { ok: false, code: 'CALL_LIMIT', error: `本轮 ${definition.name} 调用次数已达上限` };
   const variables = {};
   const defaults = { ...definition.defaults };
-  if (definition.name === 'render' && context.settings?.comfyIters != null) defaults.iterations = Number(context.settings.comfyIters);
+  if (definition.name === 'render' && context.settings?.batchCount != null) defaults.batchCount = Number(context.settings.batchCount);
   for (const [key, spec] of Object.entries(definition.aiInput)) {
     let value = call[key];
     const providedByAi = value != null;

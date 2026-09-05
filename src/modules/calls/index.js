@@ -78,7 +78,7 @@ function comfySettingsSnapshot(settings = {}, comfy = null) {
     negative: text(settings.comfyNeg),
     sampler: text(settings.comfySampler),
     scheduler: text(settings.comfyScheduler),
-    iterations: Math.max(1, Math.min(10, Number(settings.comfyIters) || 3)),
+    batchCount: Math.max(1, Math.min(8, Number(settings.batchCount) || 1)),
     workflow: { configured: Boolean(workflowValue), ready: Boolean(workflow.ready), error: text(workflow.error) }
   };
 }
@@ -532,7 +532,7 @@ function createCalls(options = {}) {
     const requested = Number(args.value);
     if (!Number.isFinite(requested)) throw new Error('value 必须是 1–10 的整数');
     const value = Math.max(1, Math.min(10, Math.round(requested)));
-    return { value: Number(getSettings()?.comfyIters) === value ? value : Number(setSettings({ comfyIters: value })?.comfyIters || value) };
+    return { value: Number(getSettings()?.batchCount) === value ? value : Number(setSettings({ batchCount: value })?.batchCount || value) };
   });
 
   // 外部 Agent 专属工具：运行时能力保持只读/可控，内部 UI 不展示这些扩展入口。

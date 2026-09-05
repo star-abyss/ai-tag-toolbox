@@ -346,7 +346,7 @@ function createAiRunner(options = {}) {
 
     const conversation = list(params.messages).map(clone);
     const trace = [];
-    const renderLimit = task === 'comfy' ? Math.max(1, Number(input.maxIterations) || 3) : 0;
+    const renderLimit = task === 'comfy' ? Math.max(1, Number(input.batchCount) || 1) : 0;
     const maxAiTurns = Math.max(1, Math.min(32, Number(input.maxToolRounds || config.maxToolRounds) || (task === 'comfy' ? renderLimit * 6 + 2 : 8)));
     const maxToolCalls = Math.max(4, Math.min(64, Number(input.maxToolCalls || config.maxToolCalls) || (task === 'comfy' ? renderLimit * 10 + 4 : 24)));
     const primaryVision = input.primaryVision == null ? looksVision(config.model || getSettings()?.model) : Boolean(input.primaryVision);
@@ -486,7 +486,7 @@ function createAiRunner(options = {}) {
         emitToolEvent(input, { type: 'start', name, arguments: clone(args), round: aiTurns, aiRound: aiTurns, mode: profile, task });
         let toolResult;
         if (name === 'comfy.render' && renderLimit > 0 && toolCounts[name] > renderLimit) {
-          toolResult = { ok: false, code: 'ITERATION_LIMIT', error: `已达到本次 ComfyUI 最大迭代次数（${Number(input.maxIterations)}）` };
+          toolResult = { ok: false, code: 'BATCH_LIMIT', error: `已达到本次 ComfyUI 批量上限（${Number(input.batchCount) || 1}）` };
         } else {
           toolResult = await calls.call(name, args, {
             caller: 'assistant',
@@ -604,10 +604,10 @@ function createAiRunner(options = {}) {
     const resultCache = options.callCache instanceof Map
       ? options.callCache
       : (input.callCache instanceof Map ? input.callCache : visionCache);
-    const maxAiTurns = Math.max(1, Math.min(32, Number(input.maxToolRounds || config.maxToolRounds) || (task === 'comfy' ? (Number(input.maxIterations) || Number(settings.comfyIters) || 3) * 6 + 2 : 8)));
-    const maxToolCalls = Math.max(4, Math.min(64, Number(input.maxToolCalls || config.maxToolCalls) || (task === 'comfy' ? (Number(input.maxIterations) || Number(settings.comfyIters) || 3) * 10 + 4 : 24)));
+    const maxAiTurns = Math.max(1, Math.min(32, Number(input.maxToolRounds || config.maxToolRounds) || 8));
+    const maxToolCalls = Math.max(4, Math.min(64, Number(input.maxToolCalls || config.maxToolCalls) || 24));
     const renderLimit = task === 'comfy'
-      ? Math.max(1, Math.min(10, Number(input.maxIterations || config.maxIterations || settings.comfyIters) || 3))
+      ? Math.max(1, Math.min(8, Number(input.batchCount || config.batchCount || settings.batchCount) || 1))
       : 0;
     const requestId = text(input.requestId || job.id, `request_${Date.now().toString(36)}`);
     const stale = () => {
