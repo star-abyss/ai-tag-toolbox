@@ -194,7 +194,8 @@ function appFixture(options = {}) {
   const characters = {
     page: options => ({ items: [], total: 0, offset: options.offset, limit: options.limit, hasMore: false }), series: () => [], get: () => null, select: () => {},
     selected: ({ includeAdult } = {}) => characterSelected.map(item => ({ ...item, tags: includeAdult ? item.tags : item.tags.filter(tag => tag !== 'adult trait') })), size: () => characterSelected.length, selectionText: () => 'blue hair, hatsune_miku_\\(vocaloid\\)',
-    removeSelection: id => { characterSelected = characterSelected.filter(item => item.id !== id); }, clearSelection: () => { characterSelected = []; }
+    removeSelection: id => { characterSelected = characterSelected.filter(item => item.id !== id); }, clearSelection: () => { characterSelected = []; },
+    ...options.characters
   };
   const preferences = { get: (_key, fallback) => fallback, set() {} };
   const modules = { tags, characters: options.withoutCharacters ? null : characters, preferences, locales: { 'zh-CN': {}, 'en-US': {} }, version: '1.4.198', assistant: { getSettings: () => ({}), refreshCapabilities: async () => ({}) }, prompts: {}, images: {}, translation: {}, comfy: {} };
@@ -219,7 +220,7 @@ test('app sidebar replaces character names with an indented character library ro
 });
 
 test('ordinary search result for a character exposes a shortcut to the character library', () => {
-  const app = appFixture({ roleSearch: { id: 'hatsune_miku', en: 'hatsune_miku', zh: '初音未来', category: 'character_names', subcategory: '角色名' } });
+  const app = appFixture({ roleSearch: { id: 'hatsune_miku', en: 'hatsune_miku', zh: '初音未来', category: 'character_names', subcategory: '角色名' }, characters: { get: id => ({ id, name: 'hatsune_miku', nameZh: '初音未来', aliases: [], identityTags: ['hatsune miku', 'vocaloid'], generalTags: [], specificTags: [] }) } });
   app.view.route('tags');
   app.document.querySelector('#q').value = '初音未来';
   app.document.querySelector('#searchBtn').click();
@@ -229,6 +230,8 @@ test('ordinary search result for a character exposes a shortcut to the character
   jump.click();
   assert.equal(app.document.querySelector('#charactersView').hidden, false);
   assert.equal(app.document.querySelector('#q').value, 'hatsune_miku');
+  assert.equal(app.view.views.characters.getState().detail, 'hatsune_miku');
+  assert.match(app.document.querySelector('#characterDetail').textContent, /初音未来/);
   app.dom.window.close();
 });
 

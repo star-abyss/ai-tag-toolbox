@@ -3222,6 +3222,7 @@
           ui.characterQuery = query;
           $("#q").value = query;
           route("characters");
+          views.characters?.openCharacter?.(query);
           return;
         }
         const button = event.target.closest("[data-en]");
