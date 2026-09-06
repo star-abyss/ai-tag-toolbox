@@ -40,7 +40,9 @@
 .character-no-features,.character-muted{padding:10px 0;color:var(--muted);font-size:12px}
 .character-actions{position:sticky;bottom:-28px;display:flex;flex-wrap:wrap;gap:8px;margin:20px -24px -28px;padding:12px 24px;background:color-mix(in srgb,var(--card) 92%,transparent);border-top:1px solid var(--border);backdrop-filter:blur(10px)}
 .character-actions button{min-height:34px}
-.character-library-entry{margin-left:18px;width:calc(100% - 18px);font-size:13px}.character-library-entry::after{content:"";position:absolute;left:-9px;top:-8px;bottom:50%;width:8px;border-left:1px solid var(--border2);border-bottom:1px solid var(--border2);border-bottom-left-radius:5px}
+.character-copy-action{border:1px solid var(--cp);background:var(--cp-bg);color:var(--cp);font-weight:700;box-shadow:0 2px 7px color-mix(in srgb,var(--cp) 18%,transparent)}
+.character-copy-action:hover{background:var(--cp-hover-bg);border-color:var(--cp);transform:translateY(-1px)}
+.character-library-entry{width:100%;margin:4px 0 8px;border:1px solid color-mix(in srgb,#0E9B8E 60%,var(--border2));border-left:3px solid #0E9B8E;background:color-mix(in srgb,#0E9B8E 8%,var(--card));color:var(--text);font-size:13px}.character-library-entry:hover{border-color:#0E9B8E;background:color-mix(in srgb,#0E9B8E 15%,var(--card))}.character-library-entry::after{display:none}
 .schip.character-selection{border-color:var(--cp);background:var(--cp-bg);color:var(--cp)}
 .schip.character-selection .character-chip-text{display:flex;flex-direction:column;line-height:1.25}.schip.character-selection small{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 

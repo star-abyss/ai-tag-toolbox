@@ -373,7 +373,7 @@
         button.type = "button";
         button.className = `cat character-library-entry btn btn-menu${ui.route === "characters" ? " on" : ""}`;
         button.dataset.characters = "true";
-        button.style.setProperty("--cat-color", categoryColor("character_names"));
+        button.style.setProperty("--cat-color", "#0E9B8E");
         const icon = doc.createElement("span");
         icon.className = "cico";
         icon.textContent = "♙";
@@ -393,7 +393,7 @@
         const label = category.id === "all" ? localized("ui.tag.all", category.name || category.id) : categoryLabel(category.id, category.name || category.id);
         button.innerHTML = `<span class="cico">${category.icon || "🏷️"}</span><span>${label}</span><span class="n">${count}</span>`;
         host.appendChild(button);
-        if (category.id === "character") appendCharacterLibrary();
+        if (category.id === "all") appendCharacterLibrary();
       });
       const adult = $("#aiNsfwChk");
       if (adult) adult.checked = snap.adult;
@@ -524,7 +524,18 @@
           button.dataset.en = str(item.id || item.en).toLowerCase();
           button.style.setProperty("--c", categoryColor(item.category));
           button.innerHTML = `<span class="en">${item.en || ""}</span><span class="zh">${item.zh || (item.aliases || item.al || []).join(" ")}</span><span class="cp">${localized("ui.tag.copyOnly", "仅复制")}</span>`;
-          row.appendChild(button);
+          if (item.category === "character_names" && characters) {
+            const wrap = doc.createElement("div");
+            wrap.className = "chip-with-character";
+            const jump = doc.createElement("button");
+            jump.type = "button";
+            jump.className = "character-jump";
+            jump.dataset.characterJump = str(item.id || item.en);
+            jump.textContent = ui.locale === "en-US" ? "Open character" : "查看角色";
+            jump.title = ui.locale === "en-US" ? "Open character library" : "跳转到角色库";
+            wrap.append(button, jump);
+            row.appendChild(wrap);
+          } else row.appendChild(button);
         });
         section.appendChild(row);
         host.appendChild(section);
@@ -3203,6 +3214,16 @@
         renderTags();
       });
       $("#chips")?.addEventListener("click", (event) => {
+        const jump = event.target.closest("[data-character-jump]");
+        if (jump) {
+          event.preventDefault();
+          clearTimeout(ui.searchTimer);
+          const query = str(jump.dataset.characterJump);
+          ui.characterQuery = query;
+          $("#q").value = query;
+          route("characters");
+          return;
+        }
         const button = event.target.closest("[data-en]");
         if (!button) return;
         if (event.target.closest(".cp")) {

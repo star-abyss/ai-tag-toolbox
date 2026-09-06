@@ -113,6 +113,20 @@ test('detail starts optional traits unchecked and sends explicit selection modes
   app.dom.window.close();
 });
 
+test('detail copies identity with all general appearance traits without hidden specific traits', async () => {
+  const app = fixture();
+  app.view.render({ query: '', precision: 'standard', includeAdult: false });
+  app.document.querySelector('[data-character-id="miku"]').click();
+  assert.equal(app.document.querySelectorAll('[data-character-copy]').length, 3);
+  assert.ok(app.document.querySelector('[data-character-copy="appearance"]'), 'new appearance copy button is missing');
+  assert.deepEqual([...app.document.querySelectorAll('.character-actions button')].map(button => button.dataset.characterCopy || button.dataset.characterAction), ['identity', 'appearance', 'features', 'identity', 'features']);
+  assert.match(app.document.querySelector('[data-character-copy="appearance"]').className, /character-copy-action/);
+  app.document.querySelector('[data-character-copy="appearance"]').click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(app.calls.copy.at(-1), 'hatsune_miku_\\(vocaloid\\), vocaloid, teal hair');
+  app.dom.window.close();
+});
+
 test('empty, loading error, and English labels remain usable', () => {
   const empty = fixture({ locale: 'en-US', characters: { page: options => ({ items: [], total: 0, offset: options.offset, limit: options.limit, hasMore: false }) } });
   empty.view.render({ query: 'missing', precision: 'broad', includeAdult: false });
@@ -174,7 +188,7 @@ function appFixture(options = {}) {
   const tags = {
     restore() {}, setSearchPrecision(value) { tagState.precision = value; }, setAdult(value) { tagState.includeAdult = value; }, setQuery(value) { tagState.query = value; }, setCategory(value) { tagState.category = value; },
     stateSnapshot: () => ({ categories: [{ id: 'character', name: '人物与角色', icon: '👥' }, { id: 'character_names', name: '角色名', icon: '🏷️' }, { id: 'body', name: '身体', icon: '🧍' }], categoryCounts: { all: 2, character: 1, character_names: 1, body: 1 }, selected: normalSelected, query: tagState.query, category: tagState.category, search: tagState.precision, searchPrecision: tagState.precision, includeAdult: tagState.includeAdult, revision: 1 }),
-    selected: () => normalSelected, selectedText: () => normalSelected.map(item => item.en).join(', '), page: () => ({ items: [], total: 0 }), size: () => 2, subcategories: () => [], customTags: () => [], clearSelection() {}, select() {}
+    selected: () => normalSelected, selectedText: () => normalSelected.map(item => item.en).join(', '), page: () => options.roleSearch ? ({ items: [options.roleSearch], total: 1 }) : ({ items: [], total: 0 }), size: () => 2, subcategories: () => [], customTags: () => [], clearSelection() {}, select() {}
   };
   let characterSelected = [{ id: 'miku', name: 'hatsune_miku', tags: options.duplicateIdentity ? ['blue hair', 'rem_\\(re:zero\\)'] : ['blue hair', 'hatsune_miku_\\(vocaloid\\)', ...(tagState.includeAdult ? ['adult trait'] : [])] }];
   const characters = {
@@ -194,13 +208,27 @@ test('app sidebar replaces character names with an indented character library ro
   const app = appFixture();
   const categories = [...app.document.querySelectorAll('#catList > button')];
   const characterIndex = categories.findIndex(node => node.dataset.cat === 'character');
-  assert.equal(categories[characterIndex + 1].dataset.characters, 'true');
-  assert.match(categories[characterIndex + 1].textContent, /角色库/);
+  assert.equal(categories[1].dataset.characters, 'true');
+  assert.match(categories[1].textContent, /角色库/);
   assert.equal(app.document.querySelector('[data-cat="character_names"]'), null);
-  categories[characterIndex + 1].click();
+  categories[1].click();
   assert.equal(app.document.querySelectorAll('#catList > .on').length, 1);
   assert.equal(app.document.querySelector('#charactersView').hidden, false);
   assert.equal(app.document.querySelector('#tagLibraryView').style.display, 'none');
+  app.dom.window.close();
+});
+
+test('ordinary search result for a character exposes a shortcut to the character library', () => {
+  const app = appFixture({ roleSearch: { id: 'hatsune_miku', en: 'hatsune_miku', zh: '初音未来', category: 'character_names', subcategory: '角色名' } });
+  app.view.route('tags');
+  app.document.querySelector('#q').value = '初音未来';
+  app.document.querySelector('#searchBtn').click();
+  const jump = app.document.querySelector('[data-character-jump]');
+  assert.ok(jump);
+  assert.equal(jump.dataset.characterJump, 'hatsune_miku');
+  jump.click();
+  assert.equal(app.document.querySelector('#charactersView').hidden, false);
+  assert.equal(app.document.querySelector('#q').value, 'hatsune_miku');
   app.dom.window.close();
 });
 

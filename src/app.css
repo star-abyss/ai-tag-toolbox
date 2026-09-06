@@ -162,6 +162,10 @@ header{flex:none;display:flex;align-items:center;gap:10px;padding:10px 18px;back
 .chip .cp{position:absolute;bottom:6px;right:7px;font-size:11.5px;padding:2px 9px;border-radius:7px;border:1px solid var(--cp);background:var(--cp-bg);color:var(--cp);font-weight:600;line-height:1.5;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s}
 .chip:hover .cp{opacity:1;pointer-events:auto}
 .chip .cp:hover{background:var(--cp-hover-bg)}
+.chip-with-character{display:inline-flex;align-items:stretch;gap:5px;min-width:0}
+.chip-with-character .chip{flex:1 1 auto}
+.character-jump{display:inline-flex;align-items:center;justify-content:center;padding:0 8px;border:1px solid var(--cp);border-radius:8px;background:var(--cp-bg);color:var(--cp);font-size:11px;font-weight:700;white-space:nowrap}
+.character-jump:hover{background:var(--cp-hover-bg)}
 @media(hover:none){.chip .cp{opacity:.85;pointer-events:auto}}
 .chip-toast{position:fixed;transform:translate(-50%,-100%);background:var(--text);color:var(--bg);font-size:11px;padding:2px 9px;border-radius:10px;pointer-events:none;white-space:nowrap;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.25);animation:chtoast .9s ease forwards}
 @keyframes chtoast{0%{opacity:0;margin-top:3px}12%{opacity:1;margin-top:0}78%{opacity:1}100%{opacity:0}}

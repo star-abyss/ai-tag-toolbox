@@ -18,7 +18,7 @@
       choose: '未选择角色', aliases: '别名', identity: '身份触发词', work: '作品 / 来源',
       includeWork: '加入作品词', general: '通用特征', specific: '角色专用特征', noFeatures: '该角色暂无参考特征',
       review: '待复核', addIdentity: '加入角色', addFeatures: '加入角色与所选特征', copyIdentity: '复制角色词',
-      copyFeatures: '复制角色与所选特征', copied: '已复制角色词', copyFailed: '复制失败，请检查剪贴板权限', added: '已加入角色'
+      copyAppearance: '复制角色与外貌词', copyFeatures: '复制角色与所选特征', copied: '已复制角色词', copyFailed: '复制失败，请检查剪贴板权限', added: '已加入角色'
     },
     'en-US': {
       library: 'Character library', searchSeries: 'Search works', seriesPlaceholder: 'Type a work or source',
@@ -27,7 +27,7 @@
       choose: 'No character selected', aliases: 'Aliases', identity: 'Identity tags', work: 'Work / source',
       includeWork: 'Include work tag', general: 'General traits', specific: 'Character-specific traits', noFeatures: 'No reference traits for this character',
       review: 'Needs review', addIdentity: 'Add character', addFeatures: 'Add character with selected traits', copyIdentity: 'Copy character tags',
-      copyFeatures: 'Copy character with selected traits', copied: 'Character tags copied', copyFailed: 'Clipboard access failed', added: 'Character added'
+      copyAppearance: 'Copy character with appearance', copyFeatures: 'Copy character with selected traits', copied: 'Character tags copied', copyFailed: 'Clipboard access failed', added: 'Character added'
     }
   };
   const categoryLabels = {
@@ -112,6 +112,14 @@
       return values.filter(Boolean).map(escapePrompt).join(', ');
     }
 
+    function appearanceText() {
+      if (!state.detail) return '';
+      const identityTags = state.detail.identityTags || [];
+      const values = q('[data-include-series]')?.checked === false ? identityTags.slice(0, 1) : [...identityTags];
+      (state.detail.generalTags || []).forEach(item => values.push(text(item.en || item.id)));
+      return values.filter(Boolean).map(escapePrompt).join(', ');
+    }
+
     function appendValueList(host, values, emptyText = '') {
       const row = element('div', 'character-tag-values');
       (values || []).forEach(value => row.appendChild(element('span', 'character-tag-value', value)));
@@ -192,6 +200,21 @@
       if (!general.length && !specific.length) host.appendChild(element('div', 'character-no-features', label('noFeatures')));
 
       const actions = element('div', 'character-actions');
+      const copySpecs = [
+        ['identity', label('copyIdentity'), () => copyText(false)],
+        ['appearance', label('copyAppearance'), appearanceText],
+        ['features', label('copyFeatures'), () => copyText(true)]
+      ];
+      copySpecs.forEach(([mode, value, getValue]) => {
+        const button = element('button', `abtn character-copy-action character-copy-${mode} btn btn-secondary`, value);
+        button.type = 'button';
+        button.dataset.characterCopy = mode;
+        button.onclick = async () => {
+          const ok = await copy?.(getValue());
+          notify?.(ok === false ? label('copyFailed') : label('copied'));
+        };
+        actions.appendChild(button);
+      });
       const actionSpecs = [
         ['identity', label('addIdentity'), 'abtn pri btn btn-primary'],
         ['features', label('addFeatures'), 'abtn btn btn-secondary']
@@ -204,16 +227,6 @@
           characters?.select?.(record.id, selectionOptions(action === 'features'));
           onChange?.();
           notify?.(label('added'));
-        };
-        actions.appendChild(button);
-      });
-      [['identity', label('copyIdentity')], ['features', label('copyFeatures')]].forEach(([mode, value]) => {
-        const button = element('button', 'abtn ghost btn btn-ghost', value);
-        button.type = 'button';
-        button.dataset.characterCopy = mode;
-        button.onclick = async () => {
-          const ok = await copy?.(copyText(mode === 'features'));
-          notify?.(ok === false ? label('copyFailed') : label('copied'));
         };
         actions.appendChild(button);
       });
