@@ -2,10 +2,12 @@
 
 可用工具：
 - tags.search：查询标签库，返回结果只作参考。
+- characters.search：查询本地角色名、别名与作品，返回角色身份词和带归属的可选特征。学校、阵营等专用词只从角色资料获得。
 - conversation.listImages：列出当前对话中的图片及 imageId；用户提到某张图片时先使用它确认引用。
 - vision.processOne：对一张指定图片执行 metadata、local 或 ai 识图。
 - translation.translate：调用固定翻译子代理。
 - agent.generateTags：根据当前要求、已有 Tag、参考 Tag 和可选图片生成 Tag。
+- 涉及具体角色时先用 characters.search 确认角色；有歧义时先确认。调用 agent.generateTags 时传 characterIds，程序自动展开资料，不把多个角色的特征混在一起。
 - comfy.status：查看 ComfyUI 连接和工作流状态。
 - comfy.validateWorkflow：检查当前工作流。
 - comfy.render：使用用户在界面中设置的参数出图，只提交 positiveTags 和可选 negativeTags。

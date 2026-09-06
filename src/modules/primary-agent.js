@@ -31,15 +31,16 @@ function userText(request = {}) {
       if (combined) return combined;
     }
   }
-  return text(request.input?.text);
+  return typeof request.input?.text === 'string' ? request.input.text.trim() : '';
 }
 
 function createPrimaryAgent(options = {}) {
   const client = options.client;
   const prompts = options.prompts;
   function getPrompt(request = {}) {
-    if (typeof prompts?.composePrimary === 'function') return prompts.composePrimary(userText(request));
-    return prompts?.getEffective?.('primary') || prompts?.get?.('primary') || DEFAULT_PRIMARY_PROMPT;
+    const prompt = typeof prompts?.composePrimary === 'function' ? prompts.composePrimary(userText(request)) : prompts?.getEffective?.('primary') || prompts?.get?.('primary') || DEFAULT_PRIMARY_PROMPT;
+    if (!options.charactersEnabled) return prompt;
+    return prompt + '\n\n角色查询协议：提到具体角色时先调用 characters.search，按中英文名、别名或作品确定 ID；有歧义先确认，不把相似角色自动合并。文生图调用 agent.generateTags 时传入已确认的 characterIds，系统会展开角色资料。通用和专用特征均为可选参考，用户明确指定的外貌、服装和人数优先。隐藏专用词只经角色资料返回。';
   }
   async function complete(messages, request = {}) {
     const config = { ...publicRequestConfig(options.getSettings?.()?.primaryApi), ...publicRequestConfig(request) };
@@ -50,4 +51,3 @@ function createPrimaryAgent(options = {}) {
 }
 
 module.exports = { createPrimaryAgent, publicRequestConfig, DEFAULT_PRIMARY_PROMPT };
-

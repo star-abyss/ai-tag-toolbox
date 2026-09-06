@@ -127,10 +127,10 @@ function createAssistant(options = {}) {
   }
   const comfy = options.comfy && typeof options.comfy.render === 'function' ? options.comfy : createComfy(options.comfyOptions || {});
   const visionService = options.visionService || createVisionService({ images, visionTempStore, localVision: options.localVision || options.vision, visionAI: visionClient, parseMetadata: parsePngMetadata, getPrompt: key => prompts.getEffective?.(key) || prompts.get?.(key) || '' });
-  const primary = createPrimaryAgent({ client: ai, prompts, getSettings: settings.snapshot });
+  const primary = createPrimaryAgent({ client: ai, prompts, getSettings: settings.snapshot, charactersEnabled: Boolean(options.characters) });
   const subagents = createFixedSubagents({ vision: visionService, translation: options.translation, ai, visionAI: visionClient, prompts, resolveImage, getSettings: settings.snapshot });
   runtime = createAgentRuntime({ primaryClient: primary, subagents, tools: () => primaryTools, getSettings: settings.snapshot, getPrimaryPrompt: primary.getPrompt });
-  primaryTools = createPrimaryTools({ tags, images, imageRepository, runtime, comfy, getSettings: settings.snapshot });
+  primaryTools = createPrimaryTools({ tags, characters: options.characters, images, imageRepository, runtime, comfy, getSettings: settings.snapshot });
 
   function append(role, value, extra = {}, sessionId = state.currentId) {
     const session = sessionById(sessionId); if (!session) return null;
@@ -283,4 +283,3 @@ function createAssistant(options = {}) {
 }
 
 module.exports = { SESSION_FORMAT, SESSION_VERSION, createAssistant };
-

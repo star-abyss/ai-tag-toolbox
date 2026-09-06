@@ -7,6 +7,7 @@ const { contextBridge } = require('electron');
 // 只在本地 preload 中构造业务模块；页面不接触 Node、文件系统或旧版全局脚本。
 // 这个桥很薄，后续模块成熟后可以直接替换成浏览器端 ESM 实现。
 let tags = null;
+let characters = null;
 let images = null;
 let translation = null;
 let assistant = null;
@@ -35,6 +36,7 @@ try {
   fs.mkdirSync(userDataDir, { recursive: true });
   storage = modules.createStorage ? modules.createStorage({ prefix: 'ai-tag-toolbox-rewrite', filePath: storagePath }) : null;
   tags = modules.createTags({ sources: modules.loadTagFiles({ assetDir }), storage });
+  characters = modules.createCharacters({ tags, storage, dataDir: path.join(assetDir, '数据资产', '角色') });
   const modelCandidates = [
     path.join(path.dirname(process.execPath), 'models'),
     path.join(__dirname, '..', '..', 'models'),
@@ -80,6 +82,7 @@ try {
   comfy = modules.createComfy ? modules.createComfy({ base: 'http://127.0.0.1:8188' }) : null;
   assistant = modules.createAssistant({
     tags,
+    characters,
     images,
     vision,
     comfy,
@@ -196,6 +199,7 @@ function resolveTempForRenderer(value) {
 
 contextBridge.exposeInMainWorld('AppModules', {
   tags,
+  characters,
   images: safeImageStore,
   imageStore: safeImageStore,
   imageRepository: assistant?.imageRepository ? {

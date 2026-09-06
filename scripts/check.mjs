@@ -109,7 +109,7 @@ const primaryTools = modules.createPrimaryTools({
   getSettings: () => settings
 });
 assert.deepEqual(primaryTools.names(), [
-  'tags.search', 'conversation.listImages', 'vision.processOne', 'translation.translate',
+  'tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate',
   'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render'
 ]);
 assert.equal(primaryTools.resolve('files.read'), null);
@@ -133,6 +133,6 @@ assert.match(limiterSource, /COMFY_CALL_LIMIT/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /createCallServer|migrateLegacyData|agentWriteEnabled/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), /migrateLegacyUserData|config-migration/);
 
-console.log('check ok: unified runtime, 3 fixed subagents, 8 primary tools, timeout/cancel, Comfy parameter boundary');
+console.log('check ok: unified runtime, 3 fixed subagents, 9 primary tools, local characters, timeout/cancel, Comfy parameter boundary');
 
 

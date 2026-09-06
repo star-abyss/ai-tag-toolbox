@@ -3,7 +3,7 @@
 const { SCHEMAS, OUTPUT_SCHEMAS } = require('./fixed-subagents');
 const { assertValid } = require('./schema');
 const { errorShape, resultOk, resultError } = require('./error-manager');
-const TOOL_NAMES = Object.freeze(['tags.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
+const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
 const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
 function text(value) { return typeof value === 'string' ? value.trim() : ''; }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -13,16 +13,21 @@ const string = { type: 'string' };
 const nonempty = { type: 'string', minLength: 1, maxLength: 1000 };
 const tagArray = { type: 'array', items: nonempty, maxItems: 256 };
 const tagSchema = schema({ en: nonempty, zh: string, aliases: { type: 'array', items: string, maxItems: 64 }, category: string, subcategory: string, nsfw: { type: 'boolean' }, confidence: { type: 'number' } }, ['en']);
+const characterTagSchema = schema({ id: nonempty, en: nonempty, zh: string, category: string, nsfw: { type: 'boolean' }, review: { type: 'boolean' } }, ['id', 'en']);
+const characterSchema = schema({ id: nonempty, name: string, nameZh: string, aliases: { type: 'array', items: string }, seriesId: string, seriesName: string, identityTags: tagArray, generalTags: { type: 'array', items: characterTagSchema }, specificTags: { type: 'array', items: characterTagSchema }, hasFeatures: { type: 'boolean' }, count: { type: 'number' }, trigger: string }, ['id', 'identityTags', 'generalTags', 'specificTags']);
+const generateParameters = clone(SCHEMAS.generateTags);
+delete generateParameters.properties.characterReferences;
 const imageSchema = schema({ imageId: nonempty, refId: string, slotNo: { type: 'integer', minimum: 0 }, displayTitle: string, source: string, messageId: string, pending: { type: 'boolean' }, sent: { type: 'boolean' }, final: { type: 'boolean' }, width: { type: 'number', minimum: 0 }, height: { type: 'number', minimum: 0 }, hasBuiltinTags: { type: 'boolean' } }, ['imageId']);
 const workflowSchema = schema({ ready: { type: 'boolean' }, error: string }, ['ready', 'error']);
 const statusSchema = schema({ enabled: { type: 'boolean' }, connected: { type: 'boolean' }, workflowReady: { type: 'boolean' }, render: { type: 'boolean' }, error: string }, ['enabled', 'connected', 'workflowReady', 'render', 'error']);
 const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty } }, ['artifacts', 'imageIds']);
 const DEFINITIONS = Object.freeze({
   'tags.search': { description: '查询标签库，返回标签及释义。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, category: string, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 200, items: tagSchema } }, ['items']) },
+  'characters.search': { description: '查询本地角色资料，返回中英文名、作品、身份词和可选特征；先确认具体角色再向 agent.generateTags 传 characterIds。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, seriesId: string, precision: { type: 'string', enum: ['exact', 'standard', 'broad'] }, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 10 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 10, items: characterSchema }, total: { type: 'integer', minimum: 0 } }, ['items', 'total']) },
   'conversation.listImages': { description: '读取当前会话的真实 imageId、显示编号和图片元数据。', parameters: schema({ includePending: { type: 'boolean' }, includeDeleted: { type: 'boolean' } }), outputSchema: schema({ items: { type: 'array', items: imageSchema }, pendingIds: { type: 'array', items: string } }, ['items', 'pendingIds']) },
   'vision.processOne': { description: '对当前会话中的单个 imageId 进行 metadata/local/ai 识图。', parameters: SCHEMAS.vision, outputSchema: OUTPUT_SCHEMAS?.vision },
   'translation.translate': { description: '固定翻译子代理；source 为 ai 或 local。', parameters: SCHEMAS.translation, outputSchema: OUTPUT_SCHEMAS?.translation },
-  'agent.generateTags': { description: '使用 Vision AI，根据要求、已有 Tag、参考 Tag 和可选 imageId 生成英文绘图 Tag。', parameters: SCHEMAS.generateTags, outputSchema: OUTPUT_SCHEMAS?.generateTags },
+  'agent.generateTags': { description: '使用 Vision AI，根据要求、已有 Tag、参考 Tag、可选 imageId 和 characters.search 返回的 characterIds 生成英文绘图 Tag。', parameters: generateParameters, outputSchema: OUTPUT_SCHEMAS?.generateTags },
   'comfy.status': { description: '读取 ComfyUI 连接、启用和工作流状态。', parameters: schema({}), outputSchema: statusSchema },
   'comfy.validateWorkflow': { description: '检查用户当前 API 工作流是否可用。', parameters: schema({}), outputSchema: workflowSchema },
   'comfy.render': { description: '按正向 Tag 和可选负向 Tag 出图；宽高、Steps、CFG、Seed、Sampler、Scheduler、batchCount 由用户设置决定。', parameters: schema({ positiveTags: { ...tagArray, minItems: 1 }, negativeTags: tagArray }, ['positiveTags']), outputSchema: renderSchema }
@@ -99,6 +104,12 @@ function createPrimaryTools(options = {}) {
       if (!Array.isArray(rows)) throw failure('OUTPUT_INVALID', '标签查询返回格式无效');
       return { items: rows.slice(0, args.limit || 50).map(publicTag) };
     },
+    'characters.search': args => {
+      if (!options.characters?.page) throw failure('TOOL_UNAVAILABLE', '角色模块不可用');
+      const includeAdult = args.includeAdult === true;
+      const page = options.characters.page({ ...args, includeAdult, limit: args.limit || 5 });
+      return { items: page.items.map(row => options.characters.get(row.id, { includeAdult })).filter(Boolean), total: page.total };
+    },
     'conversation.listImages': async (args, context) => {
       if (!context.sessionId) throw failure('SESSION_REQUIRED', '当前会话不可用');
       if (typeof repository?.listConversation !== 'function') throw failure('TOOL_UNAVAILABLE', '图片仓库不可用');
@@ -108,7 +119,19 @@ function createPrimaryTools(options = {}) {
     },
     'vision.processOne': (args, context) => subagent('vision', args, context),
     'translation.translate': (args, context) => subagent('translation', args, context),
-    'agent.generateTags': (args, context) => subagent('generateTags', args, context),
+    'agent.generateTags': (args, context) => {
+      if (args.characterIds?.length) {
+        if (!options.characters?.get) throw failure('TOOL_UNAVAILABLE', '角色模块不可用');
+        const includeAdult = options.tags?.stateSnapshot?.().includeAdult === true;
+        const characterReferences = [...new Set(args.characterIds)].map(id => {
+          const role = options.characters.get(id, { includeAdult });
+          if (!role) throw failure('CHARACTER_NOT_FOUND', '角色不存在或当前不可用：' + id);
+          return { id: role.id, name: role.nameZh || role.name, series: role.seriesName, identityTags: role.identityTags, generalTags: role.generalTags.map(t => t.en), specificTags: role.specificTags.map(t => t.en) };
+        });
+        return subagent('generateTags', { ...args, characterReferences }, context);
+      }
+      return subagent('generateTags', args, context);
+    },
     'comfy.status': async (_args, context) => {
       if (typeof comfy?.status !== 'function') throw failure('TOOL_UNAVAILABLE', 'ComfyUI 连接器不可用');
       const settings = currentComfy(); syncComfy(settings);
