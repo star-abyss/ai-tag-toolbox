@@ -2,6 +2,7 @@
 
 module.exports = {
   ...require('./tags'),
+  ...require('./characters'),
   ...require('./images'),
   ...require('./image-repository'),
   ...require('./vision-temp-store'),

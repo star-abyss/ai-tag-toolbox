@@ -219,10 +219,12 @@ function loadTagFiles(options = {}) {
       ? readDataSource(keywordPath, ['SEARCH_KEYWORDS', 'TAG_KEYWORDS'])
       : {};
   const model = options.includeModel === false || !modelFile ? null : readDataSource(modelFile, []);
+  const additionsFile = path.join(tagDir, 'character-general-tags.json');
+  const additions = fs.existsSync(additionsFile) ? readDataSource(additionsFile, []) : [];
   return {
     categories: base.BASE_CATEGORIES || base.categories,
     base: base.TAGS || base.tags || base,
-    extra: extra.EXTRA_TAGS || extra.tags || extra,
+    extra: [...(extra.EXTRA_TAGS || extra.tags || extra), ...additions],
     model: model && (model.tags || model),
     synonyms: {
       reverse: synonyms.SYNONYMS || synonyms.reverse,
