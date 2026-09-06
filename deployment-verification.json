@@ -23,7 +23,7 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 44,
+    "testsPassed": 49,
     "testsFailed": 0,
     "slowUiSmokeRun": false,
     "staticLocalBrowserPreview": "blocked by local-file browser policy; manual desktop verification required"
