@@ -418,6 +418,22 @@ function createTags(options = {}) {
     return result;
   }
 
+  function characterNameIndex() {
+    const result = [];
+    for (const tag of state.tags.values()) {
+      if (tag.category !== CHARACTER_NAMES_CATEGORY) continue;
+      result.push({
+        id: tag.id,
+        en: tag.en,
+        zh: tag.zh || '',
+        aliases: tagAliases(tag),
+        nsfw: Boolean(tag.nsfw),
+        count: tag.count == null ? null : tag.count,
+      });
+    }
+    return result;
+  }
+
   function countByCategory(includeAdult = false) {
     const key = includeAdult ? 'adult' : 'safe';
     if (state.countCache.has(key)) return { ...state.countCache.get(key) };
@@ -599,6 +615,7 @@ function createTags(options = {}) {
     load,
     loadFiles: fileOptions => load(loadTagFiles(fileOptions)),
     list,
+    characterNameIndex,
     all: list,
     allTags: list,
     getAll: list,

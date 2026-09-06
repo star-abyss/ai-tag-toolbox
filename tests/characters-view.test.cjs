@@ -278,6 +278,18 @@ test('pending role search cannot overwrite ordinary search when switching throug
   app.dom.window.close();
 });
 
+test('ordinary tag typing keeps the sidebar DOM stable instead of rebuilding categories', async () => {
+  const app = appFixture();
+  app.view.route('tags');
+  const firstCategory = app.document.querySelector('#catList > button');
+  const input = app.document.querySelector('#q');
+  input.value = 'blue';
+  input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 160));
+  assert.equal(app.document.querySelector('#catList > button'), firstCategory);
+  app.dom.window.close();
+});
+
 test('adult toggle immediately removes hidden character traits from the bottom preview', () => {
   const app = appFixture({ includeAdult: true });
   assert.match(app.document.querySelector('#preview').textContent, /adult trait/);

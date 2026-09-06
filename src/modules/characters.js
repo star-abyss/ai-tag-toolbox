@@ -33,7 +33,7 @@ function createCharacters(options = {}) {
       const data = options.data || { characters: read('characters'), specificTags: read('specific-tags'), manifest: read('manifest') };
       if (!Array.isArray(data.characters) || !Array.isArray(data.specificTags)) throw new Error('Invalid arrays');
       const next = new Map();
-      const localNames = new Map(list(tags?.list?.({ category: 'character_names', includeAdult: true })).map(t => [t.id, t]));
+      const localNames = new Map(list(tags?.characterNameIndex?.() || tags?.list?.({ category: 'character_names', includeAdult: true })).map(t => [t.id, t]));
       const series = new Map();
       for (const row of data.characters) {
         if (!row || typeof row.id !== 'string' || !row.id.trim() || next.has(row.id)) throw new Error('Invalid or duplicate character ID');

@@ -77,3 +77,11 @@ test('character count comes from the lightweight manifest before the full catalo
   assert.equal(chars.count(), 34122);
   assert.equal(chars.manifest().loadedCharacters, undefined);
 });
+
+test('character name index returns only the minimal identity fields for role loading', () => {
+  const { tags } = fixture();
+  const index = tags.characterNameIndex();
+  assert.equal(index.length, 2);
+  assert.deepEqual(index[0], { id: 'alice_(story)', en: 'alice_(story)', zh: '爱丽丝', aliases: ['小爱'], nsfw: false, count: null });
+  assert.equal(Object.prototype.hasOwnProperty.call(index[0], 'keywords'), false);
+});

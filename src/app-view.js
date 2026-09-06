@@ -345,7 +345,6 @@
       ui.subcategory = "";
       ui.visible = 400;
       tags?.setQuery?.(query);
-      renderCategories();
       renderTags();
     }
     function renderCategories() {
@@ -3147,7 +3146,6 @@
         tags?.setSearchPrecision?.(ui.searchPrecision);
         ui.tagPageCache.clear();
         ui.visible = 400;
-        renderCategories();
         if (ui.route === "characters") renderCharacters();
         else renderTags();
       });
@@ -3160,7 +3158,6 @@
           if (ui.route === "characters") renderCharacters({ query: event.target.value });
           else {
             tags?.setQuery?.(event.target.value);
-            renderCategories();
             renderTags();
           }
         }, 120);
@@ -3185,7 +3182,6 @@
         ui.subcategory = "";
         ui.tagPageCache.clear();
         tags?.setQuery?.("");
-        renderCategories();
         renderTags();
       });
       $("#catList")?.addEventListener("click", (event) => {
