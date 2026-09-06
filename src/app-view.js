@@ -11,6 +11,7 @@
   function createAppView(modules, documentRef = global.document) {
     const doc = documentRef;
     const tags = modules.tags;
+    const characters = modules.characters || null;
     const images = modules.images;
     const imageStore = modules.imageStore || null;
     const translation = modules.translation;
@@ -127,6 +128,7 @@
       settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, autoBind: false }),
       prompt: viewFactories.prompt?.createPromptView?.({ document: doc, prompts, notify, download, autoBind: false }),
       agentStatus: viewFactories.agentStatus?.createAgentStatusView?.({ document: doc, runtime, api: assistant, notify, autoBind: false }),
+      characters: viewFactories.characters?.createCharactersView?.({ document: doc, characters, onChange: () => renderSelection(), copy: value => copy(value), notify, getLocale: () => ui.locale }),
     };
     const show = (selector, yes) => {
       const el = $(selector);
@@ -268,6 +270,30 @@
         .map((item) => str(item?.id || item?.en).toLowerCase())
         .filter(Boolean);
     }
+    function selectedCharacters() {
+      try { return characters?.selected?.({ includeAdult: tagSnapshot().adult }) || []; }
+      catch { return []; }
+    }
+    function combinedSelectionValues() {
+      const values = [
+        ...selected().map(item => str(item?.en || item?.id)),
+        ...selectedCharacters().flatMap(item => item?.tags || []),
+      ];
+      const seen = new Set();
+      return values.filter(value => {
+        const output = str(value);
+        const key = output.toLowerCase().replace(/[\s_]+/g, " ").trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+    function renderCharacters(options = {}) {
+      const query = options.query == null ? str($("#q")?.value) : str(options.query);
+      const clearSearch = $("#clearQ");
+      if (clearSearch) clearSearch.style.display = query ? "" : "none";
+      return views.characters?.render?.({ query, precision: ui.searchPrecision, includeAdult: tagSnapshot().adult });
+    }
     function restoreTags() {
       tags?.restore?.();
     }
@@ -304,6 +330,10 @@
     }
     function executeSearch() {
       const query = str($("#q")?.value);
+      if (ui.route === "characters") {
+        renderCharacters({ query });
+        return;
+      }
       if (ui.route !== "tags") route("tags");
       ui.subcategory = "";
       ui.visible = 400;
@@ -327,18 +357,36 @@
         ...snap.categories,
         ...dynamic,
       ];
+      const characterNames = rows.find(category => category?.id === "character_names");
+      const orderedRows = characters ? rows.filter(category => category?.id !== "character_names") : rows;
       const seen = new Set();
-      rows.forEach((category) => {
+      const appendCharacterLibrary = () => {
+        if (!characters || !characterNames) return;
+        const button = doc.createElement("button");
+        button.type = "button";
+        button.className = `cat character-library-entry btn btn-menu${ui.route === "characters" ? " on" : ""}`;
+        button.dataset.characters = "true";
+        button.style.setProperty("--cat-color", categoryColor("character_names"));
+        const icon = doc.createElement("span");
+        icon.className = "cico";
+        icon.textContent = "♙";
+        const label = doc.createElement("span");
+        label.textContent = ui.locale === "en-US" ? "Character library" : "角色库";
+        button.append(icon, label);
+        host.appendChild(button);
+      };
+      orderedRows.forEach((category) => {
         if (!category || seen.has(category.id)) return;
         seen.add(category.id);
         const count = snap.categoryCounts[category.id] || 0;
         const button = doc.createElement("button");
-        button.className = `cat btn btn-menu${snap.category === category.id ? " on" : ""}${category.neg ? " neg" : ""}${category.nsfw ? " nsfw" : ""}`;
+        button.className = `cat btn btn-menu${ui.route !== "characters" && snap.category === category.id ? " on" : ""}${category.neg ? " neg" : ""}${category.nsfw ? " nsfw" : ""}`;
         button.dataset.cat = category.id;
         button.style.setProperty("--cat-color", categoryColor(category.id));
         const label = category.id === "all" ? localized("ui.tag.all", category.name || category.id) : categoryLabel(category.id, category.name || category.id);
         button.innerHTML = `<span class="cico">${category.icon || "🏷️"}</span><span>${label}</span><span class="n">${count}</span>`;
         host.appendChild(button);
+        if (category.id === "character") appendCharacterLibrary();
       });
       const adult = $("#aiNsfwChk");
       if (adult) adult.checked = snap.adult;
@@ -487,11 +535,12 @@
     }
     function renderSelection() {
       const rows = selected();
+      const characterRows = selectedCharacters();
       const host = $("#selbox");
-      put("#selCount", rows.length);
+      put("#selCount", rows.length + characterRows.length);
       if (!host) return;
       host.replaceChildren();
-      if (!rows.length)
+      if (!rows.length && !characterRows.length)
         host.innerHTML =
           '<span class="emptyhint">点击上方标签即可选中，支持多选</span>';
       rows.forEach((item) => {
@@ -500,7 +549,25 @@
         chip.innerHTML = `<span>${item.en || item.id}</span><button class="btn btn-icon btn-danger" data-remove="${item.id || item.en}">✕</button>`;
         host.appendChild(chip);
       });
-      put("#preview", rows.map((item) => item.en || item.id).join(", "));
+      characterRows.forEach(item => {
+        const chip = doc.createElement("span");
+        chip.className = "schip character-selection";
+        const words = doc.createElement("span");
+        words.className = "character-chip-text";
+        const name = doc.createElement("b");
+        name.textContent = str(item.name || item.id);
+        const tagsText = doc.createElement("small");
+        tagsText.textContent = (item.tags || []).join(", ");
+        words.append(name, tagsText);
+        const remove = doc.createElement("button");
+        remove.type = "button";
+        remove.className = "btn btn-icon btn-danger";
+        remove.dataset.removeCharacter = str(item.id);
+        remove.textContent = "✕";
+        chip.append(words, remove);
+        host.appendChild(chip);
+      });
+      put("#preview", combinedSelectionValues().join(", "));
     }
     function syncSelectedClasses() {
       const chosen = new Set(selectedIds());
@@ -551,7 +618,8 @@
     function toggleAdultTags() {
       tags?.setAdult?.(!tagSnapshot().adult);
       renderCategories();
-      renderTags();
+      if (ui.route === "characters") renderCharacters();
+      else renderTags();
     }
     function syncScrim() {
       const drawerOpen = $("#drawer")?.classList.contains("show");
@@ -2892,13 +2960,18 @@
       if (shell && aiView && aiView.parentElement !== shell)
         shell.appendChild(aiView);
       show("#tagLibraryView", route === "tags");
+      const charactersView = $("#charactersView");
+      if (charactersView) {
+        charactersView.hidden = route !== "characters";
+        charactersView.style.display = route === "characters" ? "" : "none";
+      }
       const galleryView = $("#galleryView");
       if (galleryView) { galleryView.hidden = route !== "gallery"; galleryView.style.display = route === "gallery" ? "" : "none"; }
       show(".main", !ai);
       show("#aiView", ai);
       show("#aiCfgBtns", ai);
       show("#sidebar", route !== "translation" && route !== "gallery");
-      show("#catList", route === "tags");
+      show("#catList", route === "tags" || route === "characters");
       show("#addTagBtn", route === "tags");
       show("#sideAi", ai);
       // 选择栏是全局工作区底栏，切换翻译/AI 时仍保留当前 Tag 组合。
@@ -2921,6 +2994,7 @@
       }
       doc.body.classList.toggle("aiview", ai);
       doc.body.classList.toggle("translation-mode", route === "translation");
+      doc.body.classList.toggle("characters-mode", route === "characters");
       syncNavigationStates();
       ensureVisionPanePlacement();
       if (ai) {
@@ -2930,6 +3004,10 @@
         showAi(ui.aiTab);
       }
       if (route === "gallery") renderGallery();
+      if (route === "characters") {
+        renderCategories();
+        renderCharacters();
+      }
     }
     function applyTheme(value) {
       const theme = str(value, "light");
@@ -2978,7 +3056,8 @@
       syncApiMode();
       renderConversationRepository();
       renderCategories();
-      renderTags();
+      if (ui.route === "characters") renderCharacters();
+      else renderTags();
       renderCustomCategories();
       renderTalkVisionPanel();
       setVisionOpen(ui.visionOpen);
@@ -3038,7 +3117,8 @@
         ui.tagPageCache.clear();
         ui.visible = 400;
         renderCategories();
-        renderTags();
+        if (ui.route === "characters") renderCharacters();
+        else renderTags();
       });
       $("#q")?.addEventListener("input", (event) => {
         ui.subcategory = "";
@@ -3046,9 +3126,12 @@
         ui.tagPageCache.clear();
         clearTimeout(ui.searchTimer);
         ui.searchTimer = setTimeout(() => {
-          tags?.setQuery?.(event.target.value);
-          renderCategories();
-          renderTags();
+          if (ui.route === "characters") renderCharacters({ query: event.target.value });
+          else {
+            tags?.setQuery?.(event.target.value);
+            renderCategories();
+            renderTags();
+          }
         }, 120);
       });
       $("#q")?.addEventListener("keydown", (event) => {
@@ -3064,6 +3147,10 @@
       });
       $("#clearQ")?.addEventListener("click", () => {
         $("#q").value = "";
+        if (ui.route === "characters") {
+          renderCharacters({ query: "" });
+          return;
+        }
         ui.subcategory = "";
         ui.tagPageCache.clear();
         tags?.setQuery?.("");
@@ -3071,6 +3158,12 @@
         renderTags();
       });
       $("#catList")?.addEventListener("click", (event) => {
+        const characterButton = event.target.closest("[data-characters]");
+        if (characterButton) {
+          clearTimeout(ui.searchTimer);
+          route("characters");
+          return;
+        }
         const button = event.target.closest("[data-cat]");
         if (!button) return;
         if (ui.route !== "tags") route("tags");
@@ -3111,6 +3204,12 @@
         renderSelection();
       });
       $("#selbox")?.addEventListener("click", (event) => {
+        const characterButton = event.target.closest("[data-remove-character]");
+        if (characterButton) {
+          characters?.removeSelection?.(characterButton.dataset.removeCharacter);
+          renderSelection();
+          return;
+        }
         const button = event.target.closest("[data-remove]");
         if (button) {
           tags?.select?.(button.dataset.remove, false);
@@ -3120,18 +3219,20 @@
       });
       $("#clearSel")?.addEventListener("click", () => {
         tags?.clearSelection?.();
+        characters?.clearSelection?.();
         syncSelectedClasses();
         renderSelection();
       });
       $("#copyAll")?.addEventListener("click", async () => {
-        if (await copy(tags?.selectedText?.(", ") || ""))
+        if (await copy(combinedSelectionValues().join(", ")))
           notify("Prompt 已复制");
         else notify("复制失败，请检查剪贴板权限");
       });
       $("#aiNsfwChk")?.addEventListener("change", (event) => {
         tags?.setAdult?.(event.target.checked);
         renderCategories();
-        renderTags();
+        if (ui.route === "characters") renderCharacters();
+        else renderTags();
       });
       $("#saveFav")?.addEventListener("click", openDrawer);
       $("#drawerClose")?.addEventListener("click", closeDrawer);
@@ -3819,5 +3920,3 @@
   }
   global.AppView = { create: createAppView };
 })(window);
-
-

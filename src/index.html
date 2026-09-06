@@ -13,6 +13,7 @@
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
     />
     <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="characters.css" />
   </head>
   <body>
     <header>
@@ -164,6 +165,30 @@
           <div id="subcatNav" class="subcat-nav" role="tablist" aria-label="子分类" hidden></div>
           <div class="content" id="content"><div id="chips"></div></div>
         </div>
+        <section id="charactersView" class="characters-view" aria-label="角色库" hidden>
+          <div class="characters-toolbar">
+            <div>
+              <h2>角色库</h2>
+              <span class="character-count"><b id="characterCount">0</b></span>
+            </div>
+            <div class="character-series-controls">
+              <label for="characterSeriesQuery">搜索作品</label>
+              <input id="characterSeriesQuery" type="search" placeholder="输入作品 / 来源" autocomplete="off" />
+              <select id="characterSeries" aria-label="作品 / 来源"></select>
+            </div>
+          </div>
+          <div class="characters-layout">
+            <section class="character-browser" aria-label="角色列表">
+              <div id="characterList" class="character-list"></div>
+              <nav class="character-paging" aria-label="角色分页">
+                <button id="characterPrev" class="abtn ghost btn btn-ghost" type="button"></button>
+                <span id="characterPage"></span>
+                <button id="characterNext" class="abtn ghost btn btn-ghost" type="button"></button>
+              </nav>
+            </section>
+            <article id="characterDetail" class="character-detail" aria-live="polite"></article>
+          </div>
+        </section>
         <section id="translateView" class="translate-view" aria-label="翻译模块" hidden>
           <div class="translate-page-head">
             <div>
@@ -763,9 +788,9 @@
     <script src="views/settings-view.js"></script>
     <script src="views/prompt-view.js"></script>
     <script src="views/agent-status-view.js"></script>
+    <script src="views/characters-view.js"></script>
     <script src="app-view.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
-
 
