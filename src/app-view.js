@@ -3833,6 +3833,7 @@
         const button = doc.createElement("button");
         button.className = "translate-tag btn btn-chip";
         button.textContent = `${ref.en || ref.tag?.en || ""}${ref.zhPrimary ? ` · ${ref.zhPrimary}` : ""}`;
+        if (ref.matchType) button.title = `匹配方式：${ref.matchType}`;
         button.onclick = () => {
           const id = ref.tag?.id || ref.en;
           tags?.select?.(id, true);

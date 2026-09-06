@@ -102,11 +102,11 @@ function exactMatches(value, options = {}) {
   for (const part of tagParts(value)) {
     const key = normalizeTag(part);
     if (!key) continue;
-    const found = catalog.find(tag => visible(tag, options) && [englishOf(tag), ...aliasesOf(tag)].some(form => normalizeTag(form) === key));
+    const found = catalog.find(tag => visible(tag, options) && [englishOf(tag), ...aliasesOf(tag), ...chineseNames(tag)].some(form => normalizeTag(form) === key));
     const id = normalizeTag(englishOf(found));
     if (found && id && !used.has(id)) {
       used.add(id);
-      output.push({ tag: found, matchedTerms: [part], matchType: '精确 Tag' });
+      output.push({ tag: found, matchedTerms: [part], matchType: /[\u3400-\u9fff]/.test(part) ? '中文精确 Tag' : '精确 Tag' });
     }
   }
   return output;
@@ -134,17 +134,10 @@ function fuzzyMatches(value, options = {}) {
     seen.add(id);
     output.push({ tag, matchedTerms: matchedTerms && matchedTerms.length ? matchedTerms : matchEvidence(value, tag, options), matchType });
   };
-  for (const term of [value, ...inputParts(value)]) {
-    for (const row of catalogSearch(options.tags, term, options.limit || 100)) add(row && row.tag ? row.tag : row, row && row.matchedTerms, row && row.matchType || '相关匹配');
-  }
-  const raw = text(value).toLowerCase();
-  if (raw) {
-    for (const tag of catalog) {
-      if (!visible(tag, options)) continue;
-      const hits = chineseNames(tag).filter(name => raw.includes(name.toLowerCase()));
-      if (hits.length) add(tag, hits, '中文命中');
-    }
-  }
+  // Translation references are deliberately conservative. The old path used
+  // the general tag search and substring matching, so a short input such as
+  // "手套" could incorrectly suggest "hand" or "handshake". Exact English,
+  // Chinese names and confirmed aliases are handled by exactMatches instead.
   return output;
 }
 
@@ -169,7 +162,7 @@ function referenceShape(item, index) {
 function buildReference(value, options = {}) {
   const dir = direction(value, options.direction);
   const catalog = options.catalog || catalogFrom(options.tags);
-  const exact = dir === 'en-zh' ? exactMatches(value, { ...options, catalog }) : [];
+  const exact = exactMatches(value, { ...options, catalog });
   const exactIds = new Set(exact.map(item => normalizeTag(englishOf(item.tag))));
   const fuzzy = fuzzyMatches(value, { ...options, catalog, tags: options.tags }).filter(item => !exactIds.has(normalizeTag(englishOf(item.tag))));
   const max = Math.max(1, Math.min(Number(options.limit) || 60, 100));
@@ -257,7 +250,7 @@ function createTranslation(options = {}) {
   function rawReferences(value, extra = {}) { return refs(value, extra).map(item => item.tag || item); }
   function findTag(value, catalog) {
     const key = normalizeTag(value);
-    return key ? (catalog || []).find(tag => [englishOf(tag), ...aliasesOf(tag)].some(form => normalizeTag(form) === key)) || null : null;
+    return key ? (catalog || []).find(tag => [englishOf(tag), ...aliasesOf(tag), ...chineseNames(tag)].some(form => normalizeTag(form) === key)) || null : null;
   }
   function mapped(value, requested, extra = {}) {
     const input = text(value);
