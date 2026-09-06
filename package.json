@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
-    "version":  "1.4.199",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.199 本地角色资料库",
+    "version":  "1.4.200",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.200 本地角色资料库",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",
