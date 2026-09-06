@@ -16,11 +16,29 @@ function publicRequestConfig(value = {}) {
   }
   return result;
 }
+function userText(request = {}) {
+  const messages = Array.isArray(request.messages) ? request.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!object(message) || message.role !== 'user') continue;
+    if (typeof message.content === 'string' && message.content.trim()) return message.content;
+    if (Array.isArray(message.content)) {
+      const parts = message.content
+        .filter(part => part && (part.type === 'text' || typeof part.text === 'string'))
+        .map(part => (typeof part.text === 'string' ? part.text : ''))
+        .filter(Boolean);
+      const combined = parts.join('\n').trim();
+      if (combined) return combined;
+    }
+  }
+  return text(request.input?.text);
+}
+
 function createPrimaryAgent(options = {}) {
   const client = options.client;
   const prompts = options.prompts;
-  function getPrompt() {
-    if (typeof prompts?.composePrimary === 'function') return prompts.composePrimary();
+  function getPrompt(request = {}) {
+    if (typeof prompts?.composePrimary === 'function') return prompts.composePrimary(userText(request));
     return prompts?.getEffective?.('primary') || prompts?.get?.('primary') || DEFAULT_PRIMARY_PROMPT;
   }
   async function complete(messages, request = {}) {
@@ -32,3 +50,4 @@ function createPrimaryAgent(options = {}) {
 }
 
 module.exports = { createPrimaryAgent, publicRequestConfig, DEFAULT_PRIMARY_PROMPT };
+

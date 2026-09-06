@@ -2,13 +2,13 @@
 
 const { randomUUID } = require('node:crypto');
 const { createComfy } = require('./comfy');
-const { createCalls } = require('./calls');
 const { createImageRepository } = require('./image-repository');
 const { parsePngMetadata } = require('./images');
 const { createVisionTempStore } = require('./vision-temp-store');
-const { createAgentRuntime } = require('./agent-runtime');
+const { createAgentRuntime, isNoiseEvent } = require('./agent-runtime');
 const { createFixedSubagents } = require('./fixed-subagents');
 const { createPrimaryTools } = require('./primary-tools');
+const { createVisionService } = require('./vision-service');
 const { createPrompts } = require('./prompts');
 const { createSettings } = require('./settings');
 const { createAiClient, parseReply } = require('./ai-client');
@@ -41,6 +41,9 @@ function transcript(value) {
   return result;
 }
 
+// 任务事件只记录关键信息（轮次、工具调用、子代理、候选结果等）；
+// 噪音分类统一来自 agent-runtime.isNoiseEvent（单一来源），此处直接复用，避免多份逻辑漂移。
+
 function createAssistant(options = {}) {
   const storage = options.storage;
   const images = options.images || null;
@@ -52,7 +55,6 @@ function createAssistant(options = {}) {
   let active = null;
   let runtime;
   let primaryTools;
-  let calls;
   let imageRepository;
   let destroyed = false;
   function read(key, fallback) { try { return storage?.get ? storage.get(key, fallback) : storage?.load?.(key, fallback) ?? fallback; } catch { return fallback; } }
@@ -124,11 +126,9 @@ function createAssistant(options = {}) {
     return { ...image, dataUrl: `data:${mime};base64,${Buffer.from(bytes).toString('base64')}` };
   }
   const comfy = options.comfy && typeof options.comfy.render === 'function' ? options.comfy : createComfy(options.comfyOptions || {});
-  calls = options.calls || createCalls({ tags, images, comfy, prompts, visionTempStore, visionService: options.visionService, localVision: options.localVision || options.vision,
-    parseMetadata: parsePngMetadata, primaryAI: ai, visionAI: visionClient, getPrompt: key => prompts.getEffective?.(key) || prompts.get?.(key) || '',
-    getSettings: settings.snapshot, getCurrentSessionId: () => state.currentId, getRuntime: () => runtime, getPrimaryTools: () => primaryTools });
+  const visionService = options.visionService || createVisionService({ images, visionTempStore, localVision: options.localVision || options.vision, visionAI: visionClient, parseMetadata: parsePngMetadata, getPrompt: key => prompts.getEffective?.(key) || prompts.get?.(key) || '' });
   const primary = createPrimaryAgent({ client: ai, prompts, getSettings: settings.snapshot });
-  const subagents = createFixedSubagents({ vision: calls.visionService, translation: options.translation, ai, visionAI: visionClient, prompts, resolveImage, getSettings: settings.snapshot });
+  const subagents = createFixedSubagents({ vision: visionService, translation: options.translation, ai, visionAI: visionClient, prompts, resolveImage, getSettings: settings.snapshot });
   runtime = createAgentRuntime({ primaryClient: primary, subagents, tools: () => primaryTools, getSettings: settings.snapshot, getPrimaryPrompt: primary.getPrompt });
   primaryTools = createPrimaryTools({ tags, images, imageRepository, runtime, comfy, getSettings: settings.snapshot });
 
@@ -141,13 +141,18 @@ function createAssistant(options = {}) {
   function cancelledPayload(job) { return { text: job.live.text, reasoning: job.live.reasoning, toolCalls: clone(job.live.toolCalls), transcript: clone(job.live.transcript), artifacts: clone(job.live.artifacts), imageIds: job.live.imageIds.slice(), events: clone(job.live.events) }; }
   function applyPayload(job, payload = {}) {
     const live = job.live;
-    if (typeof payload.text === 'string') live.text = payload.text;
+    if (typeof payload.text === 'string') {
+      // 保留各轮之间的进度汇报文本：live.text 已累积本轮全部流式增量，
+      // 只有当最终文本未被包含在累积文本中时才追加，避免重复或覆盖掉过程汇报。
+      if (!live.text) live.text = payload.text;
+      else if (payload.text && live.text.trim() !== payload.text.trim() && !live.text.trim().endsWith(payload.text.trim())) live.text = live.text.trim() + '\n\n' + payload.text.trim();
+    }
     if (typeof payload.reasoning === 'string') live.reasoning = payload.reasoning;
     if (Array.isArray(payload.toolCalls)) live.toolCalls = clone(payload.toolCalls);
     if (Array.isArray(payload.transcript)) live.transcript = transcript(payload.transcript);
     if (Array.isArray(payload.artifacts)) live.artifacts = clone(payload.artifacts);
     live.imageIds = ids([...live.imageIds, ...array(payload.imageIds), ...live.artifacts.map(item => item.imageId || item.id)]);
-    if (Array.isArray(payload.events)) live.events = clone(payload.events);
+    if (Array.isArray(payload.events)) live.events = clone(payload.events).filter(event => !isNoiseEvent(event));
     live.activity = clone(live.events);
   }
   function cancel(requestId) {
@@ -197,6 +202,7 @@ function createAssistant(options = {}) {
     const live = session.messages.find(message => message.id === liveSnapshot.id);
     const controller = new AbortController();
     const job = { id: requestId, sessionId: session.id, session, live, controller, invalidated: false };
+    let lastDeltaPersistAt = 0;
     active = job; state.busy = true; state.status = 'running'; state.jobId = requestId; state.lastError = '';
     const callerAbort = () => cancel(requestId);
     input.signal?.addEventListener?.('abort', callerAbort, { once: true });
@@ -204,6 +210,7 @@ function createAssistant(options = {}) {
     observe(input.onStart, { user: clone(user), assistant: clone(live), requestId, sessionId: session.id });
     const onEvent = event => {
       if (!writable(job)) return;
+      if (isNoiseEvent(event)) return; // 流式增量不写入任务事件，避免刷满 256 条上限。
       live.events.push(clone(event)); if (live.events.length > 256) live.events.shift(); live.activity = clone(live.events);
       const output = event?.result?.data || event?.result;
       if (Array.isArray(output?.artifacts)) { for (const artifact of output.artifacts) if (!live.artifacts.some(item => item.imageId === artifact.imageId)) live.artifacts.push(clone(artifact)); live.imageIds = ids([...live.imageIds, ...live.artifacts.map(item => item.imageId)]); }
@@ -211,7 +218,7 @@ function createAssistant(options = {}) {
     };
     try {
       const result = await runtime.runPrimary({ requestId, sessionId: session.id, messageId: live.id, messages: [...previous, current], config: publicRequestConfig(config), signal: controller.signal,
-        onDelta: (delta, reasoning = '') => { if (!writable(job)) return; if (typeof delta === 'string') live.text += delta; if (typeof reasoning === 'string') live.reasoning += reasoning; persist(); observe(input.onDelta, live.text, live.reasoning, clone(live)); },
+        onDelta: (delta, reasoning = '') => { if (!writable(job)) return; if (typeof delta === 'string') live.text += delta; if (typeof reasoning === 'string') live.reasoning += reasoning; const now = Date.now(); if (now - lastDeltaPersistAt >= 500) { lastDeltaPersistAt = now; persist(); } observe(input.onDelta, live.text, live.reasoning, clone(live)); },
         onEvent,
         onToolCall: traces => { if (!writable(job)) return; for (const trace of array(traces)) { const index = live.toolCalls.findIndex(row => row.id === trace.id); if (index < 0) live.toolCalls.push(clone(trace)); else live.toolCalls[index] = clone(trace); } persist(); }
       });
@@ -245,16 +252,22 @@ function createAssistant(options = {}) {
     if (!text(body) && !imageIds.length) return failure('EMPTY_INPUT', '请输入内容或添加图片');
     found.session.messages.splice(index); persist(); return runPrimaryWithRuntime({ ...inputPatch, text: body, imageIds, sessionId: found.session.id }, config);
   }
-  function setSettings(value = {}) { const result = settings.setForm(value); ai.setConfig(settings.primaryProfile()); visionAi.setConfig(settings.visionProfile()); calls.invalidateCapabilities?.(); return result; }
+  let capabilities = { tags: Boolean(tags?.search), vision: visionService.available?.() || { metadata: Boolean(images?.get), local: false, ai: false }, comfy: { enabled: false, connected: false, workflowReady: false, render: false, error: '尚未检查 ComfyUI' } };
+  async function refreshCapabilities() {
+    const result = await primaryTools?.call?.('comfy.status', {}, { caller: 'ui', sessionId: state.currentId });
+    const comfyState = result?.data || {};
+    capabilities = { tags: Boolean(tags?.search), vision: visionService.available?.() || { metadata: Boolean(images?.get), local: false, ai: false }, comfy: { enabled: comfyState.enabled === true, connected: comfyState.connected === true, workflowReady: comfyState.workflowReady === true, render: comfyState.render === true, error: text(comfyState.error) } };
+    return clone(capabilities);
+  }
+  function setSettings(value = {}) { const result = settings.setForm(value); ai.setConfig(settings.primaryProfile()); visionAi.setConfig(settings.visionProfile()); return result; }
   function resetSettings(group) { settings.reset(group); return settings.getForm(); }
   const api = {
-    run: runPrimaryWithRuntime, runtime, primaryTools, imageRepository, visionTempStore, calls, parseReply,
+    run: runPrimaryWithRuntime, runtime, primaryTools, imageRepository, visionTempStore, visionService, parseReply,
     getSettings: settings.getForm, getCanonicalSettings: settings.snapshot, setSettings, updateSettings: setSettings, resetSettings,
     getPrimaryConfig: settings.primaryProfile, getVisionConfig: visionConfig,
     listModels: config => ai.listModels({ ...settings.primaryProfile(), ...publicRequestConfig(config) }), listVisionModels: config => visionAi.listModels({ ...settings.visionProfile(), ...publicRequestConfig(config) }),
     testConnection: config => runtime.runPrimary({ requestId: id('connection'), messages: [{ role: 'user', content: 'Please reply OK.' }], config: { ...publicRequestConfig(config), stream: false } }),
-    runVision: (input, context = {}) => runtime.runSubAgent('vision', { input, ...context, sessionId: context.sessionId || state.currentId }),
-    getCapabilities: () => calls.getCapabilities?.() || null, refreshCapabilities: value => calls.refreshCapabilities?.(value) || Promise.resolve(null),
+    getCapabilities: () => clone(capabilities), refreshCapabilities,
     newSession, currentSession: () => clone(currentSession()), sessions: () => clone(state.sessions), snapshot: () => ({ ...clone(state), settings: settings.getForm(), config: settings.primaryProfile(), visionConfig: visionConfig(), favorites: clone(favorites) }),
     switchSession(sessionId) { if (!sessionById(sessionId)) return false; if (sessionId !== state.currentId) cancel(); state.currentId = sessionId; persist(); return true; },
     renameSession(sessionId, title) { const session = sessionById(sessionId); if (!session) return false; session.title = text(title, session.title); session.updatedAt = Date.now(); persist(); return clone(session); },
@@ -270,3 +283,4 @@ function createAssistant(options = {}) {
 }
 
 module.exports = { SESSION_FORMAT, SESSION_VERSION, createAssistant };
+

@@ -47,6 +47,7 @@
       thinkingOpen: Object.create(null),
       thinkingScroll: Object.create(null),
       candidatePreviews: Object.create(null),
+      imgViewer: null,
       gallerySelected: new Set(),
       sendDrafts: [],
       conversationSelectionSnapshot: [],
@@ -627,7 +628,7 @@
       const module = $("#comfyUiModule");
       if (!module) return;
       const state = capabilities?.comfy || {};
-      module.hidden = true;
+      module.hidden = false;
       const status = $("#comfyStatus");
       const statusLabel = capabilityLabel(capabilities);
       if (status) {
@@ -639,13 +640,13 @@
         status.classList.toggle("is-comfy-warning", connected && !workflowReady);
         status.classList.toggle("is-comfy-error", !connected);
       }
+      const toggle = $("#talkComfyOn"); if (toggle) toggle.checked = settings().comfyOn === true || settings().comfy?.enabled === true;
     }
     async function refreshCapabilitiesStatus(options = {}) {
-      const calls = assistant?.calls;
-      if (typeof calls?.refreshCapabilities !== "function") return null;
+      if (typeof assistant?.refreshCapabilities !== "function") return null;
       const requestId = ++capabilityRequestId;
       let capabilities;
-      try { capabilities = await calls.refreshCapabilities(options); } catch { return null; }
+      try { capabilities = await assistant.refreshCapabilities(options); } catch { return null; }
       if (requestId !== capabilityRequestId) return capabilities;
       ui.comfyCapabilities = capabilities;
       const label = capabilityLabel(capabilities);
@@ -1066,6 +1067,7 @@
         const card = doc.createElement("article");
         card.className = "conversation-image-card";
         card.dataset.refId = item.refId;
+        card.dataset.imageId = str(item.imageId);
         // 默认不允许拖动；仅识图模式下允许拖动"单张"图片到右侧识图区。
         card.draggable = ui.visionOpen === true;
         const inSend = inSendDraft(item.imageId);
@@ -2183,6 +2185,9 @@
               const img = doc.createElement("img");
               img.src = imageSource;
               img.alt = "图片" + (index + 1);
+              img.dataset.imageId = id;
+              img.title = "点击查看大图";
+              img.addEventListener("click", () => openImageViewer({ imageId: id, source: image?.dataUrl || image?.viewUrl || imageSource, title: "图片" + (index + 1) }));
               gallery.appendChild(img);
             });
             if (gallery.childElementCount) row.appendChild(gallery);
@@ -2351,6 +2356,134 @@
         host.appendChild(row);
       });
     }
+    /* ===== 图片查看器与右键菜单（ComfyUI 返图点开 / 下载 / 保存） ===== */
+    function fullImageFor(imageId) {
+      const id = str(imageId);
+      if (!id) return null;
+      try {
+        const stored = imageStore?.get?.(id) || images?.get?.(id);
+        if (stored?.dataUrl || stored?.thumbnailDataUrl || stored?.viewUrl) return stored;
+        const ready = imageStore?.preview?.(id) || images?.preview?.(id);
+        if (ready) return ready;
+      } catch { /* fallback to source */ }
+      return null;
+    }
+    function imageZoomSource(imageId, fallbackSource) {
+      const stored = fullImageFor(imageId);
+      const source = stored?.dataUrl || stored?.viewUrl || stored?.thumbnailDataUrl || fallbackSource || "";
+      return { source, filename: stored?.filename || stored?.displayName || `${str(imageId) || "image"}.png`, mime: stored?.mime || "image/png", stored };
+    }
+    function galleryHasImage(imageId) {
+      try {
+        const rows = imageRepository?.listGallery?.() || [];
+        const items = Array.isArray(rows) ? rows : rows.items || [];
+        return items.some(row => str(row.imageId || row.id) === str(imageId));
+      } catch { return false; }
+    }
+    function conversationHasImage(imageId, sessionId = currentTalkSessionId()) {
+      try {
+        const rows = imageRepository?.listConversation?.(sessionId) || { items: [] };
+        const items = Array.isArray(rows) ? rows : rows.items || [];
+        return items.some(row => row.imageId === str(imageId));
+      } catch { return false; }
+    }
+    function updateImgViewerActions() {
+      const state = ui.imgViewer;
+      if (!state) return;
+      const galleryBtn = $("#imgViewerToGallery");
+      if (galleryBtn) {
+        const saved = galleryHasImage(state.imageId);
+        galleryBtn.textContent = saved ? "已保存到图库" : "⭐ 保存到图库";
+        galleryBtn.disabled = saved;
+      }
+      const convBtn = $("#imgViewerToConversation");
+      if (convBtn) {
+        const attached = conversationHasImage(state.imageId);
+        convBtn.textContent = attached ? "已在对话区" : "💬 保存到对话区";
+        convBtn.disabled = attached;
+      }
+      const meta = $("#imgViewerMeta");
+      if (meta) meta.textContent = state.title ? `${state.title} · ${state.filename}` : state.filename;
+    }
+    function openImageViewer(options = {}) {
+      const imageId = str(options.imageId);
+      const zoom = imageZoomSource(imageId, options.source);
+      if (!zoom.source) return notify("暂无图片数据，无法打开");
+      ui.imgViewer = { imageId, filename: str(options.filename, zoom.filename), mime: str(options.mime, zoom.mime), title: str(options.title) };
+      const img = $("#imgViewerImage");
+      if (img) { img.src = zoom.source; img.alt = str(options.title, "图片"); }
+      $("#imgViewer")?.classList.add("show");
+      updateImgViewerActions();
+    }
+    function closeImageViewer() {
+      $("#imgViewer")?.classList.remove("show");
+      ui.imgViewer = null;
+    }
+    function addImageToGallery(imageId) {
+      const id = str(imageId);
+      if (!id) return false;
+      try {
+        const added = imageRepository?.addToGallery?.(id);
+        if (added) {
+          notify("已保存到图库");
+          renderGallery();
+        } else notify("保存失败：请检查图片");
+        return Boolean(added);
+      } catch (error) {
+        notify(error?.message || String(error));
+        return false;
+      }
+    }
+    function addImageToConversation(imageId) {
+      const id = str(imageId);
+      if (!id) return false;
+      const sessionId = currentTalkSessionId();
+      try {
+        const attached = imageRepository?.attachToConversation?.(sessionId, id, { source: galleryHasImage(id) ? "gallery" : "comfy" });
+        if (attached) {
+          notify("已保存到对话区");
+          renderConversationRepository();
+        } else notify("保存失败：请检查图片");
+        return Boolean(attached);
+      } catch (error) {
+        notify(error?.message || String(error));
+        return false;
+      }
+    }
+    function downloadImage(imageId, filename, mime) {
+      const id = str(imageId);
+      if (!id) return;
+      const fallback = imageZoomSource(id, "").source || "";
+      Promise.resolve(imageRepository?.getOriginalBytes?.(id) || fallback)
+        .then(value => {
+          if (!value) return notify("图片数据不可用");
+          const isBytes = value instanceof ArrayBuffer || ArrayBuffer.isView(value) || Array.isArray(value);
+          let href = value;
+          if (isBytes) href = URL.createObjectURL(new Blob([value], { type: str(mime, "image/png") }));
+          else if (value instanceof Blob) href = URL.createObjectURL(value);
+          const link = doc.createElement("a");
+          link.href = href;
+          link.download = str(filename, `${id}.png`);
+          link.click();
+          if (typeof href === "string" && href.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(href), 1000);
+        })
+        .catch(error => notify(error?.message || String(error)));
+    }
+    function showImageContextMenu(event, item) {
+      const menu = $("#imgCtxMenu");
+      if (!menu) return;
+      ui.imageCtx = item;
+      menu.style.display = "block";
+      const padding = 8;
+      const rect = menu.getBoundingClientRect();
+      menu.style.left = `${Math.max(padding, Math.min(event.clientX, doc.defaultView?.innerWidth ? doc.defaultView.innerWidth - rect.width - padding : event.clientX))}px`;
+      menu.style.top = `${Math.max(padding, Math.min(event.clientY, doc.defaultView?.innerHeight ? doc.defaultView.innerHeight - rect.height - padding : event.clientY))}px`;
+    }
+    function hideImageContextMenu() {
+      const menu = $("#imgCtxMenu");
+      if (menu) menu.style.display = "none";
+      ui.imageCtx = null;
+    }
     function candidateImage(candidate) {
       const id = str(candidate?.imageId);
       if (id) {
@@ -2373,11 +2506,16 @@
       const name = item.name === "comfy.render" ? "ComfyUI"
         : item.name === "vision.processOne" ? "识图"
           : item.name === "tags.search" ? "Tag 查询" : item.name;
-      if (item.type === "thinking") return `AI 思考（第 ${item.round || 1} 轮）`;
-      if (item.type === "tool") return `调用 ${name || "工具"}`;
-      if (item.type === "candidate") return `第 ${item.iteration || 1} 次返图已显示`;
-      if (item.type === "evaluation") return `已评估 ${item.candidateId || "候选结果"}`;
-      if (item.type === "recommendation") return `AI 推荐 ${item.candidateId || "候选结果"}`;
+      const toolName = name || "工具";
+      if (item.type === "thinking" || item.type === "round.start") return `AI 思考（第 ${item.round || 1} 轮）`;
+      if (item.type === "round.complete") return `第 ${item.round || 1} 轮完成`;
+      if (item.type === "subagent.start") return `子代理 ${item.name || ""} 开始`.trim();
+      if (item.type === "subagent.complete") return `子代理 ${item.name || ""} 完成`.trim();
+      if (item.type === "tool" || item.type === "tool.start") return `调用 ${toolName}`;
+      if (item.type === "tool.complete") return item.result?.ok === false ? `${toolName} 失败` : `${toolName} 完成`;
+      if (item.type === "candidate" || item.type === "candidate-ready") return `第 ${item.iteration || 1} 次返图已显示`;
+      if (item.type === "evaluation" || item.type === "candidate-evaluated") return `已评估 ${item.candidateId || "候选结果"}`;
+      if (item.type === "recommendation" || item.type === "candidate-recommended") return `AI 推荐 ${item.candidateId || "候选结果"}`;
       if (item.type === "event") return item.name ? `${item.name} 事件` : "任务事件";
       return item.message || name || "任务事件";
     }
@@ -2475,17 +2613,21 @@
         const image = candidateImage(candidate);
         const imageSource = image?.thumbnailDataUrl || image?.dataUrl || image?.viewUrl || "";
         if (imageSource) {
-          const link = doc.createElement("a");
-          link.href = imageSource;
-          link.target = "_blank";
-          link.rel = "noreferrer";
-          link.title = "点击查看大图";
+          const wrap = doc.createElement("div");
+          wrap.className = "draw-candidate-image";
+          wrap.dataset.imageId = str(candidate?.imageId || image?.imageId || "");
+          wrap.title = "点击查看大图";
           const preview = doc.createElement("img");
           preview.src = imageSource;
           preview.alt = `第 ${Number(candidate.iteration) || 1} 次生成图片`;
           preview.loading = "lazy";
-          link.appendChild(preview);
-          card.appendChild(link);
+          wrap.appendChild(preview);
+          wrap.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            openImageViewer({ imageId: wrap.dataset.imageId, source: image?.dataUrl || image?.viewUrl || imageSource, title: `第 ${Number(candidate.iteration) || 1} 次渲染` });
+          });
+          card.appendChild(wrap);
         }
         if (candidate.evaluation?.summary) {
           const evaluation = doc.createElement("p");
@@ -3155,6 +3297,32 @@
       $("#talkRepositoryColumns")?.addEventListener("change", event => { const value = event.target.value === "single" ? "single" : "two"; preferences.set("conversation.columns", value); renderConversationRepository(); });
       $("#talkRepositoryClearPending")?.addEventListener("click", () => { ui.sendDrafts = []; renderConversationRepository(); });
       $("#talkPendingClear")?.addEventListener("click", () => { ui.sendDrafts = []; renderConversationRepository(); });
+      // 图片查看器与右键菜单（ComfyUI 返图点开 / 下载 / 保存到对话区与图库）。
+      $("#imgViewerClose")?.addEventListener("click", () => closeImageViewer());
+      $("#imgViewer")?.addEventListener("click", event => { if (event.target === $("#imgViewer")) closeImageViewer(); });
+      $("#imgViewerDownload")?.addEventListener("click", () => { const state = ui.imgViewer; if (state) downloadImage(state.imageId, state.filename, state.mime); });
+      $("#imgViewerToConversation")?.addEventListener("click", () => addImageToConversation(ui.imgViewer?.imageId || ""));
+      $("#imgViewerToGallery")?.addEventListener("click", () => { addImageToGallery(ui.imgViewer?.imageId || ""); updateImgViewerActions(); });
+      $("#imgCtxMenu")?.addEventListener("click", event => {
+        const action = event.target.closest?.("[data-ctx]")?.dataset.ctx;
+        const item = ui.imageCtx;
+        hideImageContextMenu();
+        if (!item || !action) return;
+        if (action === "download") downloadImage(item.imageId, item.filename, item.mime);
+        if (action === "gallery") addImageToGallery(item.imageId);
+      });
+      doc.addEventListener("contextmenu", event => {
+        const card = event.target.closest?.(".conversation-image-card");
+        if (!card) { hideImageContextMenu(); return; }
+        event.preventDefault();
+        event.stopPropagation();
+        const imageId = str(card.dataset.imageId);
+        if (!imageId) return;
+        const asset = fullImageFor(imageId);
+        showImageContextMenu(event, { imageId, filename: asset?.filename || `${imageId}.png`, mime: asset?.mime || "image/png" });
+      });
+      doc.addEventListener("click", event => { if (!event.target.closest?.("#imgCtxMenu")) hideImageContextMenu(); });
+      doc.defaultView?.addEventListener?.("keydown", event => { if (event.key === "Escape") { closeImageViewer(); hideImageContextMenu(); } });
       $("#tpUpload")?.addEventListener("click", () => $("#tpFile")?.click());
       $("#tpFile")?.addEventListener("change", (event) => {
         const input = event.target;
@@ -3168,6 +3336,8 @@
         renderTalkVisionPanel();
       });
       $("#tpDescribe")?.addEventListener("click", () => describe());
+      $("#talkComfyOn")?.addEventListener("change", event => { assistant?.setSettings?.({ comfyOn: event.target.checked }); refreshCapabilitiesStatus({ force: true }); });
+      $("#talkComfyDebug")?.addEventListener("click", () => { const state = ui.comfyCapabilities?.comfy || {}; notify(`ComfyUI：${state.connected ? "已连接" : "未连接"}；工作流：${state.workflowReady ? "已就绪" : "未就绪"}`); });
       $("#tpStop")?.addEventListener("click", () => {
         if (!ui.visionBusy) return;
         cancelVisionRequest(true);
@@ -3218,11 +3388,11 @@
       $("#visionKey")?.addEventListener("change", () => { configFromView(); populateVisionModels(); });
       $("#visionTest")?.addEventListener("click", async () => {
         const s = configFromView();
-        if (!assistant?.runVision) return notify("识图 API 不可用");
+        if (!runtime?.callTool) return notify("识图 API 不可用");
         try {
           const imageId = currentVisionId();
           if (!imageId) return notify("请先选择一张图片");
-          const result = await assistant.runVision({ imageId, mode: "ai", instruction: "请只回复 OK，确认当前模型支持图片输入。" }, { caller: "ui", requestId: `vision-test-${Date.now()}` });
+          const result = await runtime.callTool("vision.processOne", { imageId, mode: "ai", instruction: "请只回复 OK，确认当前模型支持图片输入。" }, { caller: "ui", sessionId: currentTalkSessionId(), requestId: `vision-test-${Date.now()}` });
           notify(result?.ok === false ? result.error || result.text || "当前模型不支持图片输入" : "识图 API 图片测试成功");
         } catch (error) { notify(error?.message || String(error)); }
       });
@@ -3649,4 +3819,5 @@
   }
   global.AppView = { create: createAppView };
 })(window);
+
 

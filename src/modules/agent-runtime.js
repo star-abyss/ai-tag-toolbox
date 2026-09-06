@@ -26,6 +26,24 @@ function race(invoke, signal) {
     Promise.resolve().then(() => { if (signal.aborted) throw signal.reason || reject('CANCELLED', '请求已取消'); return invoke(); }).then(value => finish(resolve, value), error => finish(rejectPromise, error));
   });
 }
+/**
+ * 任务事件噪音分类（单一来源）：
+ * - delta：流式增量（正文/推理分片）；
+ * - progress：进度轮询（如 ComfyUI 排队）；
+ * - provider.event：只有真正包含 非空工具调用/进度/名称/结果 的才保留（注意空数组也是 truthy，必须按长度判断）；
+ * 运行时按此丢弃，assistant 持久化时按同一份判断再过滤一道。
+ */
+function isNoiseEvent(event) {
+  const type = typeof event?.type === 'string' ? event.type : '';
+  if (type === 'delta') return true;
+  if (type === 'progress') return true;
+  if (type === 'provider.event') {
+    const calls = event?.toolCalls || event?.tool_calls;
+    const hasCalls = Array.isArray(calls) ? calls.length > 0 : Boolean(calls);
+    return !(hasCalls || event?.progress || event?.name || event?.result);
+  }
+  return false;
+}
 function responseCalls(response) { const value = response?.toolCalls || response?.tool_calls || response?.data?.toolCalls || response?.choices?.[0]?.message?.tool_calls || []; if (!Array.isArray(value)) throw reject('OUTPUT_INVALID', '主 AI 工具调用格式无效'); return value; }
 function normalizeCall(call, usedIds) {
   const name = canonicalName(call?.function?.name || call?.name || '');
@@ -143,7 +161,16 @@ function createAgentRuntime(options = {}) {
       limiter.consume(context.rootRequestId, name === 'comfy.render' ? 'comfy' : 'tool');
       emit(context, 'tool.start', { name, args });
       const registry = getTools();
-      const childContext = { ...context, onEvent: event => emit(context, event.type || 'progress', event) };
+      // 进度事件（如 ComfyUI 排队轮询）按队列值去重，避免每 1.2 秒刷一条任务事件。
+      let lastProgressValue = null;
+      const childContext = { ...context, onEvent: event => {
+        const eventType = event?.type || 'progress';
+        if (eventType === 'progress') {
+          if (event?.queue !== undefined && event.queue === lastProgressValue) return;
+          lastProgressValue = event?.queue ?? lastProgressValue;
+        }
+        emit(context, eventType, event);
+      } };
       const value = typeof registry.call === 'function' ? await registry.call(name, clone(args), childContext) : typeof entry === 'function' ? await entry(clone(args), childContext) : await entry.handler(clone(args), childContext);
       const data = unwrap(value); assertSchema(entry.outputSchema || {}, data, 'OUTPUT_INVALID');
       if (!value?.requestId) limiter.add(context.rootRequestId, value?.usage);
@@ -153,25 +180,32 @@ function createAgentRuntime(options = {}) {
   async function runPrimary(request = {}) {
     return execute('primary', request, getSettings()?.limits?.primaryTimeoutMs || options.timeoutMs || 120000, async context => {
       if (typeof client?.complete !== 'function') throw reject('PRIMARY_UNAVAILABLE', '主 AI 服务不可用');
-      const prompt = typeof options.getPrimaryPrompt === 'function' ? text(await options.getPrimaryPrompt()) : text(options.primaryPrompt, '你是 AI 绘画 Tag 工具箱的主 AI，使用固定工具完成用户任务。');
+      const prompt = typeof options.getPrimaryPrompt === 'function' ? text(await options.getPrimaryPrompt(request)) : text(options.primaryPrompt, '你是 AI 绘画 Tag 工具箱的主 AI，使用固定工具完成用户任务。');
       if (!prompt) throw reject('PROMPT_INVALID', '主 AI 提示词为空');
       const history = (Array.isArray(request.messages) ? request.messages : []).map(historyMessage).filter(Boolean).filter(item => item.role === 'tool' || item.content || item.tool_calls?.length);
       if (!history.length && typeof request.input?.text === 'string') history.push({ role: 'user', content: request.input.text });
       const messages = [{ role: 'system', content: prompt }, ...history]; const transcript = []; const toolCalls = []; const artifacts = []; const usedIds = new Set(); let round = 0;
       const partial = () => ({ text: '', reasoning: '', toolCalls: toolCalls.slice(), events: context.events.slice(), artifacts: artifacts.map(clone), imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript: transcript.map(clone) });
       context.partial = partial();
+      // 流式增量不逐片写入任务事件：缓冲后节流合并，避免刷满 256 条上限。
+      const deltaBuffer = { text: '', reasoning: '', emittedAt: 0 };
+      const flushDelta = () => {
+        if (!deltaBuffer.text && !deltaBuffer.reasoning) return;
+        emit(context, 'delta', { text: deltaBuffer.text, reasoning: deltaBuffer.reasoning });
+        deltaBuffer.text = ''; deltaBuffer.reasoning = ''; deltaBuffer.emittedAt = Date.now();
+      };
       while (true) {
         limiter.consume(context.rootRequestId, 'round'); round += 1; emit(context, 'round.start', { round });
         const settings = getSettings() || {};
-        const primaryConfig = { ...publicConfig(settings.primaryApi), ...publicConfig(request.config), signal: context.signal, tools: schemas(), tool_choice: 'auto', onDelta: (delta, reasoning = '') => { emit(context, 'delta', { text: typeof delta === 'string' ? delta : '', reasoning: typeof reasoning === 'string' ? reasoning : '' }); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } }, onEvent: event => emit(context, event?.type || 'event', event || {}) };
+        const primaryConfig = { ...publicConfig(settings.primaryApi), ...publicConfig(request.config), signal: context.signal, tools: schemas(), tool_choice: 'auto', onDelta: (delta, reasoning = '') => { deltaBuffer.text += typeof delta === 'string' ? delta : ''; deltaBuffer.reasoning += typeof reasoning === 'string' ? reasoning : ''; const accumulated = deltaBuffer.text.length + deltaBuffer.reasoning.length; if (accumulated >= 8 && Date.now() - deltaBuffer.emittedAt >= 200) flushDelta(); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } }, onEvent: event => { if (typeof event?.type === 'string' && event.type && !isNoiseEvent(event)) emit(context, event.type, event || {}); } /* 只接受带类型名的有意义事件；无类型名的流式分片（正文/推理/工具参数碎片）一律不产生任务事件，真正的调用由 tool.start/tool.complete 记录。 */ };
         const response = await race(() => client.complete(messages, primaryConfig), context.signal);
-        unwrap(response); limiter.add(context.rootRequestId, response?.usage); const calls = responseCalls(response).map(call => normalizeCall(call, usedIds));
+        unwrap(response); limiter.add(context.rootRequestId, response?.usage); const calls = responseCalls(response).slice(0, 1).map(call => normalizeCall(call, usedIds));
         const responseText = outputText(response);
         if (!calls.length) {
           if (!responseText.trim()) throw reject('OUTPUT_INVALID', '主 AI 返回为空');
           const finalMessage = { role: 'assistant', content: responseText };
           messages.push(finalMessage); transcript.push(clone(finalMessage));
-          emit(context, 'round.complete', { round });
+          flushDelta(); emit(context, 'round.complete', { round });
           const data = { text: responseText, reasoning: typeof response?.reasoning === 'string' ? response.reasoning : '', toolCalls, events: context.events.slice(), artifacts, imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript };
           context.partial = data; return data;
         }
@@ -186,11 +220,12 @@ function createAgentRuntime(options = {}) {
           messages.push(toolMessage); transcript.push(clone(toolMessage)); context.partial = partial();
           if (!outcome.ok) throw outcome.error;
         }
-        emit(context, 'round.complete', { round });
+        flushDelta(); emit(context, 'round.complete', { round });
       }
     });
   }
   return { runPrimary, runSubAgent, callTool, cancel: id => requests.cancel(id), getStatus: id => statuses.get(id) || requests.get(id), getRequest: id => requests.get(id), listTools, status: statuses, requests, usage: limiter };
 }
 
-module.exports = { createAgentRuntime, resultOk, resultError };
+module.exports = { createAgentRuntime, resultOk, resultError, isNoiseEvent };
+

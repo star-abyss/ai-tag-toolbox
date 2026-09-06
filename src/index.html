@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
-    <title>AI 绘画 Tag 工具箱 V1.4.195 · Danbooru 标签选择器</title>
+    <title>AI 绘画 Tag 工具箱 V1.4.197 · Danbooru 标签选择器</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
@@ -558,8 +558,10 @@
               <div class="tkbody">
                 <div class="tkconv">
                   <div class="tk-statusline">
-                    <div class="tk-comfy-module" id="comfyUiModule" hidden>
+                    <div class="tk-comfy-module" id="comfyUiModule">
                       <div class="tk-comfy-status cstatus" id="comfyStatus">ComfyUI 状态检查中…</div>
+                      <label class="opt comfy-inline-toggle"><input id="talkComfyOn" type="checkbox" /> ComfyUI 出图</label>
+                      <button id="talkComfyDebug" class="btn btn-ghost" type="button">调试</button>
                     </div>
                     <div class="cstatus talk-status" id="talkStatus" aria-live="polite"></div>
                   </div>
@@ -599,122 +601,125 @@
             <button class="abtn ghost backbtn btn btn-ghost" id="promptBack" data-i18n="ui.prompt.back"></button>
             <span style="font-weight: 700; font-size: 14px" data-i18n="ui.prompt.title"></span>
           </div>
-          <details id="mainPrompt" open class="promptcard">
+          <details id="mainPromptSetCard" open class="promptcard">
             <summary data-i18n-title="ui.promptExtra.toggleTitle">
-              <span data-i18n="ui.prompt.main"></span> <span class="pcsub" data-i18n="ui.prompt.mainSub"></span>
-            </summary>
-            <div class="pcbody">
-              <div class="presetbar legacy-prompt-compat" hidden>
-                <span style="font-size: 13px; color: var(--muted)" data-i18n="ui.prompt.preset"></span>
-                <select id="presetSel" class="wbselect"></select>
-                <button class="abtn ghost btn btn-ghost" id="presetSave" data-i18n="ui.prompt.savePreset"></button>
-                <button class="abtn ghost btn btn-ghost" id="presetImport" data-i18n="ui.prompt.import"></button>
-                <button class="abtn ghost btn btn-ghost" id="presetExport" data-i18n="ui.prompt.export"></button>
-                <button class="abtn ghost danger btn btn-danger" id="presetDelete" data-i18n="ui.prompt.delete"></button>
-              </div>
-              <div class="row" style="margin-top: 6px">
-                <button class="abtn btn btn-secondary" id="pcolExport" data-i18n="ui.prompt.exportCollection"></button>
-                <button class="abtn ghost btn btn-ghost" id="pcolImport" data-i18n="ui.prompt.importCollection"></button>
-                <input type="file" id="pcolFile" accept=".json,application/json" hidden />
-                <button class="abtn ghost danger btn btn-danger" id="promptModReset" data-i18n="ui.prompt.resetModules"></button>
-              </div>
-              <div class="hint" style="margin: 4px 0 10px" data-i18n="ui.prompt.modulesHint"></div>
-              <details class="pmod-lead" data-special="base">
-                <summary>
-                  <span data-i18n="ui.prompt.base"></span> <span class="pcsub" data-i18n="ui.prompt.baseSub"></span
-                  ><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="aiSysEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
-                  ><button class="abtn ghost danger btn btn-danger" id="aiSysReset" data-i18n="ui.promptExtra.resetDefault"></button>
-                </summary>
-                <div class="pmod-mods"></div>
-                <div class="form"><textarea id="aiSys" rows="12"></textarea></div>
-              </details>
-              <details class="pmod-lead" data-special="genTask">
-                <summary>
-                  <span data-i18n="ui.prompt.genTask"></span>
-                  <span class="pcsub" data-i18n="ui.prompt.genTaskSub"></span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="genTaskEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
-                  ><button class="abtn ghost danger btn btn-danger" id="genTaskReset" data-i18n="ui.promptExtra.resetDefault"></button>
-                </summary>
-                <div class="pmod-mods"></div>
-                <div class="form"><textarea id="genTask" rows="9"></textarea></div>
-              </details>
-              <details class="pmod-lead legacy-prompt-compat" data-special="quality" hidden>
-                <summary>
-                  <span data-i18n="ui.prompt.quality"></span>
-                  <span class="pcsub" data-i18n="ui.prompt.qualitySub"></span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="qpEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
-                  ><button class="abtn ghost danger btn btn-danger" id="qpReset" data-i18n="ui.promptExtra.reset"></button>
-                </summary>
-                <div class="pmod-mods"></div>
-                <div class="qprefix"><textarea id="qpText" rows="4"></textarea></div>
-              </details>
-              <details class="pmod-lead" data-special="vision">
-                <summary>
-                  <span data-i18n="ui.prompt.vision"></span> <span class="pcsub" data-i18n="ui.prompt.visionSub"></span
-                  ><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="aiVisionEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label
-                  ><button class="abtn ghost danger btn btn-danger" id="aiVisionReset" data-i18n="ui.promptExtra.resetDefault"></button>
-                </summary>
-                <div class="pmod-mods"></div>
-                <div class="qprefix" style="border-left-color: var(--cp)">
-                  <textarea id="aiVision" rows="6"></textarea>
-                </div>
-              </details>
-              <details class="pmod-lead" data-special="translation">
-                <summary><span data-i18n="ui.translation.title">翻译子代理</span><span class="pcsub">固定翻译提示词</span><span style="flex: 1"></span><label class="opt prompt-enabled"><input type="checkbox" id="translationPromptEnabled" checked /> <span data-i18n="ui.common.enabled">启用</span></label></summary>
-                <div class="pmod-mods"></div><div class="form"><textarea id="translationPrompt" rows="6" placeholder="翻译子代理提示词"></textarea></div>
-              </details>
-              <details class="pmod-lead legacy-prompt-compat" data-special="system" hidden>
-                <summary>
-                  <span data-i18n="ui.prompt.system"></span> <span class="pcsub" data-i18n="ui.prompt.systemSub"></span
-                  ><span style="flex: 1"></span>
-                </summary>
-                <div class="pmod-mods"></div>
-                <div class="hint" data-i18n="ui.prompt.systemHint"></div>
-              </details>
-              <div class="hint" data-i18n="ui.prompt.mainHint"></div>
-            </div>
-          </details>
-
-          <details id="worldBookCard" open class="promptcard legacy-prompt-compat" hidden>
-            <summary data-i18n-title="ui.promptExtra.toggleTitle">
-              <span data-i18n="ui.prompt.world"></span> <span class="pcsub" data-i18n="ui.prompt.worldSub"></span>
+              <span>主提示词组</span> <span class="pcsub">固定 5 个条目，可整体切换</span>
             </summary>
             <div class="pcbody">
               <div class="wbrow">
-                <span data-i18n="ui.prompt.worldCurrent"></span>
-                <select id="worldSel" class="wbselect"></select>
-                <label class="opt"
-                  ><input type="checkbox" id="worldEnabled" checked /> <span data-i18n="ui.prompt.worldEnabled"></span
-                ></label>
-                <button class="abtn pri btn btn-primary" id="worldAdd" data-i18n="ui.prompt.newWorld"></button>
-                <button class="abtn btn btn-secondary" id="wbImport" data-i18n="ui.prompt.import"></button>
-                <button class="abtn btn btn-secondary" id="wbExport" data-i18n="ui.prompt.exportWorld"></button>
-                <button class="abtn btn btn-secondary" id="wbBundle" data-i18n="ui.prompt.bundleWorld"></button>
+                <span style="font-size: 13px; color: var(--muted)">当前提示词组</span>
+                <select id="promptSetSel" class="wbselect"></select>
+                <button class="abtn pri btn btn-primary" id="promptSetAdd">新增提示词组</button>
+                <button class="abtn btn btn-secondary" id="promptSetRename">重命名</button>
+                <button class="abtn ghost danger btn btn-danger" id="promptSetDelete">删除</button>
               </div>
-              <div class="row" style="margin-top: 4px; align-items: center">
-                <span style="font-size: 13px; color: var(--muted)" data-i18n="ui.prompt.enabledObjects"></span>
-                <span id="wbCallMods" style="display: inline-flex; gap: 6px"></span>
+              <div class="row" style="margin-top: 6px">
+                <button class="abtn btn btn-secondary" id="pcolExport">导出提示词组（全部）</button>
+                <button class="abtn ghost btn btn-ghost" id="pcolImport">导入提示词组</button>
+                <input type="file" id="pcolFile" accept=".json,application/json" hidden />
+                <button class="abtn ghost danger btn btn-danger" id="promptSetReset">恢复本组默认</button>
               </div>
-              <div id="worldCards"></div>
-              <input type="file" id="wbImportFile" accept=".json,application/json" hidden />
-              <div class="clhead wbheadline" style="margin-top: 12px">
-                <span id="wbListTitle" data-i18n="ui.prompt.entryTitle"></span><span style="flex: 1"></span
-                ><button class="abtn ghost btn btn-ghost" id="wbFoldAll" data-i18n="ui.prompt.allCollapse"></button
-                ><button class="abtn pri btn btn-primary" id="wbAdd" data-i18n="ui.prompt.newEntry"></button>
+              <div class="hint" style="margin: 4px 0 10px">
+                主提示词组固定包含 5 个条目：主 AI 提示词、文生图提示词、画师与品质词参考提示词、识图提示词、翻译提示词。
+                不允许单独增加或删除条目，只能整组批量切换、批量导入导出；新建提示词组时自动创建 5 个空白条目，选中后生效。
+                条目内容可单独修改，修改只影响当前提示词组。
               </div>
-              <div class="wblist" id="wbList"></div>
-              <div class="row"><button class="abtn btn btn-secondary" id="previewWorld" data-i18n="ui.prompt.previewWorld"></button></div>
-              <div class="hint" data-i18n="ui.promptExtra.worldHint"></div>
+              <details class="pmod-lead" data-special="primary" open>
+                <summary>
+                  <span>1. 主 AI 提示词</span>
+                  <span class="pcsub">主 AI 身份、可调用接口与调用时机、参数与返回、失败处理、停止条件</span>
+                  <span style="flex: 1"></span>
+                  <button class="abtn ghost danger btn btn-danger" id="psPrimaryReset">恢复默认</button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="form"><textarea id="psPrimary" rows="12"></textarea></div>
+              </details>
+              <details class="pmod-lead" data-special="generateTags" open>
+                <summary>
+                  <span>2. 文生图提示词</span>
+                  <span class="pcsub">文生图主提示词 + 画师与品质词参考提示词</span>
+                  <span style="flex: 1"></span>
+                  <button class="abtn ghost danger btn btn-danger" id="psGenerateTagsReset">恢复默认</button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="form">
+                  <label class="opt"><span>文生图主提示词（提供给文生图 Tag 子代理）</span></label>
+                  <textarea id="psGenerateTags" rows="10"></textarea>
+                </div>
+                <div class="form" style="margin-top: 4px">
+                  <label class="opt"><span>画师与品质词参考提示词（作为文生图 Tag 子代理的参考规则）</span></label>
+                  <textarea id="psArtistQuality" rows="8"></textarea>
+                </div>
+              </details>
+              <details class="pmod-lead" data-special="vision" open>
+                <summary>
+                  <span>3. 识图提示词</span>
+                  <span class="pcsub">提供给识图 AI：参考 Tag、视觉维度、不确定内容、输出格式</span>
+                  <span style="flex: 1"></span>
+                  <button class="abtn ghost danger btn btn-danger" id="psVisionReset">恢复默认</button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="qprefix"><textarea id="psVision" rows="6"></textarea></div>
+              </details>
+              <details class="pmod-lead" data-special="translation" open>
+                <summary>
+                  <span>4. 翻译提示词</span>
+                  <span class="pcsub">翻译方向、Tag 与专有名词保留、未知 Tag 处理、输出格式</span>
+                  <span style="flex: 1"></span>
+                  <button class="abtn ghost danger btn btn-danger" id="psTranslationReset">恢复默认</button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="form"><textarea id="psTranslation" rows="6"></textarea></div>
+              </details>
+              <div class="hint" id="promptSetInfo" style="margin-top: 4px"></div>
+            </div>
+          </details>
+
+          <details id="extensionPromptsCard" open class="promptcard">
+            <summary data-i18n-title="ui.promptExtra.toggleTitle">
+              <span>扩展提示词</span> <span class="pcsub">仅对主 AI 生效</span>
+            </summary>
+            <div class="pcbody">
+              <div class="row" style="margin-top: 0">
+                <button class="abtn btn btn-secondary" id="extAdd">新增扩展提示词</button>
+                <button class="abtn ghost btn btn-ghost" id="extExport">导出扩展提示词</button>
+                <button class="abtn ghost btn btn-ghost" id="extImport">导入扩展提示词</button>
+                <input type="file" id="extFile" accept=".json,application/json" hidden />
+              </div>
+              <div class="hint" style="margin: 4px 0 10px">
+                扩展提示词只对主 AI 生效：不发送给识图 AI、翻译 AI 和文生图 Tag 子代理，不改变固定子代理的底层逻辑。
+                两种启用方式：常驻（启用即发送）；关键词匹配（仅当用户输入包含指定关键词时发送，由系统判断，AI 不参与判断）。
+              </div>
+              <div id="extList"></div>
+              <div class="hint" id="extEmpty">暂无扩展提示词，点击「新增扩展提示词」创建。</div>
             </div>
           </details>
         </div>
+        <div class="modal" id="imgViewer">
+          <div class="box imgviewer-box">
+            <button class="hbtn close btn btn-icon" id="imgViewerClose" title="关闭" aria-label="关闭">✕</button>
+            <div class="imgviewer-body"><img id="imgViewerImage" alt="" /></div>
+            <div class="imgviewer-meta" id="imgViewerMeta"></div>
+            <div class="form-acts imgviewer-actions">
+              <button class="abtn btn btn-secondary" id="imgViewerDownload">⬇ 下载</button>
+              <button class="abtn btn btn-secondary" id="imgViewerToConversation">💬 保存到对话区</button>
+              <button class="abtn btn btn-secondary" id="imgViewerToGallery">⭐ 保存到图库</button>
+            </div>
+          </div>
+        </div>
+        <div id="imgCtxMenu" class="ctxmenu" style="display: none">
+          <button type="button" class="ctx-item" data-ctx="download">⬇ 下载</button>
+          <button type="button" class="ctx-item" data-ctx="gallery">⭐ 保存到图库</button>
+        </div>
         <div id="tabMgr" style="display: none">
-          <div class="clhead">✍️ 当前生成对话<span style="flex: 1"></span></div>
+          <div class="clhead">✍️ 当前 AI 对话<span style="flex: 1"></span></div>
           <div id="mgrGenCur"></div>
           <div class="clhead">🗂 历史生成对话<span style="flex: 1"></span></div>
           <div id="mgrGenList"></div>
-          <div class="clhead">💬 自由问答对话<span style="flex: 1"></span></div>
+          <div class="clhead">💬 AI 消息记录<span style="flex: 1"></span></div>
           <div id="mgrChatCur"></div>
           <div class="hint">
-            · 对话仅保存在本机，换电脑或清理应用数据会丢失。<br />· 在“助手 / 绘图”工作台点「🔄
+            · 对话仅保存在本机，换电脑或清理应用数据会丢失。<br />· 在 AI 对话工作台点「🔄
             新对话」可开启新的会话；从历史“载入”后可继续对话，删除后不可恢复。<br />· “📋
             导出”可把整段对话复制为纯文本，方便粘贴到别处。
       </div>
@@ -762,3 +767,5 @@
     <script src="app.js"></script>
   </body>
 </html>
+
+

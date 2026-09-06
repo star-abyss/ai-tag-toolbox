@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
-    "version":  "1.4.195",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.195 统一 Agent Runtime 完整版",
+    "version":  "1.4.197",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.197 统一 Agent Runtime 完整版",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",
@@ -10,3 +10,5 @@
                     "check":  "node scripts/check.mjs && node --test tests/*.test.cjs && node tests/regressions-v194.cjs"
                 }
 }
+
+

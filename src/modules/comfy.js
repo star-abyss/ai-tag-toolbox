@@ -605,7 +605,7 @@ function createComfy(options = {}) {
         : !workflowInfo.ready
           ? (workflowInfo.error || 'ComfyUI 未就绪 · 请到「API 设置 → ComfyUI」上传或粘贴 API 格式工作流')
           : !enabled
-            ? 'ComfyUI 已停用 · 请在绘图模式左上角打开“ComfyUI 出图”'
+            ? 'ComfyUI 已停用 · 请在对话页面的 ComfyUI 状态区打开“ComfyUI 出图”'
             : ''
     };
   }
@@ -817,3 +817,4 @@ module.exports = {
   replaceWorkflowPlaceholders,
   applyWorkflowOverrides
 };
+

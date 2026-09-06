@@ -601,6 +601,20 @@ body.aiview #catList,body.aiview #addTagBtn{display:none}
 .draw-activity li{padding-left:2px;line-height:1.45}
 .draw-activity li::marker{color:var(--pri)}
 .draw-activity li.activity-running{color:var(--pri-h)}
+/* ===== 图片查看器（ComfyUI 返图放大） ===== */
+.imgviewer-box{max-width:940px;width:94vw}
+.imgviewer-body{display:flex;align-items:center;justify-content:center;background:var(--bg);border:1px solid var(--border2);border-radius:10px;max-height:70vh;overflow:auto;padding:6px}
+.imgviewer-body img{display:block;max-width:100%;max-height:66vh;object-fit:contain;border-radius:8px}
+.imgviewer-meta{margin-top:8px;font-size:12px;color:var(--muted);line-height:1.6;word-break:break-all}
+.imgviewer-actions{justify-content:center;margin-top:12px}
+.imgviewer-actions .abtn:disabled{opacity:.45;cursor:not-allowed}
+/* ===== 候选图可点击查看 + 右键菜单 ===== */
+.draw-candidate-image{display:block;border-radius:9px;overflow:hidden;cursor:zoom-in}
+.draw-candidate-image img{display:block;width:100%;height:clamp(150px,22vw,260px);object-fit:contain;border-radius:9px;background:var(--bg);border:1px solid var(--border)}
+.draw-candidate-image:hover img{border-color:var(--pri)}
+.ctxmenu{position:fixed;z-index:80;min-width:172px;padding:5px;border:1px solid var(--border2);border-radius:10px;background:var(--card);box-shadow:var(--pop-shadow)}
+.ctx-item{display:block;width:100%;text-align:left;padding:8px 12px;border:none;border-radius:7px;background:transparent;color:var(--text);font-size:13px;cursor:pointer}
+.ctx-item:hover{background:var(--pri-bg);color:var(--pri-h)}
 .draw-activity li.activity-error{color:var(--neg)}
 .draw-activity li small{display:block;color:var(--muted);font-size:10.5px;white-space:pre-wrap;word-break:break-word}
 /* 消息复制按钮 */
@@ -735,6 +749,16 @@ body.aiview #catList,body.aiview #addTagBtn{display:none}
 /* ===== 主提示词条目级启用对象 ===== */
 .pmod-mods{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 14px 0}
 .pmod-mods-label{font-size:12px;color:var(--muted)}
+/* ===== 扩展提示词卡片 ===== */
+.ext-row{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--bg)}
+.ext-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.ext-name{flex:1 1 160px;min-width:140px;padding:7px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text);outline:none;font-size:13px}
+.ext-mode{flex:none;padding:7px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text);outline:none;font-size:13px}
+.ext-keywords{flex:1 1 200px;min-width:160px;padding:7px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text);outline:none;font-size:13px}
+.ext-text{display:block;width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text);outline:none;resize:vertical;font:inherit;font-size:13px;line-height:1.7}
+.ext-name:focus,.ext-mode:focus,.ext-keywords:focus,.ext-text:focus{border-color:var(--pri)}
+.ext-row .prompt-enabled{font-size:12px;white-space:nowrap}
+.ext-row .opt{display:inline-flex;align-items:center;gap:4px;flex:none}
 /* ===== UI 微调：导航稳定 / 返回高亮 / 关闭按钮 ===== */
 #aiBtn{width:8.6em;min-width:8.6em;justify-content:center}
 .abtn.backbtn{color:var(--pri);border-color:var(--pri);background:var(--pri-bg);font-weight:600}

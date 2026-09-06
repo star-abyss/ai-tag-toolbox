@@ -227,6 +227,8 @@ function normalizeRunnerResult(value, dir) {
   if (Array.isArray(result)) result = result[0];
   if (typeof result === 'string') return { ok: !!text(result), text: text(result), direction: dir };
   if (!object(result)) return { ok: false, text: '', direction: dir, error: '本地翻译结果为空' };
+  if (!result.text && typeof result.output_text === 'string') result = { ...result, text: result.output_text };
+  if (typeof result.text === 'string' && /^\s*\{/.test(result.text)) { try { const parsed = JSON.parse(result.text); if (parsed && typeof parsed === 'object') result = { ...result, ...parsed }; } catch { /* retain provider text */ } }
   const output = text(result.text || result.translation || result.translation_text || result.output || result.generated_text);
   return { ok: result.ok !== false && !!output, text: output, direction: text(result.direction, dir), model: text(result.model || result.modelId), error: result.ok === false ? text(result.error, '本地翻译失败') : output ? '' : '本地翻译结果为空', raw: result };
 }
@@ -384,3 +386,4 @@ function createTranslation(options = {}) {
 }
 
 module.exports = { createTranslation, direction, detectDirection: direction, normalizeTag, inputParts, tagParts, chineseNames, exactMatches, buildReference, referenceLines, buildPrompt };
+

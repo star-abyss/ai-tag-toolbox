@@ -12,9 +12,9 @@ function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function ok(value, message) { assert.equal(Boolean(value), true, message); }
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-assert.equal(packageJson.version, '1.4.195', 'package version must be 1.4.195');
-assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.195/);
-assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.195/);
+assert.equal(packageJson.version, '1.4.197', 'package version must be 1.4.197');
+assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.197/);
+assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.197/);
 
 for (const name of ['createAgentRuntime', 'createRequestManager', 'createStatusManager', 'createFixedSubagents', 'createPrimaryTools']) {
   assert.equal(typeof modules[name], 'function', `${name} export missing`);
@@ -134,3 +134,5 @@ assert.doesNotMatch(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /cre
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), /migrateLegacyUserData|config-migration/);
 
 console.log('check ok: unified runtime, 3 fixed subagents, 8 primary tools, timeout/cancel, Comfy parameter boundary');
+
+

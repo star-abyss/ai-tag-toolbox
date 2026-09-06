@@ -13,7 +13,6 @@ module.exports = {
   ...require('./storage'),
   ...require('./comfy'),
   ...require('./draw-candidates'),
-  ...require('./calls'),
   ...require('./request-manager'),
   ...require('./status-manager'),
   ...require('./agent-runtime'),
@@ -23,3 +22,4 @@ module.exports = {
   ...require('./ai-client'),
   ...require('./primary-agent')
 };
+

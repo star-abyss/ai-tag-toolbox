@@ -237,6 +237,8 @@ function createVisionService(options = {}) {
       }
       if (!bytes && !visionTempStore && typeof images?.getBytes === 'function') bytes = await images.getBytes(imageId);
       if (!bytes && !visionTempStore && typeof images?.getBlob === 'function') bytes = await images.getBlob(imageId);
+      if (!bytes && typeof images?.getBytes === 'function') bytes = await images.getBytes(imageId);
+      if (!bytes && typeof images?.getBlob === 'function') bytes = await images.getBlob(imageId);
     } catch { bytes = null; }
     const materialised = dataUrlFromBytes(bytes, text(image?.mime, mimeFromDataUrl(direct)));
     return { url: materialised, unsafe: Boolean(candidates.length && !direct) };
@@ -339,8 +341,16 @@ function createVisionService(options = {}) {
     const localTags = input.includeLocalTags === true
       ? normaliseTags(image?.analysis?.modelTags || image?.analysis?.tags, 'local')
       : [];
-    const localHint = localTags.length
-      ? `【本地识图辅助 Tag】\n${localTags.map(item => item.tag).join(', ')}\n这些 Tag 可能不完整或有误，请以实际图片为准。`
+    if (input.includeLocalTags === true && !localTags.length && localVision) {
+      try {
+        const quick = typeof localVision?.analyze === 'function' ? await localVision.analyze(image, { limit: 160 }) : typeof localVision === 'function' ? await localVision(image, { limit: 160 }) : null;
+        if (quick?.tags) localTags.push(...normaliseTags(quick.tags, 'local'));
+      } catch { /* AI description can continue with builtin tags only */ }
+    }
+    const builtinTags = normaliseTags(image?.metadata?.builtinTags || image?.metadata?.tags, 'metadata');
+    const allReferenceTags = [...new Set([...builtinTags, ...localTags].map(item => item.tag).filter(Boolean))];
+    const localHint = allReferenceTags.length
+      ? `【参考 Tag】\n${allReferenceTags.join(', ')}\n请逐一核对这些参考 Tag，并结合图片对主体、外观、服装、姿势、表情、构图、场景、光影和画风进行尽可能详细的文字描述；Tag 只作参考，不可臆造图片中不存在的内容。`
       : '';
     const system = [
       basePrompt,
@@ -479,3 +489,4 @@ function createVisionService(options = {}) {
 }
 
 module.exports = { MODES, DEFAULT_LOCAL_MODEL, createVisionService, isSafeImageUrl, safeImageUrl };
+

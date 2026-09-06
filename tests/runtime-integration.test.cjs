@@ -15,7 +15,8 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const baseSettings = { generateNegativeTags: false, comfy: { enabled: true, base: 'http://example.test:8188', workflow: {}, width: 640, height: 768, steps: 0, cfg: 0, seed: 0, sampler: 'euler', scheduler: 'normal', batchCount: 2, negativeTags: ['lowres'] }, limits: { maxComfyCalls: 2, maxToolRounds: 6, maxToolCalls: 16, primaryTimeoutMs: 1000 } };
 function stack(options = {}) {
   let tools;
-  const runtime = createAgentRuntime({ primaryClient: options.primaryClient, subagents: options.subagents || createFixedSubagents(options), tools: () => tools, getSettings: options.getSettings || (() => baseSettings), getPrimaryPrompt: options.getPrimaryPrompt || (() => 'FIXED PRIMARY') });
+  const getSettings = options.getSettings || (() => baseSettings);
+  const runtime = createAgentRuntime({ primaryClient: options.primaryClient, subagents: options.subagents || createFixedSubagents({ ...options, getSettings }), tools: () => tools, getSettings, getPrimaryPrompt: options.getPrimaryPrompt || (() => 'FIXED PRIMARY') });
   tools = createPrimaryTools({ ...options, runtime, getSettings: options.getSettings || (() => baseSettings) });
   return { runtime, tools };
 }
@@ -80,9 +81,13 @@ test('generated tags use Vision AI, live prompt and controlled image and never e
   const input = { requirements: 'girl', imageId: 'img', generateNegativeTags: true };
   const first = await runtime.runSubAgent('generateTags', { input, sessionId: 's1' });
   assert.equal(first.ok, true, JSON.stringify(first)); assert.deepEqual(first.data.positiveTags, ['1girl', '2girls']); assert.equal(first.data.negativeTags, undefined);
+  baseSettings.generateNegativeTags = true;
+  const enabled = await runtime.runSubAgent('generateTags', { input: { ...input, generateNegativeTags: false }, sessionId: 's1' });
+  assert.deepEqual(enabled.data.negativeTags, ['lowres']);
+  baseSettings.generateNegativeTags = false;
   prompt = 'SECOND'; const second = await runtime.runSubAgent('generateTags', { input, sessionId: 's1' }); assert.equal(second.ok, true);
-  assert.equal(messagesSeen[1][0].content, 'SECOND'); assert.equal(messagesSeen[1].length, 2);
-  assert.equal(messagesSeen[1][1].content[1].image_url.url, 'data:image/png;base64,AQ=='); assert.equal(resolved[0].sessionId, 's1');
+  assert.match(messagesSeen[2][0].content, /^SECOND\n/); assert.match(messagesSeen[2][0].content, /系统输出协议/); assert.equal(messagesSeen[2].length, 2);
+  assert.equal(messagesSeen[2][1].content[1].image_url.url, 'data:image/png;base64,AQ=='); assert.equal(resolved[0].sessionId, 's1');
 });
 
 test('schema rejects extra input fields and malformed/empty child outputs', async () => {

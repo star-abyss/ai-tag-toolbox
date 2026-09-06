@@ -96,7 +96,7 @@ try {
   primaryTools = assistant.primaryTools || null;
 } catch (error) {
   // 标签模块加载失败时仍让页面打开，便于人工看到错误并继续迭代。
-  console.warn('[V1.4.195] 业务模块加载失败：', error && error.message ? error.message : error);
+  console.warn('[V1.4.197] 业务模块加载失败：', error && error.message ? error.message : error);
 }
 
 function safeImageId(value) {
@@ -268,11 +268,9 @@ contextBridge.exposeInMainWorld('AppModules', {
     listModels: assistant.listModels,
     listVisionModels: assistant.listVisionModels,
     testConnection: assistant.testConnection,
-    runVision: assistant.runVision,
     ai: assistant.ai ? { listModels: assistant.listModels, getConfig: assistant.ai.getConfig } : null,
     visionAi: assistant.visionAi ? { listModels: assistant.listVisionModels, getConfig: assistant.visionAi.getConfig } : null,
     visionService: assistant.visionService ? { processOne: input => assistant.visionService.processOne(visionInputForRenderer(input)), available: assistant.visionService.available } : null,
-    calls: assistant.calls ? { getCapabilities: assistant.calls.getCapabilities, refreshCapabilities: assistant.calls.refreshCapabilities, invalidateCapabilities: assistant.calls.invalidateCapabilities } : null
   } : null,
   runtime: runtime ? {
     runPrimary: runtime.runPrimary,
@@ -292,23 +290,38 @@ contextBridge.exposeInMainWorld('AppModules', {
     getEffective: prompts.getEffective,
     set: prompts.set,
     getDefault: prompts.getDefault,
-    enabled: prompts.enabled,
-    setEnabled: prompts.setEnabled,
     reset: prompts.reset,
-    createCustom: prompts.createCustom,
-    update: prompts.update,
-    updateCustom: prompts.updateCustom,
-    deleteCustom: prompts.deleteCustom,
+    resetItem: prompts.resetItem,
     item: prompts.item,
+    items: prompts.items,
     keys: prompts.keys,
     meta: prompts.meta,
     metadata: prompts.metadata,
-    appendices: prompts.appendices,
+    // 主提示词组。
+    sets: prompts.sets,
+    activeSetId: prompts.activeSetId,
+    activeSet: prompts.activeSet,
+    createSet: prompts.createSet,
+    deleteSet: prompts.deleteSet,
+    renameSet: prompts.renameSet,
+    setActive: prompts.setActive,
+    resetSet: prompts.resetSet,
+    // 扩展提示词。
+    extensions: prompts.extensions,
+    createExtension: prompts.createExtension,
+    updateExtension: prompts.updateExtension,
+    deleteExtension: prompts.deleteExtension,
+    matchExtensions: prompts.matchExtensions,
+    // 组合与包。
+    composePrimary: prompts.composePrimary,
+    composeGenerate: prompts.composeGenerate,
     exportBundle: prompts.exportBundle,
+    exportSet: prompts.exportSet,
     importBundle: prompts.importBundle,
+    exportExtensions: prompts.exportExtensions,
+    importExtensions: prompts.importExtensions,
     snapshot: prompts.snapshot
   } : null,
-  calls: assistant?.calls ? { getCapabilities: assistant.calls.getCapabilities, refreshCapabilities: assistant.calls.refreshCapabilities, invalidateCapabilities: assistant.calls.invalidateCapabilities } : null,
   comfy: comfy ? {
     check: async () => Boolean((await runtime?.callTool?.('comfy.status', {}, { caller: 'ui' }))?.data?.connected),
     setBase: value => assistant?.setSettings?.({ comfyBase: value }),
@@ -316,5 +329,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     importApiWorkflow: comfy.importApiWorkflow
   } : null,
   locales: localePacks,
-  version: '1.4.195'
+  version: '1.4.197'
 });
+
+

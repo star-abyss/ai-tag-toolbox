@@ -43,10 +43,24 @@ function boot() {
     run: async input => { runCount += 1; session.messages.push({ id: `m${runCount}`, role: 'user', text: input.text, imageIds: input.imageIds || [], status: 'done' }); return { ok: true, text: '完成', requestId: input.requestId }; },
     cancel: () => true, imageRepository: repository
   };
+  const promptKeys = ['primary', 'generateTags', 'artistQuality', 'vision', 'translation'];
+  const promptSet = { id: 'prompt-set-default', name: '默认提示词', items: { primary: 'prompt text', generateTags: 'prompt text', artistQuality: 'prompt text', vision: 'prompt text', translation: 'prompt text' } };
+  const extension = { id: 'ext-1', name: '扩展 1', text: 'ext text', enabled: true, activation: { mode: 'always', keywords: [] } };
   const prompts = {
-    get: () => 'prompt text', item: () => ({ enabled: true }), set: () => 'prompt text', setEnabled: () => {}, reset: () => {},
-    snapshot: () => ({ internal: {}, external: [] }), exportBundle: () => ({ format: 'ai-tag-prompts', version: 1, internal: {}, external: [] }), importBundle: () => ({}),
-    createCustom: () => ({ id: 'custom-1' }), updateCustom: () => ({}), deleteCustom: () => true
+    get: () => 'prompt text', getEffective: () => 'prompt text', set: () => 'prompt text', getDefault: () => 'default',
+    item: key => ({ key, text: 'prompt text', defaultText: 'default', enabled: true, builtin: true }),
+    items: () => promptKeys.map(key => ({ key, text: 'prompt text', defaultText: 'default', enabled: true, builtin: true })),
+    keys: () => promptKeys.slice(),
+    reset: () => ({}), resetItem: () => ({}),
+    sets: () => [promptSet], activeSetId: () => promptSet.id, activeSet: () => promptSet,
+    createSet: () => ({ id: 'prompt-set-2', name: '提示词组 2', items: {} }), deleteSet: () => true, renameSet: () => ({ name: '提示词组 2' }), setActive: () => true, resetSet: () => ({}),
+    extensions: () => [extension], createExtension: () => ({ id: 'ext-2', name: '扩展 2', text: '', enabled: true, activation: { mode: 'always', keywords: [] } }),
+    updateExtension: () => ({}), deleteExtension: () => true, matchExtensions: () => [],
+    composePrimary: () => 'composed primary', composeGenerate: () => 'composed generate',
+    snapshot: () => ({ version: 2, sets: [promptSet], activeSetId: promptSet.id, activeSet: promptSet, items: {}, extensions: [extension], defaults: {}, metadata: {} }),
+    exportBundle: () => ({ format: 'ai-tag-prompts', version: 2, sets: [promptSet], extensions: [extension] }),
+    importBundle: () => ({ sets: [promptSet], extensions: [extension] }),
+    exportExtensions: () => ({ format: 'ai-tag-prompt-extensions', version: 1, extensions: [extension] }), importExtensions: () => ({ ok: true, count: 1 })
   };
   const tags = {
     stateSnapshot: () => ({ categories: [], categoryCounts: {}, selected: [], category: 'all', revision: 0 }), selected: () => [], page: () => ({ items: [], total: 0 }),
@@ -63,9 +77,10 @@ function boot() {
 test('full DOM startup renders extracted views and conversation click uses assistant runtime', async () => {
   const app = boot();
   assert.ok(app.window.document.querySelector('#talkConv'));
-  assert.equal(app.window.document.querySelector('.presetbar')?.hidden, true);
-  assert.equal(app.window.document.querySelector('#worldBookCard')?.hidden, true);
-  assert.equal(app.window.document.querySelector('[data-special="quality"]')?.hidden, true);
+  assert.ok(app.window.document.querySelector('#mainPromptSetCard'));
+  assert.ok(app.window.document.querySelector('#extensionPromptsCard'));
+  assert.equal(app.window.document.querySelectorAll('#extList .ext-row').length, 1);
+  assert.equal(app.window.document.querySelector('#promptSetSel')?.options?.length, 1);
   app.window.document.querySelector('#talkIn').value = '生成一张图';
   app.window.document.querySelector('#talkSendBtn').click();
   await new Promise(resolve => setTimeout(resolve, 0));

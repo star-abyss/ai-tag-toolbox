@@ -1,4 +1,4 @@
-# V1.4.195 验收补全记录
+# V1.4.196 验收补全记录
 
 基线提交：44191ed。任务依据：最终架构重构任务书.md。
 
@@ -14,4 +14,5 @@
 
 已确认基线缺口：Prompt 视图默认参数自身引用、提示词导入未定义 isObject、外部文本未参与主提示词、收藏 API 被误删、独立会话/图库视图未使用、确认框工具被误删。不得以语法通过或进程存在替代页面验收。
 
-决策：保留原生 DOM 和现有图片/Tag 交互；新内部提示词 key 只接受 primary/vision/translation/generateTags；内部构建以 V1.4.195 交付，不推送、不发布 Release。
+决策：保留原生 DOM 和现有图片/Tag 交互；新内部提示词 key 只接受 primary/vision/translation/generateTags；内部构建以 V1.4.196 交付，不推送、不发布 Release。
+
