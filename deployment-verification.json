@@ -1,0 +1,35 @@
+{
+  "version": "1.4.198",
+  "sourceCommit": "2ead985",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.198",
+  "oldDesktopDirectoryRemovedFromDesktop": true,
+  "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-moved",
+  "archive": {
+    "sourceFilesVerified": 99,
+    "nativeFilesUnpacked": 13,
+    "archiveSha256": "pending-final-filesystem-check"
+  },
+  "data": {
+    "sourceKind": "upstream-not-live-export",
+    "sourceRows": 244932,
+    "featuredCharacters": 33599,
+    "loadedCharacters": 34122,
+    "generalAdditions": 227,
+    "specificTerms": 804,
+    "hiddenTermLeaks": 0
+  },
+  "checks": {
+    "command": "npm run check",
+    "testsPassed": 44,
+    "testsFailed": 0,
+    "slowUiSmokeRun": false,
+    "staticLocalBrowserPreview": "blocked by local-file browser policy; manual desktop verification required"
+  },
+  "knownLimits": [
+    "AniMadex official export token was not available; data is the pinned public upstream snapshot.",
+    "No role thumbnails, original images, or LoRA files were included.",
+    "Character-specific terms stay out of ordinary tag search and are returned only through character data.",
+    "The existing ordinary-tag favorites format does not persist character selections."
+  ]
+}
