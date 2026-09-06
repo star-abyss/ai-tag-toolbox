@@ -45,3 +45,19 @@ test('deleting a session removes only orphaned physical assets and keeps gallery
   assert.equal(repository.listGallery().items[0].imageId, 'img-1');
 });
 
+test('clearing conversation images removes conversation references and orphaned files but keeps gallery files', () => {
+  const f = fixture();
+  const repository = createImageRepository({ images: f.images, storage: f.storage, sessions: () => f.sessions });
+  repository.attachToConversation('session-1', 'img-2', { source: 'upload' });
+  repository.addToGallery('img-2');
+
+  const result = repository.clearConversationImages('session-1');
+
+  assert.equal(result.removed, 2);
+  assert.equal(result.deletedImages, 1);
+  assert.deepEqual(repository.listConversation('session-1').items, []);
+  assert.equal(f.values.has('img-1'), false);
+  assert.equal(f.values.has('img-2'), true);
+  assert.equal(repository.reconcileSessionMessages('session-1'), 0);
+});
+

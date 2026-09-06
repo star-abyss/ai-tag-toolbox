@@ -112,13 +112,14 @@
     }
     function confirm(message, onConfirm, options = {}) {
       const modal = $("#cfmModal");
-      if (!modal) { if (global.confirm?.(message)) onConfirm?.(options.retainImages === true); return; }
+      const showRetainImages = options.showRetainImages === true;
+      if (!modal) { if (global.confirm?.(message)) onConfirm?.(options.retainImagesDefault === true); return; }
       ui.confirmAction = onConfirm;
       put("#cfmText", message);
       const retain = $("#cfmRetainImagesWrap");
       const retainCheck = $("#cfmRetainImages");
-      if (retain) retain.hidden = options.retainImages !== true;
-      if (retainCheck) retainCheck.checked = options.retainImages === true;
+      if (retain) retain.hidden = !showRetainImages;
+      if (retainCheck) retainCheck.checked = showRetainImages && options.retainImagesDefault === true;
       modal.classList.add("show");
     }
     const viewFactories = global.AppViews || {};
@@ -2401,7 +2402,7 @@
     }
     function confirmDeleteConversation(session, onDone) {
       const impact = conversationDeleteImpact(session);
-      confirm(`${localized("ui.ai.deleteConversation", "确定删除对话“{title}”吗？", { title: session?.title || localized("ui.ai.newChatTitle", "新对话") })}\n${impact.message}`, retainImages => onDone?.(retainImages), { retainImages: true });
+      confirm(`${localized("ui.ai.deleteConversation", "确定删除对话“{title}”吗？", { title: session?.title || localized("ui.ai.newChatTitle", "新对话") })}\n${impact.message}`, retainImages => onDone?.(retainImages), { showRetainImages: true, retainImagesDefault: false });
     }
     function renderTalkSessions() {
       const host = $("#talkSessionList");
@@ -2429,7 +2430,7 @@
             renderTalk();
             renderConversationRepository();
             renderManager();
-          }, { retainImages: true });
+          });
         };
         row.onclick = (event) => {
           if (event.target.closest(".tdel")) return;
@@ -3420,6 +3421,17 @@
         renderConversationRepository();
       });
       $("#talkManage")?.addEventListener("click", () => showAi("mgr"));
+      $("#talkClearImagesBtn")?.addEventListener("click", () => {
+        const session = assistant?.currentSession?.();
+        if (!session) return;
+        confirm(localized("ui.ai.clearConversationImagesConfirm", "确定清空当前对话区的全部图片吗？"), () => {
+          assistant?.clearConversationImages?.(session.id);
+          ui.sendDrafts = [];
+          ui.conversationSelectionSnapshot = [];
+          renderTalk();
+          renderConversationRepository();
+        });
+      });
       $("#talkClearBtn")?.addEventListener("click", () => {
         const session = assistant?.currentSession?.();
         if (session) assistant?.clearSession?.(session.id);

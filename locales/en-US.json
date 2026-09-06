@@ -214,6 +214,8 @@
       "comfyWorkflowUnavailable": "Workflow not ready",
       "send": "📤 Send",
       "clearChat": "🗑 Clear chat",
+      "clearConversationImages": "🗑 Clear conversation images",
+      "clearConversationImagesConfirm": "Clear all images from this conversation?",
       "uploadImage": "🖼 Upload image",
       "identify": "Local recognition",
       "aiVision": "🖼 AI vision",

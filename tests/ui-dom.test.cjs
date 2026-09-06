@@ -9,7 +9,7 @@ const { JSDOM } = require('F:/codex/ai-tag-verification-tools/node_modules/jsdom
 const root = path.resolve(__dirname, '..');
 const source = name => fs.readFileSync(path.join(root, 'src', name), 'utf8');
 
-function boot() {
+function boot(options = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'src/index.html'), 'utf8'), {
     url: 'http://localhost/', pretendToBeVisual: true, runScripts: 'outside-only'
   });
@@ -24,6 +24,7 @@ function boot() {
   const images = new Map([['img-1', { id: 'img-1', dataUrl: 'data:image/png;base64,AA==' }]]);
   const gallery = [{ imageId: 'img-1', filename: 'one.png', dataUrl: 'data:image/png;base64,AA==' }];
   let runCount = 0;
+  let conversationItems = options.conversationItems ? options.conversationItems.slice() : [];
   const repository = {
     listGallery: () => ({ items: gallery.slice() }),
     get: id => images.get(id),
@@ -32,7 +33,8 @@ function boot() {
     removeFromGallery: id => { const index = gallery.findIndex(item => item.imageId === id); if (index >= 0) gallery.splice(index, 1); },
     renameGalleryImage: (id, name) => { const item = gallery.find(row => row.imageId === id); if (item) item.displayName = name; },
     attachToConversation: () => ({ refId: 'r1' }),
-    listConversation: () => ({ items: [] })
+    listConversation: () => ({ items: conversationItems.slice() }),
+    clearConversationImages: sessionId => { options.clearConversationImages?.(sessionId); conversationItems = []; return { removed: 1, deletedImages: 1 }; }
   };
   const assistant = {
     sessions: () => [session], currentSession: () => session, newSession: () => session,
@@ -41,7 +43,10 @@ function boot() {
     refreshCapabilities: async () => ({ comfy: { enabled: false, connected: false }, vision: { local: false, ai: false } }),
     calls: { refreshCapabilities: async () => ({ comfy: { enabled: false, connected: false }, vision: { local: false, ai: false } }) },
     run: async input => { runCount += 1; session.messages.push({ id: `m${runCount}`, role: 'user', text: input.text, imageIds: input.imageIds || [], status: 'done' }); return { ok: true, text: '完成', requestId: input.requestId }; },
-    cancel: () => true, imageRepository: repository
+    cancel: () => true,
+    clearConversationImages: sessionId => repository.clearConversationImages?.(sessionId),
+    deleteSession: (sessionId, value) => { options.deleteSession?.(sessionId, value); return true; },
+    imageRepository: repository
   };
   const promptKeys = ['primary', 'generateTags', 'artistQuality', 'vision', 'translation'];
   const promptSet = { id: 'prompt-set-default', name: '默认提示词', items: { primary: 'prompt text', generateTags: 'prompt text', artistQuality: 'prompt text', vision: 'prompt text', translation: 'prompt text' } };
@@ -96,5 +101,30 @@ test('gallery factory owns card action rendering and rename path', () => {
   assert.ok(card);
   card.querySelector('[data-action="rename"]').click();
   assert.equal(app.gallery[0].displayName, '新名称');
+  app.dom.window.close();
+});
+
+test('conversation image clear button confirms and clears only current conversation images', () => {
+  let clearedSession = '';
+  const app = boot({ conversationItems: [{ refId: 'r1', imageId: 'img-1', slotNo: 1, source: 'upload', sent: true }], clearConversationImages: sessionId => { clearedSession = sessionId; } });
+  const button = app.window.document.querySelector('#talkClearImagesBtn');
+  assert.ok(button);
+  button.click();
+  assert.equal(app.window.document.querySelector('#cfmModal').classList.contains('show'), true);
+  app.window.document.querySelector('#cfmYes').click();
+  assert.equal(clearedSession, 's1');
+  assert.match(app.window.document.querySelector('#talkImageRepository').textContent, /No conversation images|没有对话图片/);
+  app.dom.window.close();
+});
+
+test('deleting a conversation defaults to removing images unless gallery retention is checked', () => {
+  let deleted;
+  const app = boot({ deleteSession: (sessionId, value) => { deleted = { sessionId, value }; } });
+  app.window.document.querySelector('#talkManage').click();
+  app.window.document.querySelector('#mgrChatList .del, #mgrGenList .del, .fav .del')?.click();
+  assert.equal(app.window.document.querySelector('#cfmRetainImages').checked, false);
+  app.window.document.querySelector('#cfmYes').click();
+  assert.equal(deleted.sessionId, 's1');
+  assert.equal(deleted.value.retainImages, false);
   app.dom.window.close();
 });

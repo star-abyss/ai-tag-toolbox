@@ -346,6 +346,30 @@ function createImageRepository(options = {}) {
     return { removedMessages, retainedImages, resetPending };
   }
 
+  function clearConversationImages(sessionId) {
+    const sid = text(sessionId);
+    const target = session(sid);
+    if (!target) return { removed: 0, deletedImages: 0 };
+    reconcileSessionMessages(sid);
+    const refs = [...conversations.values()].filter(item => item.sessionId === sid);
+    const uniqueReferenced = [...new Map(refs.map(item => [item.imageId, item])).values()];
+    for (const item of refs) {
+      conversations.delete(item.refId);
+      explicitlyRemoved.add(`${item.sessionId}|${item.imageId}`);
+      try { options.onReferenceRemoved?.({ kind: 'conversation', sessionId: item.sessionId, refId: item.refId, imageId: item.imageId }); } catch { /* optional Vision adapter */ }
+    }
+    for (const message of Array.isArray(target.messages) ? target.messages : []) {
+      message.imageIds = [];
+      if (Array.isArray(message.artifacts)) message.artifacts = message.artifacts.filter(item => !item?.imageId);
+    }
+    target.updatedAt = Date.now();
+    saveSessions(getSessions());
+    let deletedImages = 0;
+    for (const item of uniqueReferenced) if (removePhysicalIfOrphaned(item.imageId)) deletedImages += 1;
+    persist();
+    return { removed: refs.length, deletedImages };
+  }
+
   function promoteConversationImages(sessionId, refIds) {
     const wanted = Array.isArray(refIds) && refIds.length ? new Set(refIds.map(text)) : new Set([...conversations.values()].filter(item => item.sessionId === text(sessionId)).map(item => item.refId));
     const promoted = [];
@@ -587,6 +611,7 @@ function createImageRepository(options = {}) {
     resetPending,
     removeFromConversation,
     clearSessionContent,
+    clearConversationImages,
     deleteSession,
     renameGalleryImage,
     promoteConversationImages,

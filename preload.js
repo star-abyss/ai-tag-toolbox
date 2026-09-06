@@ -99,7 +99,7 @@ try {
   primaryTools = assistant.primaryTools || null;
 } catch (error) {
   // 标签模块加载失败时仍让页面打开，便于人工看到错误并继续迭代。
-  console.warn('[V1.4.202] 业务模块加载失败：', error && error.message ? error.message : error);
+  console.warn('[V1.4.203] 业务模块加载失败：', error && error.message ? error.message : error);
 }
 
 function safeImageId(value) {
@@ -255,6 +255,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     clearSession: assistant.clearSession,
     editMessage: assistant.editMessage,
     deleteMessage: assistant.deleteMessage,
+    clearConversationImages: assistant.clearConversationImages,
     rerunFromMessage: assistant.rerunFromMessage,
     regenerateMessage: assistant.regenerateMessage,
     importSessions: assistant.importSessions,
@@ -333,7 +334,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     importApiWorkflow: comfy.importApiWorkflow
   } : null,
   locales: localePacks,
-  version: '1.4.202'
+  version: '1.4.203'
 });
 
 

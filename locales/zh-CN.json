@@ -181,6 +181,8 @@
       "modeComfy": "🎨 迭代",
       "send": "📤 发送",
       "clearChat": "🗑 清空对话",
+      "clearConversationImages": "🗑 清空对话图片",
+      "clearConversationImagesConfirm": "确定清空当前对话区的全部图片吗？",
       "uploadImage": "🖼 上传图片",
       "identify": "本地识图",
       "aiVision": "🖼 AI识图",
