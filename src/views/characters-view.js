@@ -23,7 +23,7 @@
     'en-US': {
       library: 'Character library', searchSeries: 'Search works', seriesPlaceholder: 'Type a work or source',
       allSeries: 'All works', noMatch: 'No matching characters', loadError: 'Failed to load character data',
-      page: ({ current, total }) => `Page ${current} of ${total}`, prev: 'Previous page', next: 'Next page',
+      page: ({ current, total }) => `Page ${current} of ${total}`, prev: 'Previous', next: 'Next',
       choose: 'No character selected', aliases: 'Aliases', identity: 'Identity tags', work: 'Work / source',
       includeWork: 'Include work tag', general: 'General traits', specific: 'Character-specific traits', noFeatures: 'No reference traits for this character',
       review: 'Needs review', addIdentity: 'Add character', addFeatures: 'Add character with selected traits', copyIdentity: 'Copy character tags',
