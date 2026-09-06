@@ -99,7 +99,7 @@ try {
   primaryTools = assistant.primaryTools || null;
 } catch (error) {
   // 标签模块加载失败时仍让页面打开，便于人工看到错误并继续迭代。
-  console.warn('[V1.4.201] 业务模块加载失败：', error && error.message ? error.message : error);
+  console.warn('[V1.4.202] 业务模块加载失败：', error && error.message ? error.message : error);
 }
 
 function safeImageId(value) {
@@ -333,7 +333,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     importApiWorkflow: comfy.importApiWorkflow
   } : null,
   locales: localePacks,
-  version: '1.4.201'
+  version: '1.4.202'
 });
 
 

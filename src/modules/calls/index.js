@@ -3,7 +3,7 @@
 const { createVisionService } = require('../vision-service');
 
 const TOOL_NAMES = Object.freeze([
-  'tags.search', 'conversation.listImages', 'vision.processOne', 'translation.translate',
+  'tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate',
   'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render'
 ]);
 

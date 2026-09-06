@@ -24,6 +24,23 @@ test('AI retrieves hidden words only through the character result with bounded s
   assert.equal((await tools.call('characters.search', { query: 'a', limit: 11 })).error.code, 'INVALID_INPUT');
 });
 
+test('tag search reserves empty attached data and fills it for character matches', async () => {
+  const { tags, characters } = setup();
+  const tools = createPrimaryTools({ tags, characters });
+  const ordinary = await tools.call('tags.search', { query: 'blue hair' });
+  assert.deepEqual(ordinary.data.items[0].attachedData, {});
+
+  const role = await tools.call('tags.search', { query: '爱丽丝', includeAdult: true });
+  assert.equal(role.ok, true, JSON.stringify(role));
+  assert.deepEqual(role.data.items[0].attachedData, {
+    type: 'character',
+    characterId: 'alice',
+    series: 'story',
+    identityTags: ['alice', 'story'],
+    appearanceTags: ['blue hair', 'story academy uniform']
+  });
+});
+
 test('role IDs resolve into attributed references before the generation subagent sees them', async () => {
   const { tags, characters } = setup();
   let messages;
@@ -45,5 +62,7 @@ test('stored primary prompt receives the character contract without modifying th
   const primary = createPrimaryAgent({ prompts, charactersEnabled: true });
   assert.match(primary.getPrompt(), /characters.search/);
   assert.match(primary.getPrompt(), /characterIds/);
+  assert.match(primary.getPrompt(), /不确定.*Tag.*tags.search/);
+  assert.match(primary.getPrompt(), /attachedData/);
   assert.equal(prompts.composePrimary(), '我的自定义提示词');
 });

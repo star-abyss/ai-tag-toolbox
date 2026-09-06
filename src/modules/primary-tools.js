@@ -12,7 +12,8 @@ function schema(properties, required = []) { return { type: 'object', additional
 const string = { type: 'string' };
 const nonempty = { type: 'string', minLength: 1, maxLength: 1000 };
 const tagArray = { type: 'array', items: nonempty, maxItems: 256 };
-const tagSchema = schema({ en: nonempty, zh: string, aliases: { type: 'array', items: string, maxItems: 64 }, category: string, subcategory: string, nsfw: { type: 'boolean' }, confidence: { type: 'number' } }, ['en']);
+const attachedDataSchema = schema({ type: string, characterId: string, series: string, identityTags: tagArray, appearanceTags: tagArray });
+const tagSchema = schema({ en: nonempty, zh: string, aliases: { type: 'array', items: string, maxItems: 64 }, category: string, subcategory: string, nsfw: { type: 'boolean' }, confidence: { type: 'number' }, attachedData: attachedDataSchema }, ['en']);
 const characterTagSchema = schema({ id: nonempty, en: nonempty, zh: string, category: string, nsfw: { type: 'boolean' }, review: { type: 'boolean' } }, ['id', 'en']);
 const characterSchema = schema({ id: nonempty, name: string, nameZh: string, aliases: { type: 'array', items: string }, seriesId: string, seriesName: string, identityTags: tagArray, generalTags: { type: 'array', items: characterTagSchema }, specificTags: { type: 'array', items: characterTagSchema }, hasFeatures: { type: 'boolean' }, count: { type: 'number' }, trigger: string }, ['id', 'identityTags', 'generalTags', 'specificTags']);
 const generateParameters = clone(SCHEMAS.generateTags);
@@ -22,7 +23,7 @@ const workflowSchema = schema({ ready: { type: 'boolean' }, error: string }, ['r
 const statusSchema = schema({ enabled: { type: 'boolean' }, connected: { type: 'boolean' }, workflowReady: { type: 'boolean' }, render: { type: 'boolean' }, error: string }, ['enabled', 'connected', 'workflowReady', 'render', 'error']);
 const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty } }, ['artifacts', 'imageIds']);
 const DEFINITIONS = Object.freeze({
-  'tags.search': { description: '查询标签库，返回标签及释义。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, category: string, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 200, items: tagSchema } }, ['items']) },
+  'tags.search': { description: '查询本站标签及释义；Tag 含义、拼写或是否属于本站词库不确定时调用。命中角色名时附带角色出处和外貌 Tag。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, category: string, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 200, items: tagSchema } }, ['items']) },
   'characters.search': { description: '查询本地角色资料，返回中英文名、作品、身份词和可选特征；先确认具体角色再向 agent.generateTags 传 characterIds。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, seriesId: string, precision: { type: 'string', enum: ['exact', 'standard', 'broad'] }, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 10 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 10, items: characterSchema }, total: { type: 'integer', minimum: 0 } }, ['items', 'total']) },
   'conversation.listImages': { description: '读取当前会话的真实 imageId、显示编号和图片元数据。', parameters: schema({ includePending: { type: 'boolean' }, includeDeleted: { type: 'boolean' } }), outputSchema: schema({ items: { type: 'array', items: imageSchema }, pendingIds: { type: 'array', items: string } }, ['items', 'pendingIds']) },
   'vision.processOne': { description: '对当前会话中的单个 imageId 进行 metadata/local/ai 识图。', parameters: SCHEMAS.vision, outputSchema: OUTPUT_SCHEMAS?.vision },
@@ -36,14 +37,27 @@ const DEFINITIONS = Object.freeze({
 function failure(code, message) { return Object.assign(new Error(message), { code }); }
 function check(schemaValue, value, code) { try { return assertValid(schemaValue || {}, value); } catch (error) { error.code = code; throw error; } }
 function unwrap(value) { if (value?.ok === false) throw errorShape(value); return value?.ok === true && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value; }
-function publicTag(row) {
+function publicTag(row, attachedData = {}) {
   const value = object(row?.tag) ? row.tag : row;
   const item = { en: text(value?.en || value?.tag || value?.name || (typeof value === 'string' ? value : '')) };
   for (const key of ['zh', 'category', 'subcategory']) if (typeof value?.[key] === 'string') item[key] = value[key];
   if (Array.isArray(value?.aliases)) item.aliases = value.aliases.filter(v => typeof v === 'string').slice(0, 64);
   if (typeof value?.nsfw === 'boolean') item.nsfw = value.nsfw;
   if (typeof value?.confidence === 'number' && Number.isFinite(value.confidence)) item.confidence = value.confidence;
+  item.attachedData = object(attachedData) ? clone(attachedData) : {};
   return item;
+}
+function roleAttachedData(role) {
+  if (!role) return {};
+  return {
+    type: 'character',
+    characterId: role.id,
+    series: text(role.seriesName || role.seriesId),
+    identityTags: Array.isArray(role.identityTags) ? role.identityTags.slice() : [],
+    appearanceTags: [...(Array.isArray(role.generalTags) ? role.generalTags : []), ...(Array.isArray(role.specificTags) ? role.specificTags : [])]
+      .map(item => text(item?.en || item))
+      .filter(Boolean)
+  };
 }
 function publicImage(value) {
   const result = { imageId: text(value?.imageId || value?.id) };
@@ -100,9 +114,16 @@ function createPrimaryTools(options = {}) {
   const handlers = {
     'tags.search': async args => {
       if (typeof options.tags?.search !== 'function') throw failure('TOOL_UNAVAILABLE', 'Tag 模块不可用');
-      const rows = await options.tags.search(args.query, { category: args.category, includeAdult: args.includeAdult === true, limit: args.limit || 50 });
+      const includeAdult = args.includeAdult === true;
+      const rows = await options.tags.search(args.query, { category: args.category, includeAdult, limit: args.limit || 50 });
       if (!Array.isArray(rows)) throw failure('OUTPUT_INVALID', '标签查询返回格式无效');
-      return { items: rows.slice(0, args.limit || 50).map(publicTag) };
+      const attached = new Map();
+      if (typeof options.characters?.get === 'function') for (const row of rows) {
+        if (row?.category !== 'character_names' && row?.categoryCode !== 4) continue;
+        const role = options.characters.get(row.id, { includeAdult });
+        if (role) attached.set(row.id, roleAttachedData(role));
+      }
+      return { items: rows.slice(0, args.limit || 50).map(row => publicTag(row, attached.get(row.id))) };
     },
     'characters.search': args => {
       if (!options.characters?.page) throw failure('TOOL_UNAVAILABLE', '角色模块不可用');

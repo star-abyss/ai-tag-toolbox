@@ -6,7 +6,7 @@ const { createUsageLimiter } = require('./usage-limiter');
 const { errorShape, resultOk, resultError } = require('./error-manager');
 const { assertValid } = require('./schema');
 
-const TOOL_NAMES = Object.freeze(['tags.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
+const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
 const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
 function text(value, fallback = '') { const output = value == null ? '' : String(value).trim(); return output || fallback; }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -228,4 +228,3 @@ function createAgentRuntime(options = {}) {
 }
 
 module.exports = { createAgentRuntime, resultOk, resultError, isNoiseEvent };
-
