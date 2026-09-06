@@ -43,15 +43,16 @@ function fixture(overrides = {}) {
     ...overrides.characters
   };
   const api = require(path.join(root, 'src/views/characters-view.js'));
+  let currentLocale = overrides.locale || 'zh-CN';
   const view = api.createCharactersView({
     document: dom.window.document,
     characters,
     onChange: () => { calls.changed = (calls.changed || 0) + 1; },
     copy: async value => { calls.copy.push(value); return true; },
     notify: value => { calls.notice = value; },
-    getLocale: () => overrides.locale || 'zh-CN'
+    getLocale: () => currentLocale
   });
-  return { dom, document: dom.window.document, view, calls };
+  return { dom, document: dom.window.document, view, calls, setLocale: value => { currentLocale = value; } };
 }
 
 test('render requests a 50-row page and shows untrusted names as text', () => {
@@ -146,21 +147,39 @@ test('changing the adult setting reloads an open detail with the new visibility'
   app.dom.window.close();
 });
 
+test('locale refresh redraws an open detail and preserves checked traits', () => {
+  const app = fixture();
+  app.view.render({ query: '', precision: 'standard', includeAdult: false });
+  app.document.querySelector('[data-character-id="miku"]').click();
+  app.document.querySelector('[data-tag-id="teal_hair"]').checked = true;
+  assert.equal(app.document.querySelector('.character-trait-category').textContent, '头发');
+
+  app.setLocale('en-US');
+  app.view.render({ query: '', precision: 'standard', includeAdult: false });
+  assert.match(app.document.querySelector('#characterDetail').textContent, /General traits/);
+  assert.equal(app.document.querySelector('.character-trait-category').textContent, 'Hair');
+  assert.equal(app.document.querySelector('[data-tag-id="teal_hair"]').checked, true);
+  app.dom.window.close();
+});
+
 function appFixture(options = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'src/index.html'), 'utf8'), { url: 'http://localhost/', pretendToBeVisual: true, runScripts: 'outside-only' });
   const { window } = dom;
   const copied = [];
   window.navigator.clipboard = { writeText: async value => { copied.push(value); } };
-  const tagState = { query: 'ordinary draft', category: 'all', precision: 'standard', adult: false };
+  const tagState = { query: 'ordinary draft', category: 'all', precision: 'standard', includeAdult: options.includeAdult === true };
+  const normalSelected = options.duplicateIdentity
+    ? [{ id: 'blue_hair', en: 'blue_hair', category: 'hair' }, { id: 'rem_(re:zero)', en: 'rem_(re:zero)', category: 'character_names' }]
+    : [{ id: 'blue_hair', en: 'blue_hair', category: 'hair' }];
   const tags = {
-    restore() {}, setSearchPrecision(value) { tagState.precision = value; }, setAdult(value) { tagState.adult = value; }, setQuery(value) { tagState.query = value; }, setCategory(value) { tagState.category = value; },
-    stateSnapshot: () => ({ categories: [{ id: 'character', name: '人物与角色', icon: '👥' }, { id: 'character_names', name: '角色名', icon: '🏷️' }, { id: 'body', name: '身体', icon: '🧍' }], categoryCounts: { all: 2, character: 1, character_names: 1, body: 1 }, selected: [{ id: 'blue_hair', en: 'blue_hair' }], query: tagState.query, category: tagState.category, precision: tagState.precision, adult: tagState.adult, revision: 1 }),
-    selected: () => [{ id: 'blue_hair', en: 'blue_hair' }], selectedText: () => 'blue_hair', page: () => ({ items: [], total: 0 }), size: () => 2, subcategories: () => [], customTags: () => [], clearSelection() {}, select() {}
+    restore() {}, setSearchPrecision(value) { tagState.precision = value; }, setAdult(value) { tagState.includeAdult = value; }, setQuery(value) { tagState.query = value; }, setCategory(value) { tagState.category = value; },
+    stateSnapshot: () => ({ categories: [{ id: 'character', name: '人物与角色', icon: '👥' }, { id: 'character_names', name: '角色名', icon: '🏷️' }, { id: 'body', name: '身体', icon: '🧍' }], categoryCounts: { all: 2, character: 1, character_names: 1, body: 1 }, selected: normalSelected, query: tagState.query, category: tagState.category, search: tagState.precision, searchPrecision: tagState.precision, includeAdult: tagState.includeAdult, revision: 1 }),
+    selected: () => normalSelected, selectedText: () => normalSelected.map(item => item.en).join(', '), page: () => ({ items: [], total: 0 }), size: () => 2, subcategories: () => [], customTags: () => [], clearSelection() {}, select() {}
   };
-  let characterSelected = [{ id: 'miku', name: 'hatsune_miku', tags: ['blue hair', 'hatsune_miku_\\(vocaloid\\)'] }];
+  let characterSelected = [{ id: 'miku', name: 'hatsune_miku', tags: options.duplicateIdentity ? ['blue hair', 'rem_\\(re:zero\\)'] : ['blue hair', 'hatsune_miku_\\(vocaloid\\)', ...(tagState.includeAdult ? ['adult trait'] : [])] }];
   const characters = {
     page: options => ({ items: [], total: 0, offset: options.offset, limit: options.limit, hasMore: false }), series: () => [], get: () => null, select: () => {},
-    selected: () => characterSelected, size: () => characterSelected.length, selectionText: () => 'blue hair, hatsune_miku_\\(vocaloid\\)',
+    selected: ({ includeAdult } = {}) => characterSelected.map(item => ({ ...item, tags: includeAdult ? item.tags : item.tags.filter(tag => tag !== 'adult trait') })), size: () => characterSelected.length, selectionText: () => 'blue hair, hatsune_miku_\\(vocaloid\\)',
     removeSelection: id => { characterSelected = characterSelected.filter(item => item.id !== id); }, clearSelection: () => { characterSelected = []; }
   };
   const preferences = { get: (_key, fallback) => fallback, set() {} };
@@ -208,5 +227,22 @@ test('character route scopes header search and combines independent selections',
 
   app.document.querySelector('[data-remove-character="miku"]').click();
   assert.equal(app.document.querySelectorAll('[data-remove-character]').length, 0);
+  app.dom.window.close();
+});
+
+test('adult toggle immediately removes hidden character traits from the bottom preview', () => {
+  const app = appFixture({ includeAdult: true });
+  assert.match(app.document.querySelector('#preview').textContent, /adult trait/);
+  app.document.querySelector('#nsfwBtn').click();
+  assert.equal(app.tagState.includeAdult, false);
+  assert.doesNotMatch(app.document.querySelector('#preview').textContent, /adult trait/);
+  app.dom.window.close();
+});
+
+test('combined copy deduplicates literal qualifier parentheses and keeps the escaped role form', async () => {
+  const app = appFixture({ duplicateIdentity: true });
+  app.document.querySelector('#copyAll').click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(app.copied.at(-1), 'blue_hair, rem_\\(re:zero\\)');
   app.dom.window.close();
 });

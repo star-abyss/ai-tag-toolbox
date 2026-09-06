@@ -27,8 +27,8 @@
 .character-detail-head{display:flex;align-items:flex-start;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--border2)}
 .character-detail-title{min-width:0}.character-detail-title h3{font-size:18px;overflow-wrap:anywhere}.character-name-zh{margin-top:2px;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .character-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:12px 0}
-.character-series-option{display:inline-flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid var(--border2);border-radius:7px;background:var(--card)}
-.character-meta-row{display:flex;gap:8px;font-size:12px}.character-meta-row b{color:var(--muted)}
+.character-series-option{display:inline-flex;min-width:0;max-width:100%;align-items:center;gap:7px;padding:6px 9px;border:1px solid var(--border2);border-radius:7px;background:var(--card)}.character-series-option span{min-width:0;overflow-wrap:anywhere}
+.character-meta-row{display:flex;min-width:0;gap:8px;font-size:12px;overflow-wrap:anywhere}.character-meta-row b{flex:none;color:var(--muted)}.character-meta-row span{min-width:0;overflow-wrap:anywhere}
 .character-detail h4{margin:12px 0 8px;font-size:12.5px}
 .character-tag-values{display:flex;flex-wrap:wrap;gap:6px}.character-tag-value{padding:4px 8px;border:1px solid var(--border2);border-radius:7px;background:var(--card);font:12px/1.45 Consolas,"Cascadia Code",monospace;overflow-wrap:anywhere}
 .character-trait-section{margin-top:16px;padding-top:2px;border-top:1px solid var(--border)}
@@ -47,7 +47,7 @@
 @media(max-width:1100px){
   .characters-toolbar{align-items:stretch;flex-direction:column;gap:8px}
   .character-series-controls{margin-left:0;grid-template-columns:auto minmax(120px,1fr) minmax(140px,1fr)}
-  .characters-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(220px,42%) minmax(300px,58%)}
+  .characters-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(120px,40%) minmax(0,1fr)}
   .character-browser{border-right:0;border-bottom:1px solid var(--border2)}
 }
 @media(max-width:620px){

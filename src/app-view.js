@@ -274,19 +274,26 @@
       try { return characters?.selected?.({ includeAdult: tagSnapshot().adult }) || []; }
       catch { return []; }
     }
+    function escapeQualifierParentheses(value) {
+      return str(value).replace(/\\([()])/g, "$1").replace(/[()]/g, "\\$&");
+    }
     function combinedSelectionValues() {
-      const values = [
-        ...selected().map(item => str(item?.en || item?.id)),
-        ...selectedCharacters().flatMap(item => item?.tags || []),
-      ];
-      const seen = new Set();
-      return values.filter(value => {
+      const values = [];
+      const indexes = new Map();
+      const append = (value, preferEscaped = false) => {
         const output = str(value);
-        const key = output.toLowerCase().replace(/[\s_]+/g, " ").trim();
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+        const key = output.replace(/\\([()])/g, "$1").toLowerCase().replace(/[\s_]+/g, " ").trim();
+        if (!key) return;
+        if (!indexes.has(key)) {
+          indexes.set(key, values.length);
+          values.push(output);
+        } else if (preferEscaped && /\\[()]/.test(output)) {
+          values[indexes.get(key)] = output;
+        }
+      };
+      selected().forEach(item => append(item?.category === "character_names" ? escapeQualifierParentheses(item?.en || item?.id) : item?.en || item?.id));
+      selectedCharacters().flatMap(item => item?.tags || []).forEach(value => append(value, true));
+      return values;
     }
     function renderCharacters(options = {}) {
       const query = options.query == null ? str($("#q")?.value) : str(options.query);
@@ -620,6 +627,7 @@
       renderCategories();
       if (ui.route === "characters") renderCharacters();
       else renderTags();
+      renderSelection();
     }
     function syncScrim() {
       const drawerOpen = $("#drawer")?.classList.contains("show");
@@ -3233,6 +3241,7 @@
         renderCategories();
         if (ui.route === "characters") renderCharacters();
         else renderTags();
+        renderSelection();
       });
       $("#saveFav")?.addEventListener("click", openDrawer);
       $("#drawerClose")?.addEventListener("click", closeDrawer);

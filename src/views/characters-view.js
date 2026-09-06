@@ -15,7 +15,7 @@
       library: '角色库', searchSeries: '搜索作品', seriesPlaceholder: '输入作品 / 来源',
       allSeries: '全部作品', noMatch: '没有匹配的角色', loadError: '角色资料加载失败',
       page: ({ current, total }) => `第 ${current} / ${total} 页`, prev: '上一页', next: '下一页',
-      choose: '从左侧选择角色查看资料', aliases: '别名', identity: '身份触发词', work: '作品 / 来源',
+      choose: '未选择角色', aliases: '别名', identity: '身份触发词', work: '作品 / 来源',
       includeWork: '加入作品词', general: '通用特征', specific: '角色专用特征', noFeatures: '该角色暂无参考特征',
       review: '待复核', addIdentity: '加入角色', addFeatures: '加入角色与所选特征', copyIdentity: '复制角色词',
       copyFeatures: '复制角色与所选特征', copied: '已复制角色词', copyFailed: '复制失败，请检查剪贴板权限', added: '已加入角色'
@@ -24,22 +24,27 @@
       library: 'Character library', searchSeries: 'Search works', seriesPlaceholder: 'Type a work or source',
       allSeries: 'All works', noMatch: 'No matching characters', loadError: 'Failed to load character data',
       page: ({ current, total }) => `Page ${current} of ${total}`, prev: 'Previous page', next: 'Next page',
-      choose: 'Select a character on the left to view details', aliases: 'Aliases', identity: 'Identity tags', work: 'Work / source',
+      choose: 'No character selected', aliases: 'Aliases', identity: 'Identity tags', work: 'Work / source',
       includeWork: 'Include work tag', general: 'General traits', specific: 'Character-specific traits', noFeatures: 'No reference traits for this character',
       review: 'Needs review', addIdentity: 'Add character', addFeatures: 'Add character with selected traits', copyIdentity: 'Copy character tags',
       copyFeatures: 'Copy character with selected traits', copied: 'Character tags copied', copyFailed: 'Clipboard access failed', added: 'Character added'
     }
   };
+  const categoryLabels = {
+    'zh-CN': { quality: '质量词', negative: '负面提示词', character: '人物与角色', character_names: '角色名', series: '作品系列', body: '身材与身体', expression: '表情', eyes: '眼睛', hair: '头发', features: '角色特征', outfit: '服装', footwear: '鞋袜', accessory: '道具与装饰', pose: '动作与姿势', scene: '场景与环境', camera: '视角与镜头', style: '画风与风格', time_weather: '时间与天气', atmosphere: '氛围与光影', effects: '特效与魔法', food: '食物与饮料', animal: '动物', other: '其他', rating: '内容分级', nsfw: '成人标签', character_specific: '角色专用特征' },
+    'en-US': { quality: 'Quality', negative: 'Negative prompt', character: 'Character', character_names: 'Character names', series: 'Series', body: 'Body', expression: 'Expression', eyes: 'Eyes', hair: 'Hair', features: 'Features', outfit: 'Outfit', footwear: 'Footwear', accessory: 'Accessories', pose: 'Pose', scene: 'Scene', camera: 'Camera', style: 'Style', time_weather: 'Time & weather', atmosphere: 'Atmosphere & light', effects: 'Effects & magic', food: 'Food & drinks', animal: 'Animals', other: 'Other', rating: 'Rating', nsfw: 'Adult', character_specific: 'Character-specific traits' }
+  };
 
   function createCharactersView({ document, characters, onChange, copy, notify, getLocale } = {}) {
     const doc = document || (typeof globalThis !== 'undefined' ? globalThis.document : null);
-    const state = { query: '', precision: 'standard', includeAdult: false, seriesId: '', seriesQuery: '', offset: 0, detail: null, bound: false };
+    const state = { query: '', precision: 'standard', includeAdult: false, seriesId: '', seriesQuery: '', offset: 0, detail: null, locale: '', bound: false };
     const q = selector => doc?.querySelector?.(selector);
     const locale = () => getLocale?.() === 'en-US' ? 'en-US' : 'zh-CN';
     const label = (key, values) => {
       const value = translations[locale()][key] ?? translations['zh-CN'][key] ?? key;
       return typeof value === 'function' ? value(values || {}) : value;
     };
+    const categoryLabel = id => categoryLabels[locale()][text(id)] || categoryLabels[locale()].other;
     const element = (tag, className, value) => {
       const node = doc.createElement(tag);
       if (className) node.className = className;
@@ -119,7 +124,7 @@
       section.appendChild(element('h4', '', title));
       const groups = new Map();
       (items || []).forEach(item => {
-        const key = text(item.category, locale() === 'en-US' ? 'Other' : '其他');
+        const key = categoryLabel(item.category);
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(item);
       });
@@ -153,7 +158,7 @@
         host.appendChild(element('div', 'character-detail-empty', label('choose')));
         return;
       }
-      const heading = element('header', 'character-detail-head');
+      const heading = element('div', 'character-detail-head');
       const titleWrap = element('div', 'character-detail-title');
       titleWrap.appendChild(element('h3', '', text(record.name, record.id)));
       if (record.nameZh) titleWrap.appendChild(element('div', 'character-name-zh', record.nameZh));
@@ -229,14 +234,18 @@
     }
 
     function render(options = {}) {
+      const nextLocale = locale();
+      const localeChanged = Boolean(state.locale && state.locale !== nextLocale);
+      const preservedSelection = localeChanged && state.detail ? selectionOptions(true) : null;
       const searchChanged = options.query != null && text(options.query).trim() !== state.query;
       const precisionChanged = options.precision != null && text(options.precision, 'standard') !== state.precision;
       const adultChanged = options.includeAdult != null && Boolean(options.includeAdult) !== state.includeAdult;
       if (options.query != null) state.query = text(options.query).trim();
       if (options.precision != null) state.precision = ['exact', 'broad'].includes(options.precision) ? options.precision : 'standard';
       if (options.includeAdult != null) state.includeAdult = Boolean(options.includeAdult);
+      state.locale = nextLocale;
       if (searchChanged || precisionChanged || adultChanged) state.offset = 0;
-      const openDetailId = adultChanged ? state.detail?.id : '';
+      const openDetailId = adultChanged || localeChanged ? state.detail?.id : '';
       renderChrome();
       renderSeries();
       const host = q('#characterList');
@@ -272,7 +281,18 @@
       });
       const count = q('#characterCount'); if (count) count.textContent = String(Number(page.total) || 0);
       updatePaging(page);
-      if (openDetailId) openCharacter(openDetailId);
+      if (openDetailId) {
+        openCharacter(openDetailId);
+        if (preservedSelection && !adultChanged) {
+          const general = new Set(preservedSelection.generalTagIds);
+          const specific = new Set(preservedSelection.specificTagIds);
+          const seriesToggle = q('[data-include-series]');
+          if (seriesToggle) seriesToggle.checked = preservedSelection.includeSeries;
+          q('#characterDetail')?.querySelectorAll?.('input[data-tag-id]').forEach(input => {
+            input.checked = (input.dataset.traitKind === 'general' ? general : specific).has(input.dataset.tagId);
+          });
+        }
+      }
       return page;
     }
 
