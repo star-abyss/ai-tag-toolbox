@@ -1,8 +1,8 @@
 {
-  "version": "1.4.200",
+  "version": "1.4.201",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.200",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.201",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
   "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-moved",
@@ -23,7 +23,7 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 50,
+    "testsPassed": 52,
     "testsFailed": 0,
     "slowUiSmokeRun": false,
     "staticLocalBrowserPreview": "blocked by local-file browser policy; manual desktop verification required"
