@@ -379,7 +379,12 @@
         icon.textContent = "♙";
         const label = doc.createElement("span");
         label.textContent = ui.locale === "en-US" ? "Character library" : "角色库";
-        button.append(icon, label);
+        const count = doc.createElement("span");
+        count.className = "n";
+        let total = 0;
+        try { total = Number(characters.count?.() ?? characters.size?.()) || 0; } catch { total = 0; }
+        count.textContent = String(total);
+        button.append(icon, label, count);
         host.appendChild(button);
       };
       orderedRows.forEach((category) => {

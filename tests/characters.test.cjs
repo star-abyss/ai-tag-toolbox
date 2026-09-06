@@ -70,3 +70,10 @@ test('character data is loaded on demand and fails without silently returning an
   const chars = createCharacters({ tags, dataDir: '/not-a-real-role-directory' });
   assert.throws(() => chars.page({}), /角色资料|character/i);
 });
+
+test('character count comes from the lightweight manifest before the full catalogue loads', () => {
+  const { tags } = fixture();
+  const chars = createCharacters({ tags, dataDir: require('node:path').join(__dirname, '..', 'assets', '数据资产', '角色') });
+  assert.equal(chars.count(), 34122);
+  assert.equal(chars.manifest().loadedCharacters, undefined);
+});

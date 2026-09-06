@@ -193,7 +193,7 @@ function appFixture(options = {}) {
   let characterSelected = [{ id: 'miku', name: 'hatsune_miku', tags: options.duplicateIdentity ? ['blue hair', 'rem_\\(re:zero\\)'] : ['blue hair', 'hatsune_miku_\\(vocaloid\\)', ...(tagState.includeAdult ? ['adult trait'] : [])] }];
   const characters = {
     page: options => ({ items: [], total: 0, offset: options.offset, limit: options.limit, hasMore: false }), series: () => [], get: () => null, select: () => {},
-    selected: ({ includeAdult } = {}) => characterSelected.map(item => ({ ...item, tags: includeAdult ? item.tags : item.tags.filter(tag => tag !== 'adult trait') })), size: () => characterSelected.length, selectionText: () => 'blue hair, hatsune_miku_\\(vocaloid\\)',
+    selected: ({ includeAdult } = {}) => characterSelected.map(item => ({ ...item, tags: includeAdult ? item.tags : item.tags.filter(tag => tag !== 'adult trait') })), count: () => 34122, size: () => characterSelected.length, selectionText: () => 'blue hair, hatsune_miku_\\(vocaloid\\)',
     removeSelection: id => { characterSelected = characterSelected.filter(item => item.id !== id); }, clearSelection: () => { characterSelected = []; },
     ...options.characters
   };
@@ -211,6 +211,7 @@ test('app sidebar replaces character names with an indented character library ro
   const characterIndex = categories.findIndex(node => node.dataset.cat === 'character');
   assert.equal(categories[1].dataset.characters, 'true');
   assert.match(categories[1].textContent, /角色库/);
+  assert.equal(categories[1].querySelector('.n')?.textContent, '34122');
   assert.equal(app.document.querySelector('[data-cat="character_names"]'), null);
   categories[1].click();
   assert.equal(app.document.querySelectorAll('#catList > .on').length, 1);

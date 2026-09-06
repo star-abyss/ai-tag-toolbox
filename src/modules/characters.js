@@ -21,6 +21,7 @@ function createCharacters(options = {}) {
   let seriesIndex = [];
   let metadata = {};
   let selectedRows = [];
+  let manifestCache = null;
   const cache = new Map();
   try { selectedRows = list(storage?.get?.(SELECTION_KEY, [])).filter(row => row && typeof row.id === 'string'); } catch { /* Empty initial selection. */ }
 
@@ -60,6 +61,31 @@ function createCharacters(options = {}) {
     } catch (cause) {
       throw Object.assign(new Error('角色资料加载失败 / Character data failed to load: ' + cause.message), { code: 'CHARACTER_DATA_INVALID' });
     }
+  }
+
+  function readManifest() {
+    if (manifestCache) return manifestCache;
+    if (options.data?.manifest && typeof options.data.manifest === 'object') {
+      manifestCache = options.data.manifest;
+      return manifestCache;
+    }
+    try {
+      const dir = options.dataDir || path.join(__dirname, '../../assets/数据资产/角色');
+      manifestCache = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+      return manifestCache;
+    } catch (cause) {
+      throw Object.assign(new Error('角色资料清单加载失败 / Character manifest failed to load: ' + cause.message), { code: 'CHARACTER_MANIFEST_INVALID' });
+    }
+  }
+
+  function count() {
+    const info = readManifest();
+    const runtimeTotal = Number(info.runtimeCounts?.totalCharacters);
+    if (Number.isFinite(runtimeTotal) && runtimeTotal >= 0) return runtimeTotal;
+    const featured = Number(info.counts?.characters);
+    if (options.data && Number.isFinite(featured)) return featured;
+    load();
+    return records.size;
   }
 
   function summary(row) {
@@ -136,7 +162,8 @@ function createCharacters(options = {}) {
   return Object.freeze({
     get, page, series, select, selected,
     size: () => { load(); return records.size; },
-    manifest: () => { load(); return clone(metadata); },
+    count,
+    manifest: () => { const info = readManifest(); return loaded ? clone(metadata) : clone(info); },
     selectionText: settings => unique(selected(settings).flatMap(row => row.tags)).join(', '),
     removeSelection(id) { selectedRows = selectedRows.filter(row => row.id !== id); persist(); },
     clearSelection() { selectedRows = []; persist(); },

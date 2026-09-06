@@ -480,6 +480,13 @@ def build(args: argparse.Namespace) -> dict[str, int]:
     if any(normalize(item["en"]) in normalized_index for item in general_tags):
         raise ValueError("A general addition overlaps the baseline")
 
+    featured_ids = {item["id"] for item in characters}
+    legacy_fallback_characters = sum(
+        1 for item in local_tags
+        if item.get("category") == "character_names"
+        and str(item.get("id", "")) not in featured_ids
+    )
+
     manifest = {
         "source": SOURCE,
         "counts": {
@@ -489,6 +496,11 @@ def build(args: argparse.Namespace) -> dict[str, int]:
             "series": len({item["seriesId"] for item in characters if item["seriesId"]}),
         },
         "sourceSha256": hashlib.sha256(source_bytes).hexdigest(),
+        "runtimeCounts": {
+            "featuredCharacters": len(characters),
+            "legacyFallbackCharacters": legacy_fallback_characters,
+            "totalCharacters": len(characters) + legacy_fallback_characters,
+        },
         "license": {
             "datasetCard": "Apache-2.0",
             "statements": [
