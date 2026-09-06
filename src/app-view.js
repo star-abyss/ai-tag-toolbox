@@ -2952,6 +2952,13 @@
     }
     function route(route) {
       if (ui.route === "ai" && ui.aiTab === "api" && route !== "ai") flushSettingsSave();
+      if (ui.route !== route) {
+        clearTimeout(ui.searchTimer);
+        const input = $("#q");
+        if (ui.route === "characters") ui.characterQuery = str(input?.value);
+        if (route === "characters" && input) input.value = ui.characterQuery ?? "";
+        if (route === "tags" && input) input.value = tagSnapshot().query;
+      }
       const wasAi = ui.route === "ai";
       const wasTags = ui.route === "tags";
       const wasGallery = ui.route === "gallery";

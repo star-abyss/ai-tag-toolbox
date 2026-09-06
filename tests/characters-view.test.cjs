@@ -230,6 +230,22 @@ test('character route scopes header search and combines independent selections',
   app.dom.window.close();
 });
 
+test('pending role search cannot overwrite ordinary search when switching through AI', async () => {
+  const app = appFixture();
+  app.document.querySelector('[data-characters]').click();
+  const input = app.document.querySelector('#q');
+  input.value = 'miku';
+  input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+  app.view.route('ai');
+  await new Promise(resolve => setTimeout(resolve, 160));
+  assert.equal(app.tagState.query, 'ordinary draft');
+  app.view.route('tags');
+  assert.equal(input.value, 'ordinary draft');
+  app.view.route('characters');
+  assert.equal(input.value, 'miku');
+  app.dom.window.close();
+});
+
 test('adult toggle immediately removes hidden character traits from the bottom preview', () => {
   const app = appFixture({ includeAdult: true });
   assert.match(app.document.querySelector('#preview').textContent, /adult trait/);
