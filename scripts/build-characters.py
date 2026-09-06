@@ -266,7 +266,7 @@ SPECIALIZED = re.compile(
 )
 NSFW = re.compile(
     r"(?:penis|nipples|areola|pubic hair|presenting ass|crotchless|gimp suit|bouncing penis|"
-    r"goggles around breasts|necktie between pectorals|frenulum)",
+    r"goggles around breasts|necktie between pectorals|frenulum|naked suspenders)",
     re.IGNORECASE,
 )
 

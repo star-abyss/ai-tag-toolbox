@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { createTags, loadTagFiles } = require('../src/modules/tags');
 
 const root = path.resolve(__dirname, '..');
 const readJson = (...parts) => JSON.parse(fs.readFileSync(path.join(root, ...parts), 'utf8'));
@@ -26,6 +27,7 @@ test('generated character catalogue keeps every featured source row and resolves
 
   const generalIds = new Set(general.map(item => item.en.toLowerCase()));
   const specificIds = new Set(specific.map(item => item.id));
+  const tags = createTags({ sources: loadTagFiles({ assetDir: path.join(root, 'assets') }) });
   assert.equal(generalIds.size, general.length);
   assert.equal(specificIds.size, specific.length);
   for (const character of characters) {
@@ -33,6 +35,7 @@ test('generated character catalogue keeps every featured source row and resolves
     assert.equal(Array.isArray(character.specificTagIds), true);
     assert.equal(new Set(character.tagIds).size, character.tagIds.length);
     assert.equal(new Set(character.specificTagIds).size, character.specificTagIds.length);
+    assert(character.tagIds.every(id => tags.has(id)), `${character.id} has an unresolved ordinary tag`);
     assert(character.specificTagIds.every(id => specificIds.has(id)), `${character.id} has an unresolved specific tag`);
   }
   assert.equal(decisions.length, 1031);
@@ -40,6 +43,17 @@ test('generated character catalogue keeps every featured source row and resolves
   const miku = characters.find(item => item.id === 'hatsune_miku');
   assert(miku.tagIds.includes('long hair'));
   assert.equal(miku.tagIds.includes('long_hair'), false);
+});
+
+test('explicit naked suspenders stay adult without blanket-classifying naked armor', () => {
+  const characters = readJson('assets', '数据资产', '角色', 'characters.json');
+  const specific = readJson('assets', '数据资产', '角色', 'specific-tags.json');
+  const suspenders = specific.find(item => item.en === 'naked suspenders');
+  const armor = specific.find(item => item.en === 'naked armor');
+  assert.equal(suspenders.id, 'specific:c1085f4bcdf5cd81');
+  assert.equal(suspenders.nsfw, true);
+  assert.equal(armor.nsfw, false);
+  assert(characters.find(item => item.id === 'chocolate_misu').specificTagIds.includes(suspenders.id));
 });
 
 test('curation promotes common visual terms but keeps named and unsafe alias candidates hidden', () => {
