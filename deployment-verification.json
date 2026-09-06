@@ -1,6 +1,6 @@
 {
   "version": "1.4.198",
-  "sourceCommit": "2ead985",
+  "sourceCommit": "a9fc45d",
   "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.198",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
@@ -8,7 +8,7 @@
   "archive": {
     "sourceFilesVerified": 99,
     "nativeFilesUnpacked": 13,
-    "archiveSha256": "pending-final-filesystem-check"
+    "archiveSha256": "6B2291C3F70437BB36D265D3E3DBD8F7F13B10F39591686653DDF2D6E22DB81C"
   },
   "data": {
     "sourceKind": "upstream-not-live-export",
