@@ -10,6 +10,7 @@ const {
   snapshot: candidateSnapshot
 } = require('./draw-candidates');
 const { parseVisionPayload } = require('./vision-payload');
+const { applyPromptPatch } = require('./prompt-patch');
 
 const JOB_STATES = Object.freeze([
   'preparing', 'compiling', 'rendering', 'evaluating', 'revising', 'selecting',
@@ -102,26 +103,6 @@ function normalizeArtifactRows(value) {
   if (!rows.length && imageIds.length) return imageIds.map(imageId => ({ imageId }));
   return rows.map((row, index) => ({ ...(object(row) ? clone(row) : {}), imageId: text(row?.imageId || row?.id || imageIds[index]) })).filter(row => row.imageId);
 }
-function applyPromptPatch(current, patch) {
-  const source = object(patch) ? patch : {};
-  if (Array.isArray(source.positiveTags)) {
-    const preserveTags = strings([...(current.preserveTags || []), ...(source.preserve || source.preserveTags || [])]);
-    return {
-      positiveTags: strings([...source.positiveTags, ...preserveTags]),
-      negativeTags: Array.isArray(source.negativeTags) ? strings(source.negativeTags) : strings(current.negativeTags),
-      preserveTags
-    };
-  }
-  const preserveTags = strings([...(current.preserveTags || []), ...(source.preserve || source.preserveTags || [])]);
-  const preserve = new Set(preserveTags.map(item => item.toLowerCase()));
-  const remove = new Set(strings(source.remove || source.removeTags).map(item => item.toLowerCase()).filter(item => !preserve.has(item)));
-  const negativeRemove = new Set(strings(source.negativeRemove || source.removeNegativeTags).map(item => item.toLowerCase()));
-  return {
-    positiveTags: strings([...strings(current.positiveTags).filter(item => !remove.has(item.toLowerCase())), ...strings(source.add || source.addTags)]),
-    negativeTags: strings([...strings(current.negativeTags).filter(item => !negativeRemove.has(item.toLowerCase())), ...strings(source.negativeAdd || source.addNegativeTags)]),
-    preserveTags
-  };
-}
 function activeCandidate(job, id) {
   return job.candidates.find(candidate => candidate.id === id || candidate.imageId === id) || null;
 }
@@ -182,7 +163,7 @@ function createGenerationOrchestrator(options = {}) {
       promptSnapshot: promptSnapshot(source.promptSnapshot),
       positiveTags: strings(source.positiveTags),
       negativeTags: strings(source.negativeTags),
-      preserveTags: strings(source.preserveTags),
+      lockedTags: strings(source.lockedTags),
       candidates,
       selectedCandidateId: text(source.selectedCandidateId),
       selectionReason: text(source.selectionReason),
@@ -191,6 +172,7 @@ function createGenerationOrchestrator(options = {}) {
       stopReason: text(source.stopReason),
       events: Array.isArray(source.events) ? clone(source.events).slice(-96) : [],
       errors: Array.isArray(source.errors) ? clone(source.errors).slice(-32) : [],
+      patchWarnings: Array.isArray(source.patchWarnings) ? clone(source.patchWarnings).slice(-32) : [],
       createdAt: Number(source.createdAt) || Date.now(),
       updatedAt: Number(source.updatedAt) || Date.now()
     };
@@ -439,7 +421,7 @@ function createGenerationOrchestrator(options = {}) {
     if (!evaluation || evaluation.status !== 'reviewed' || evaluation.verdict === 'accept') return false;
     transition(job, 'revising');
     try {
-      const patch = await callAgent(job, context, 'generateTags', {
+      let patch = await callAgent(job, context, 'generateTags', {
         operation: 'revise',
         requirements: job.originalRequirements,
         description: blueprintText(job.visualBlueprint),
@@ -448,11 +430,26 @@ function createGenerationOrchestrator(options = {}) {
         evaluation: clone(evaluation),
         ...(job.characterReferences.length ? { characterReferences: job.characterReferences } : {})
       }, 'prompt_revision');
-      const next = applyPromptPatch(job, patch);
+      const patchOptions = { negativeEnabled: getSettings()?.generateNegativeTags === true, allowedPositiveNegations: ['no humans'] };
+      let next = applyPromptPatch(job, patch, patchOptions);
+      if (!next.ok) {
+        patch = await callAgent(job, context, 'generateTags', {
+          operation: 'revise',
+          requirements: job.originalRequirements,
+          description: blueprintText(job.visualBlueprint),
+          positiveTags: job.positiveTags,
+          negativeTags: job.negativeTags,
+          evaluation: { ...clone(evaluation), patchValidation: { rejected: next.rejected, warnings: next.warnings } },
+          ...(job.characterReferences.length ? { characterReferences: job.characterReferences } : {})
+        }, 'prompt_patch_repair', false);
+        next = applyPromptPatch(job, patch, patchOptions);
+      }
+      if (!next.ok) throw failure('OUTPUT_INVALID', next.rejected.map(item => item.message).join('；') || 'Tag 修订补丁无效');
       job.positiveTags = next.positiveTags;
       job.negativeTags = next.negativeTags;
-      job.preserveTags = next.preserveTags;
-      emit(job, context, 'prompt.revised', { positiveTagCount: job.positiveTags.length, negativeTagCount: job.negativeTags.length });
+      job.lockedTags = next.lockedTags;
+      job.patchWarnings = [...(job.patchWarnings || []), ...next.warnings].slice(-32);
+      emit(job, context, 'prompt.revised', { positiveTagCount: job.positiveTags.length, negativeTagCount: job.negativeTags.length, warningCount: next.warnings.length });
       return true;
     } catch (error) {
       if (context.signal.aborted || error?.code === 'CANCELLED') throw error;
@@ -693,6 +690,5 @@ module.exports = {
   GENERATION_STRATEGIES,
   DEFAULT_GENERATION_POLICY,
   createGenerationOrchestrator,
-  applyPromptPatch,
   policyFrom
 };

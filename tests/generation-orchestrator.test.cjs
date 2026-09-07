@@ -194,3 +194,31 @@ test('recreate keeps original user wording and parses Vision JSON before Tag com
   assert.equal(compile.input.requirements, original);
   assert.deepEqual(JSON.parse(compile.input.description), { description: '教堂低视角构图', tags: ['church', 'from below'], pose: 'sitting', scene: 'church', parseMode: 'json' });
 });
+
+test('invalid revision patch is repaired once before the next render', async () => {
+  let revisions = 0;
+  const calls = [];
+  const app = harness({ reviewScores: [70, 95], runSubAgent: async (name, request) => {
+    calls.push({ name, input: structuredClone(request.input) });
+    if (name === 'generateTags' && request.input.operation === 'compile') return ok({ positiveTags: ['1girl', 'from above'] });
+    if (name === 'generateTags') {
+      revisions += 1;
+      return revisions === 1
+        ? ok({ add: ['from below'], remove: [], preserve: [] })
+        : ok({ add: ['from below'], remove: ['from above'], preserve: [] });
+    }
+    if (name === 'evaluateImages' && request.input.operation === 'review') {
+      const score = request.input.candidateImageIds[0] === 'img-1' ? 70 : 95;
+      return ok({ operation: 'review', evaluations: [{ candidateId: request.input.candidateImageIds[0], score, verdict: score > 90 ? 'accept' : 'revise', hardErrors: [], issues: [], suggestedChanges: ['use from below'], summary: 'change view' }] });
+    }
+    if (name === 'evaluateImages') return ok({ operation: 'compare', recommendedCandidateId: 'img-2', ranking: [{ candidateId: 'img-2', score: 95, reason: 'ok' }, { candidateId: 'img-1', score: 70, reason: 'old' }], reason: 'ok' });
+    throw new Error(name);
+  } });
+  const result = await app.orchestrator.execute({ requirements: 'portrait', strategy: 'auto' }, app.context);
+  assert.equal(result.status, 'completed');
+  assert.equal(revisions, 2);
+  assert(app.renders[1].positiveTags.includes('from below'));
+  assert(!app.renders[1].positiveTags.includes('from above'));
+  const repair = calls.filter(call => call.name === 'generateTags' && call.input.operation === 'revise')[1];
+  assert.match(JSON.stringify(repair.input.evaluation), /patchValidation/);
+});

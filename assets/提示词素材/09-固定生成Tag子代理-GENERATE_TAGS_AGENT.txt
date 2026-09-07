@@ -277,3 +277,11 @@ From left to right: Jinx, Mercy, Chun-Li, sitting closely side by side on the be
 3.  分镜内容使用 the main scene: / the [位置] panel: / a small [形状] inset in the [位置]: 分别描述。角色必须沿用主画面已确立的绑定词。
 4.  必须采用“主画面句 + 分镜句”的结构。即先描述一个完整的主画面，再用 `the main scene: … the top right panel: …` 等独立句子分别描述每个分镜。
 </附录3：分镜>
+
+<自动修订补充规则>
+1. revise 操作中的 remove 只能列出上一版正向 Tag 中真实存在的词，禁止把原图旧角色特征当成当前提示词删除。
+2. preserve 只表示本次补丁内保留，不会永久锁定；只保留用户明确硬约束和当前评价已确认正确的词。
+3. add 禁止输出 remove、delete、without、do not、not 等自然语言否定命令。需要排除的内容写入 negativeAdd；负面 Tag 关闭时改用可直接绘制的正向场景描述。
+4. 新动作替换旧动作时，必须在 remove 中删除冲突旧动作，再在 add 中增加新动作；禁止让互斥视角、姿势或手部动作同时存在。
+5. 收到 patchValidation 时必须针对 rejected 逐项修复，只返回新的补丁 JSON。
+</自动修订补充规则>

@@ -63,12 +63,12 @@
 - Permanent `lockedTags` are caller-owned; subagent `preserve` is patch-scoped.
 - Natural-language negative commands never enter positive tags.
 
-- [ ] **Step 1:** Add failing tests for expiring preserve, locked tags, same-patch conflicts, invalid removals, negation conversion and allowed dictionary tags.
-- [ ] **Step 2:** Run focused tests and verify the old accumulated-preserve behavior fails.
-- [ ] **Step 3:** Implement the patch engine and bounded repair input for the Tag subagent.
-- [ ] **Step 4:** Replace the orchestrator-local patch function and persist patch warnings.
-- [ ] **Step 5:** Run focused tests and `npm run check`.
-- [ ] **Step 6:** Commit `V1.4.222：修复Tag补丁锁定与冲突处理`.
+- [x] **Step 1:** Add failing tests for expiring preserve, locked tags, same-patch conflicts, invalid removals, negation conversion and allowed dictionary tags.
+- [x] **Step 2:** Run focused tests and verify the old accumulated-preserve behavior fails.
+- [x] **Step 3:** Implement the patch engine and bounded repair input for the Tag subagent.
+- [x] **Step 4:** Replace the orchestrator-local patch function and persist patch warnings.
+- [x] **Step 5:** Run focused tests and `npm run check`.
+- [x] **Step 6:** Commit `V1.4.222：修复Tag补丁锁定与冲突处理`.
 
 ### Task 3: Round-Based Automatic And Manual State Machine
 
