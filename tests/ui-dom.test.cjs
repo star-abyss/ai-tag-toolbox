@@ -116,7 +116,12 @@ test('ComfyUI gets a dedicated AI tab and the conversation debug button opens it
   const workflow = app.window.document.querySelector('#comfyWf');
   workflow.value = '{"3":{"class_type":"KSampler"}}';
   workflow.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  app.window.document.querySelector('#comfySeed').value = '1234';
+  app.window.document.querySelector('#comfySeed').dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  assert.equal(app.assistant.getSettings().comfySeed, 1234);
   app.view.showAi('api');
+  app.window.document.querySelector('#aiClearCfg').click();
+  assert.equal(app.assistant.getSettings().comfyWorkflow, '{"3":{"class_type":"KSampler"}}');
   app.view.showAi('comfy');
   assert.equal(app.window.document.querySelector('#comfyWf').value, '{"3":{"class_type":"KSampler"}}');
   app.window.document.querySelector('#talkComfyDebug').click();

@@ -3545,16 +3545,6 @@
           visionTimeoutMs: 120000,
           timeoutEnabled: false,
           timeoutSec: 300,
-          comfyBase: "http://127.0.0.1:8188",
-          batchCount: 1,
-          maxComfyCalls: 3,
-          comfyWorkflow: "",
-          comfyPos: "",
-          comfyNeg: "",
-          comfyW: 768,
-          comfyH: 1024,
-          comfySteps: 25,
-          comfyCfg: 7,
         });
         loadSettings();
       });
@@ -3642,9 +3632,6 @@
       });
       $("#comfyWfCopy")?.addEventListener("click", () =>
         copy($("#comfyWf")?.value),
-      );
-      $("#comfyWfOpen")?.addEventListener("click", () =>
-        global.open(settings().comfyBase || "http://127.0.0.1:8188"),
       );
       $("#comfyWfSync")?.addEventListener("click", () =>
         notify("请在 ComfyUI 中复制 API 工作流后粘贴回这里"),

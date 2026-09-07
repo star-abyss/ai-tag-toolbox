@@ -17,8 +17,8 @@
     comfyBase: ['#comfyBase', 'value'], comfyOn: ['#comfyOn', 'checked'],
     comfyWorkflow: ['#comfyWf', 'value'], comfyPos: ['#comfyPos', 'value'], comfyNeg: ['#comfyNeg', 'value'],
     comfyW: ['#comfyW', 'value'], comfyH: ['#comfyH', 'value'], comfySteps: ['#comfySteps', 'value'],
-    comfyCfg: ['#comfyCfg', 'value'], seed: ['#comfySeed', 'value'], sampler: ['#comfySampler', 'value'],
-    scheduler: ['#comfyScheduler', 'value'], batchCount: ['#batchCount', 'value'], maxComfyCalls: ['#maxComfyCalls', 'value'],
+    comfyCfg: ['#comfyCfg', 'value'], comfySeed: ['#comfySeed', 'value'], comfySampler: ['#comfySampler', 'value'],
+    comfyScheduler: ['#comfyScheduler', 'value'], batchCount: ['#batchCount', 'value'], maxComfyCalls: ['#maxComfyCalls', 'value'],
     generateNegativeTags: ['#generateNegativeTags', 'checked']
   };
   const workflowText = value => {
@@ -43,9 +43,9 @@
         comfyH: number(value('comfyH')?.value, Number(current.comfyH) || 1024, 64, 8192),
         comfySteps: number(value('comfySteps')?.value, Number(current.comfySteps) || 25, 1, 200),
         comfyCfg: number(value('comfyCfg')?.value, Number(current.comfyCfg) || 7, 0, 30),
-        seed: value('seed')?.value === '' ? undefined : number(value('seed')?.value, current.seed, 0, 2147483647),
-        sampler: text(value('sampler')?.value, current.sampler || current.comfySampler || 'euler'),
-        scheduler: text(value('scheduler')?.value, current.scheduler || current.comfyScheduler || 'normal'),
+        comfySeed: value('comfySeed')?.value === '' ? undefined : number(value('comfySeed')?.value, current.comfySeed, 0, 2147483647),
+        comfySampler: text(value('comfySampler')?.value, current.comfySampler || 'euler'),
+        comfyScheduler: text(value('comfyScheduler')?.value, current.comfyScheduler || 'normal'),
         batchCount: number(value('batchCount')?.value, Number(current.batchCount) || 1, 1, 8),
         maxComfyCalls: number(value('maxComfyCalls')?.value, Number(current.maxComfyCalls) || 3, 1, 20),
         generateNegativeTags: value('generateNegativeTags') ? Boolean(value('generateNegativeTags').checked) : current.generateNegativeTags === true
@@ -75,9 +75,9 @@
         else if (key === 'comfyWorkflow') el.value = workflowText(value[key]);
         else if (value[key] != null) el.value = String(value[key]);
       });
-      if (q('#comfySeed')) q('#comfySeed').value = value.seed ?? '';
-      if (q('#comfySampler')) q('#comfySampler').value = value.sampler || value.comfySampler || 'euler';
-      if (q('#comfyScheduler')) q('#comfyScheduler').value = value.scheduler || value.comfyScheduler || 'normal';
+      if (q('#comfySeed')) q('#comfySeed').value = value.comfySeed ?? '';
+      if (q('#comfySampler')) q('#comfySampler').value = value.comfySampler || 'euler';
+      if (q('#comfyScheduler')) q('#comfyScheduler').value = value.comfyScheduler || 'normal';
       return value;
     }
     async function refresh() {
