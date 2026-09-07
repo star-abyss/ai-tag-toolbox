@@ -1,11 +1,11 @@
 {
-  "version": "1.4.211",
+  "version": "1.4.213",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.211",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.213",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-moved",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.211-before213",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
     "sourceCommitField": "build-info.json:sourceCommit",
@@ -23,10 +23,10 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 68,
+    "testsPassed": 80,
     "testsFailed": 0,
     "slowUiSmokeRun": false,
-    "staticLocalBrowserPreview": "blocked by local-file browser policy; manual desktop verification required"
+    "staticLocalBrowserPreview": "DOM regression verified; desktop appearance awaits user testing"
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",

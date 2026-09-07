@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
-    <title>AI 绘画 Tag 工具箱 V1.4.211 · Danbooru 标签选择器</title>
+    <title>AI 绘画 Tag 工具箱 V1.4.213 · Danbooru 标签选择器</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
@@ -497,6 +497,7 @@
                 <summary>🧩 固定 Agent Runtime</summary>
                 <div class="hint">主 AI 只使用固定工具，页面不开放外部 Agent 写权限。</div>
                 <div class="secret-status" id="agentStatus">固定工具就绪</div>
+                <button class="abtn btn btn-secondary" id="openCallMonitor" type="button">🧪 打开外部调用监视器</button>
               </details>
             </div>
           </div>
@@ -561,6 +562,7 @@
                       <label class="opt comfy-inline-toggle"><input id="talkComfyOn" type="checkbox" /> ComfyUI 出图</label>
                       <button id="talkComfyDebug" class="btn btn-ghost" type="button">调试</button>
                     </div>
+                    <button id="talkCallMonitor" class="btn btn-secondary" type="button">调用监视器</button>
                     <div class="cstatus talk-status" id="talkStatus" aria-live="polite"></div>
                   </div>
                   <div class="comfyconv talkconv" id="talkConv" data-conversation-view="true" data-image-context="conversation">
@@ -735,6 +737,7 @@
           <button class="abtn ghost btn btn-ghost" id="wbSelAll" data-i18n="ui.promptExtra.selectAll"></button>
           <button class="abtn ghost btn btn-ghost" id="wbSelNone" data-i18n="ui.promptExtra.selectNone"></button>
         </div>
+
         <div class="wbimport" id="wbImportList"></div>
         <div class="form-acts">
           <button class="abtn pri btn btn-primary" id="wbImportGo" data-i18n="ui.promptExtra.importSelected"></button>
@@ -755,6 +758,24 @@
       </div>
     </div>
 
+    <div class="modal" id="callMonitorModal" role="dialog" aria-modal="true" aria-labelledby="callMonitorTitle" aria-hidden="true">
+      <div class="box call-monitor-box">
+        <button class="hbtn close btn btn-icon" id="callMonitorClose" type="button" aria-label="关闭">✕</button>
+        <div class="call-monitor-head">
+          <div><h3 id="callMonitorTitle">AI 调用监视器</h3><div class="hint">记录实际请求、原始返回及处理结果。密钥、图片内容和本地路径已隐藏。</div></div>
+          <span class="secret-status" id="callMonitorCount">0 条调用</span>
+        </div>
+        <div class="form-acts call-monitor-actions">
+          <label>请求 <select id="callMonitorFilter" aria-label="筛选调用请求"><option value="">全部请求</option></select></label>
+          <button class="abtn btn btn-secondary" id="callMonitorRefresh" type="button">刷新</button>
+          <button class="abtn btn btn-secondary" id="callMonitorCopy" type="button">复制 JSON</button>
+          <button class="abtn btn btn-secondary" id="callMonitorExport" type="button">导出日志</button>
+          <button class="abtn ghost danger btn btn-danger" id="callMonitorClear" type="button">清空记录</button>
+        </div>
+        <div class="hint" id="callMonitorRetention">自动刷新；最多保留 200 条调用 / 12 MB。过长记录会标记截断。复制和导出采用当前请求筛选。</div>
+        <div id="callMonitorList" class="call-monitor-list"></div>
+      </div>
+    </div>
     <div class="toast" id="toast"></div>
 
     <script src="views/conversation-view.js"></script>
@@ -763,6 +784,7 @@
     <script src="views/comfy-view.js"></script>
     <script src="views/prompt-view.js"></script>
     <script src="views/agent-status-view.js"></script>
+    <script src="views/call-monitor-view.js"></script>
     <script src="views/characters-view.js"></script>
     <script src="app-view.js"></script>
     <script src="app.js"></script>

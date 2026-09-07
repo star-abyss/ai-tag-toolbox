@@ -130,6 +130,7 @@
       comfy: viewFactories.comfy?.createComfyView?.({ document: doc, comfy, assistant, notify, openExternal: url => global.open(url), autoBind: false }),
       prompt: viewFactories.prompt?.createPromptView?.({ document: doc, prompts, notify, download, autoBind: false }),
       agentStatus: viewFactories.agentStatus?.createAgentStatusView?.({ document: doc, runtime, api: assistant, notify, autoBind: false }),
+      callMonitor: viewFactories.callMonitor?.createCallMonitorView?.({ document: doc, runtime, assistant, notify, download, confirm, autoBind: false }),
       characters: viewFactories.characters?.createCharactersView?.({ document: doc, characters, onChange: () => renderSelection(), copy: value => copy(value), notify, getLocale: () => ui.locale }),
     };
     const show = (selector, yes) => {
@@ -725,7 +726,7 @@
       const status = $("#comfyStatus");
       const statusLabel = capabilityLabel(capabilities);
       if (status) {
-        status.textContent = statusLabel;
+        status.textContent = state.render ? "已连接 · 就绪" : !state.connected ? "未连接" : !state.enabled ? "已停用" : "工作流未就绪";
         status.title = statusLabel;
         const connected = state.connected === true;
         const workflowReady = state.workflowReady === true;
@@ -2154,7 +2155,7 @@
             setTalkBusy(false, label);
           }
           renderTalk();
-          put("#talkStatus", result?.ok === false ? result.text || "重新发送失败" : "完成");
+          put("#talkStatus", result?.ok === false ? compactTalkStatus(result, "重新发送失败") : "完成");
         } else {
           assistant?.editMessage?.(message.id, value);
           renderTalk();
@@ -2180,7 +2181,7 @@
         setTalkBusy(false, label);
       }
       renderTalk();
-      put("#talkStatus", result?.ok === false ? result.text || "重新生成失败" : "完成");
+      put("#talkStatus", result?.ok === false ? compactTalkStatus(result, "重新生成失败") : "完成");
     }
     function renderTalk() {
       const host = $("#talkConv");
@@ -2738,17 +2739,23 @@
       return true;
     }
     function toolProgress(selector, event) {
+      if (event?.type === "round.start") { put(selector, "AI 处理中…"); return; }
       if (!event || !event.name) return;
-      const label = event.name === "vision.processOne" ? (event.arguments?.mode === "local" ? "本地识图" : event.arguments?.mode === "metadata" ? "读取图片信息" : "识图 AI") : event.name === "tags.search" ? "Tag 查询" : event.name === "comfy.render" ? "ComfyUI" : event.name;
+      const mode = event.args?.mode || event.arguments?.mode;
+      const label = event.name === "vision.processOne" ? (mode === "local" ? "本地识图" : mode === "metadata" ? "读取图片信息" : "识图 AI") : ({ 'tags.search': 'Tag 查询', 'characters.search': '角色查询', 'comfy.render': 'ComfyUI', 'agent.generateTags': 'Tag 生成', 'translation.translate': '翻译' }[event.name] || '工具');
       if (event.type === "ai-start") put(selector, `AI 正在思考（第 ${Number(event.round) || 1} 轮）…`);
-      else if (event.type === "start") put(selector, `正在调用 ${label}…`);
+      else if (event.type === "start" || event.type === "tool.start") put(selector, `正在调用 ${label}…`);
       else if (event.type === "event" && event.event?.type === "progress") put(selector, `${label} 排队中（队列 ${Number(event.event.queue) || 0}）…`);
-      else if (event.type === "complete") {
+      else if (event.type === "complete" || event.type === "tool.complete") {
         if (event.result?.ok === false) {
-          const reason = event.result.error || event.result.text || "请检查设置后重试";
-          put(selector, `${label}调用失败：${reason}`);
+          put(selector, `${label}调用失败`);
         } else put(selector, `${label}调用完成`);
       }
+    }
+    function compactTalkStatus(result, fallback = "请求失败") {
+      if (result?.ok !== false) return fallback;
+      const code = str(result.error?.code || result.code).toUpperCase();
+      return code === "CANCELLED" ? "已取消" : code === "TIMEOUT" ? "请求超时" : code === "AUTH_FAILED" ? "认证失败" : code === "OUTPUT_INVALID" ? "输出格式无效" : fallback;
     }
     function handleTalkToolEvent(event) {
       toolProgress("#talkStatus", event);
@@ -2822,7 +2829,7 @@
         renderConversationRepository();
       }
       renderTalk();
-      put("#talkStatus", result?.ok === false ? result.text || result.error || "发送失败" : "完成");
+      put("#talkStatus", result?.ok === false ? compactTalkStatus(result, "发送失败") : "完成");
       setTalkBusy(false, label);
     }
     function renderManager() {
@@ -3880,6 +3887,7 @@
       views.settings?.bind?.();
       views.prompt?.bind?.();
       views.agentStatus?.bind?.();
+      views.callMonitor?.bind?.();
       views.prompt?.render();
       bind();
       resizeTalkInput();

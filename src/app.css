@@ -1156,13 +1156,47 @@ header{padding:12px 20px;gap:9px;background:var(--card);border-bottom-color:var(
 .tk-comfy-status{flex:0 1 auto;max-width:min(520px,48vw);font-size:12px;font-weight:700;color:var(--text)}
 .tkdraw-actions{display:flex;align-items:center;gap:8px;min-width:0;padding-left:8px;border-left:1px solid var(--border2)}
 .tk-comfy-module .tkdraw-caption{display:none}
+.tk-statusline .talk-status{display:block;flex:1 1 0;width:0;max-width:clamp(140px,34vw,520px);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tk-comfy-module{flex:0 0 auto;min-width:0}
+.tk-comfy-module .btn{flex:0 0 auto;white-space:nowrap}
+.tk-comfy-module .comfy-inline-toggle{flex:none;white-space:nowrap}
+.tk-statusline{flex-wrap:wrap}
+.tk-statusline>#talkCallMonitor{flex:none;white-space:nowrap}
+.tk-statusline #comfyStatus{display:block;max-width:160px;flex:0 1 160px}
 @media (max-width:900px){
   .tk-statusline{align-items:stretch;flex-wrap:wrap;gap:6px}
   .tk-statusline .talk-status{flex-basis:100%;height:20px;order:2}
   .tk-comfy-module{width:100%;order:1}
   .tk-comfy-status{max-width:none;flex:1 1 auto}
   .tkdraw-actions{margin-left:auto}
+  .tk-statusline .talk-status{width:100%;max-width:none}
 }
+#cfmModal{z-index:100}
+#callMonitorModal{z-index:90;background:rgba(10,12,20,.4)}
+.modal .box.call-monitor-box{position:relative;width:min(1100px,94vw);max-width:1100px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+.call-monitor-box>#callMonitorClose{position:absolute;right:14px;top:14px}
+.call-monitor-head,.call-monitor-actions,#callMonitorRetention{flex:none}
+.call-monitor-head{display:flex;align-items:flex-start;gap:12px;padding-right:32px}
+.call-monitor-head h3{margin:0 0 4px}
+.call-monitor-head .secret-status{margin-left:auto;white-space:nowrap}
+.call-monitor-actions{justify-content:flex-start;margin:12px 0 8px}
+.call-monitor-list{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:2px}
+.call-monitor-empty{padding:28px;text-align:center;color:var(--muted)}
+.call-record{border:1px solid var(--border2);border-radius:10px;background:var(--well);overflow:hidden}
+.call-record-heading{display:flex;align-items:center;gap:8px;width:100%;min-height:38px;padding:8px 10px;border:0;background:transparent;color:var(--text);cursor:pointer;text-align:left}
+.call-record-heading:hover{background:var(--pri-bg)}
+.call-record-heading strong{color:var(--text)}
+.call-record-heading code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
+.call-record-duration{margin-left:auto;color:var(--muted);font-size:11px;white-space:nowrap}
+.call-record-status{padding:2px 6px;border-radius:999px;background:var(--card);font-size:10px;text-transform:lowercase}
+.call-record-status.is-completed{color:#16a34a}.call-record-status.is-error,.call-record-status.is-timeout{color:var(--neg)}
+.call-record-meta{padding:0 10px 7px;color:var(--muted);font-size:10.5px;word-break:break-all}
+.call-record-detail{padding:0 10px 10px}.call-record-detail h4{margin:12px 0 5px;color:var(--text);font-size:11.5px}
+.call-record-section{margin-top:6px;border:1px solid var(--border);border-radius:7px;background:var(--card);overflow:hidden}
+.call-record-section>summary{padding:6px 8px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer}
+.call-record-section pre{max-height:300px;min-height:38px;margin:0;padding:8px;border-top:1px solid var(--border);background:var(--bg);color:var(--text);font:10.5px/1.45 Consolas,'Cascadia Code',monospace;white-space:pre-wrap;word-break:break-word;overflow:auto}
+.call-monitor-actions>label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}.call-monitor-actions select{height:34px;max-width:300px}
+@media(max-width:700px){.call-monitor-head{display:block}.call-monitor-head .secret-status{display:inline-block;margin-top:6px}.call-monitor-actions{flex-wrap:wrap}.tk-statusline .talk-status{flex-basis:100%;width:auto;max-width:none}}
 .talkmain>.tkmodebar{align-self:flex-start;width:max-content;max-width:100%}
 
 /* V1.4.114：对话尺寸与主流 AI 工作台保持一致。

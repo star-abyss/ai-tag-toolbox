@@ -14,8 +14,10 @@ function boot(options = {}) {
     url: 'http://localhost/', pretendToBeVisual: true, runScripts: 'outside-only'
   });
   const { window } = dom;
-  window.URL.createObjectURL = () => 'blob:ui-test';
+  const downloadBlobs = [];
+  window.URL.createObjectURL = blob => { downloadBlobs.push(blob); return 'blob:ui-test'; };
   window.URL.revokeObjectURL = () => {};
+  window.HTMLAnchorElement.prototype.click = function click() {};
   window.navigator.clipboard = { writeText: async () => {} };
   window.prompt = () => '新名称';
   window.confirm = () => true;
@@ -43,12 +45,21 @@ function boot(options = {}) {
     setSettings: patch => { settings = { ...settings, ...patch }; return settings; }, listModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }), listVisionModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }),
     refreshCapabilities: async () => ({ comfy: { enabled: false, connected: false }, vision: { local: false, ai: false } }),
     calls: { refreshCapabilities: async () => ({ comfy: { enabled: false, connected: false }, vision: { local: false, ai: false } }) },
-    run: async input => { runCount += 1; session.messages.push({ id: `m${runCount}`, role: 'user', text: input.text, imageIds: input.imageIds || [], status: 'done' }); return { ok: true, text: '完成', requestId: input.requestId }; },
+    run: async input => {
+      runCount += 1;
+      session.messages.push({ id: `m${runCount}`, role: 'user', text: input.text, imageIds: input.imageIds || [], status: 'done' });
+      const result = options.runResult || { ok: true, text: '完成', requestId: input.requestId };
+      if (options.runResult) session.messages.push({ id: `a${runCount}`, role: 'assistant', text: result.text, status: 'error' });
+      return result;
+    },
     cancel: () => true,
     clearConversationImages: sessionId => repository.clearConversationImages?.(sessionId),
     deleteSession: (sessionId, value) => { options.deleteSession?.(sessionId, value); return true; },
     imageRepository: repository
   };
+  const callRecords = options.callRecords ? options.callRecords.slice() : [];
+  assistant.listCallRecords = () => callRecords.slice();
+  assistant.clearCallRecords = () => { callRecords.length = 0; };
   const promptKeys = ['primary', 'generateTags', 'artistQuality', 'vision', 'translation'];
   const promptSet = { id: 'prompt-set-default', name: '默认提示词', items: { primary: 'prompt text', generateTags: 'prompt text', artistQuality: 'prompt text', vision: 'prompt text', translation: 'prompt text' } };
   const extension = { id: 'ext-1', name: '扩展 1', text: 'ext text', enabled: true, activation: { mode: 'always', keywords: [] } };
@@ -72,12 +83,12 @@ function boot(options = {}) {
     stateSnapshot: () => ({ categories: [], categoryCounts: {}, selected: [], category: 'all', revision: 0 }), selected: () => [], page: () => ({ items: [], total: 0 }),
     restore: () => {}, setSearchPrecision: () => {}, setAdult: () => {}, setQuery: () => {}, size: () => 0, customTags: () => [], subcategories: () => [], getCategories: () => []
   };
-  const modules = { assistant, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy: { setBase: () => {}, setWorkflow: () => {}, check: async () => false }, locales: { 'zh-CN': {} }, version: '1.4.194' };
+  const modules = { assistant, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy: { setBase: () => {}, setWorkflow: () => {}, check: async () => false }, locales: { 'zh-CN': {} }, version: '1.4.194' };
 
-  for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'app-view.js']) window.eval(source(file));
+  for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'views/call-monitor-view.js', 'app-view.js']) window.eval(source(file));
   const view = window.AppView.create(modules, window.document);
   view.start();
-  return { dom, window, view, assistant, repository, gallery, getRunCount: () => runCount };
+  return { dom, window, view, assistant, repository, gallery, downloadBlobs, getRunCount: () => runCount };
 }
 
 test('full DOM startup renders extracted views and conversation click uses assistant runtime', async () => {
@@ -161,4 +172,59 @@ test('deleting a conversation defaults to removing images unless gallery retenti
   assert.equal(deleted.sessionId, 's1');
   assert.equal(deleted.value.retainImages, false);
   app.dom.window.close();
+});
+
+test('external call monitor opens with redacted IO and exports its records', async () => {
+  const app = boot({ callRecords: [{
+    requestId: 'primary-1', rootRequestId: 'primary-1', parentRequestId: '', kind: 'primary', status: 'completed',
+    startedAt: 1, endedAt: 2, input: { messages: [{ role: 'user', content: '查找角色' }] },
+    output: { text: '完成', key: '[REDACTED]' }, events: [], usage: { total_tokens: 4 }
+  }, {
+    requestId: 'tool-2', rootRequestId: 'primary-2', parentRequestId: 'primary-2', kind: 'tool:tags.search', status: 'completed',
+    startedAt: 3, endedAt: 5, input: { args: { query: 'blue hair' } }, output: { items: [] }, events: [], usage: {}
+  }] });
+  app.window.document.querySelector('#openCallMonitor').click();
+  const modal = app.window.document.querySelector('#callMonitorModal');
+  assert.equal(modal.parentElement, app.window.document.body);
+  assert.equal(modal.classList.contains('show'), true);
+  assert.equal(modal.getAttribute('aria-hidden'), 'false');
+  assert.match(app.window.document.querySelector('#callMonitorList').textContent, /primary-1/);
+  assert.match(app.window.document.querySelector('#callMonitorList').textContent, /查找角色/);
+  assert.match(app.window.document.querySelector('#callMonitorList').textContent, /REDACTED/);
+  const filter = app.window.document.querySelector('#callMonitorFilter');
+  filter.value = 'primary-2';
+  filter.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  const exported = app.view.views.callMonitor.exportJson();
+  assert.equal(exported.records.length, 1);
+  assert.equal(exported.records[0].requestId, 'tool-2');
+  app.window.document.querySelector('#callMonitorExport').click();
+  const exportedText = await new Promise(resolve => {
+    const reader = new app.window.FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsText(app.downloadBlobs.at(-1));
+  });
+  assert.equal(JSON.parse(exportedText).records[0].requestId, 'tool-2');
+  assert.equal(app.window.document.querySelector('#callMonitorModal').classList.contains('show'), true);
+  app.window.document.querySelector('#callMonitorClear').click();
+  assert.equal(app.assistant.listCallRecords().length, 2);
+  app.window.document.querySelector('#cfmYes').click();
+  assert.equal(app.assistant.listCallRecords().length, 0);
+  app.window.document.querySelector('#callMonitorClose').click();
+  assert.equal(modal.getAttribute('aria-hidden'), 'true');
+  app.dom.window.close();
+});
+
+test('failed replies keep progress in messages without copying it into the ComfyUI toolbar', async () => {
+  const progress = '【进度 步骤1/5】正在处理：确认当前会话中的图片引用，查询角色。'.repeat(20);
+  const app = boot({ runResult: { ok: false, text: progress, error: { code: 'OUTPUT_INVALID', message: 'Tag 子代理返回格式无效' } } });
+  try {
+    const doc = app.window.document;
+    doc.querySelector('#talkIn').value = '继续任务';
+    doc.querySelector('#talkSendBtn').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(doc.querySelector('#talkStatus').textContent, '输出格式无效');
+    assert.doesNotMatch(doc.querySelector('.tk-statusline').textContent, /进度|步骤1/);
+    assert.match(doc.querySelector('#talkConv').textContent, /进度 步骤1/);
+    assert.equal(doc.querySelector('#talkComfyDebug').textContent, '调试');
+  } finally { app.dom.window.close(); }
 });
