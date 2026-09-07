@@ -90,7 +90,25 @@
       const analysis = q('#comfyAnalysisSummary');
       if (analysis && active?.analysis) { analysis.hidden = false; analysis.textContent = `兼容等级：${active.analysis.level || 'manual'} · 节点 ${active.analysis.nodeCount || 0}`; }
       const overrides = q('#comfyOverrides');
-      if (overrides && active?.overrides) { overrides.hidden = false; overrides.textContent = `提示词覆盖：${active.overrides.positive && active.overrides.negative ? '已启用' : '部分启用'}；其他参数默认由工作流决定`; }
+      if (overrides && active?.overrides) {
+        overrides.hidden = false; overrides.replaceChildren();
+        const label = doc.createElement('strong'); label.textContent = '参数覆盖'; overrides.appendChild(label);
+        const names = { positive: '正向提示词', negative: '负向提示词', width: '宽度', height: '高度', steps: '步数', cfg: 'CFG', seed: 'Seed', sampler: '采样器', scheduler: 'Scheduler', batchCount: '批量数量', ckpt: '模型' };
+        for (const [key, name] of Object.entries(names)) { const item = doc.createElement('label'); item.className = 'opt'; const input = doc.createElement('input'); input.type = 'checkbox'; input.checked = active.overrides[key] === true; input.disabled = key === 'positive' || key === 'negative'; input.addEventListener('change', () => { const latest = comfy?.profiles?.active?.(); if (latest) comfy?.profiles?.save?.({ ...latest, overrides: { ...latest.overrides, [key]: input.checked } }); }); item.append(input, doc.createTextNode(` ${name}`)); overrides.appendChild(item); }
+      }
+      const bindings = q('#comfyBindings');
+      if (bindings && active?.analysis) {
+        bindings.hidden = false; bindings.replaceChildren();
+        const heading = doc.createElement('strong'); heading.textContent = '节点绑定'; bindings.appendChild(heading);
+        const samplerRows = active.analysis.samplerCandidates || [];
+        if (samplerRows.length > 1) {
+          const select = doc.createElement('select'); select.className = 'wbselect';
+          for (const row of samplerRows) { const option = doc.createElement('option'); option.value = row.nodeId; option.textContent = `${row.title} · ${row.classType} · 节点 ${row.nodeId}`; option.selected = active.bindings?.samplerId === row.nodeId; select.appendChild(option); }
+          select.addEventListener('change', () => { const report = comfy?.analyze?.(active.workflow, { samplerId: select.value }); if (report) comfy?.profiles?.save?.({ ...comfy.profiles.active(), analysis: report, bindings: report.suggestedBindings || active.bindings }); }); bindings.appendChild(select);
+        } else if (samplerRows[0]) { const summary = doc.createElement('span'); summary.className = 'hint'; summary.textContent = `${samplerRows[0].title} · 节点 ${samplerRows[0].nodeId}`; bindings.appendChild(summary); }
+        const suggested = active.bindings || {};
+        const hint = doc.createElement('div'); hint.className = 'hint'; hint.textContent = `正向：${suggested.positive?.[0]?.nodeId || '未绑定'} · 负向：${suggested.negative?.[0]?.nodeId || '未绑定'} · 输出：${(suggested.outputs || []).join(', ') || '未选择'}`; bindings.appendChild(hint);
+      }
       return value;
     }
     async function refresh() {
