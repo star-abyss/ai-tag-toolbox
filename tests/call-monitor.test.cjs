@@ -21,7 +21,7 @@ test('diagnostic copies redact nested JSON, embedded credentials, images and pat
     monitor.finish('r1', { status: 'completed', output: { text: 'returned test-private-key', absolute: '/Users/private/photo.png' } });
     await monitor.flush();
     const saved = fs.readFileSync(filePath, 'utf8');
-    assert.doesNotMatch(saved, /test-private-key|nested-private-key|private-key|data:image|base64|photo\.png/);
+    assert.doesNotMatch(saved, /test-private-key|nested-private-key|private-key|data:image|base64|AQ==|photo\.png/);
     assert.match(saved, /blue hair/);
     assert.equal(monitor.list()[0].input.prompt_tokens, 42);
     assert.equal(input.apiKey, 'private-key');

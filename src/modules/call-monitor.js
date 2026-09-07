@@ -29,9 +29,13 @@ function sanitize(value, secrets = [], budget = 512 * 1024) {
       for (const secret of secrets) if (typeof secret === 'string' && secret) str = str.split(secret).join(REDACTED);
       // Tool messages and raw replies can themselves contain serialized JSON.
       if (depth < 20 && str.length < budget && /^[\s]*[\[{]/.test(str)) {
-        try { return JSON.stringify(visit(JSON.parse(str), '', depth + 1)); } catch { /* plain output */ }
+        try {
+          const parsed = JSON.parse(str);
+          const captured = visit(parsed, '', depth + 1);
+          return JSON.stringify(captured) === JSON.stringify(parsed) ? str : JSON.stringify(captured);
+        } catch { /* plain output */ }
       }
-      str = str.replace(/data:[^\s,"'<>]+/gi, REDACTED)
+      str = str.replace(/data:[^\s"'<>]+/gi, REDACTED)
         .replace(/\b(?:blob:|file:\/\/)[^\s"'<>]+/gi, REDACTED)
         .replace(/\bBearer\s+[^\s,"'<>]+/gi, 'Bearer ' + REDACTED)
         .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, REDACTED)
