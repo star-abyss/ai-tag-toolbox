@@ -110,12 +110,12 @@
 - Assistant exposes `selectGenerationFinal(messageId, candidateId)`.
 - `USER_SELECTED` completes rather than cancels the job.
 
-- [ ] **Step 1:** Add failing tests selecting during render/evaluation/revision and rejecting late artifacts.
-- [ ] **Step 2:** Add a failing test that ComfyUI interrupt is invoked once.
-- [ ] **Step 3:** Implement revision guards, special abort reason and atomic selection.
-- [ ] **Step 4:** Wire Assistant and preload without exposing unrestricted orchestrator mutation.
-- [ ] **Step 5:** Run focused tests and `npm run check`.
-- [ ] **Step 6:** Commit `V1.4.224：支持最终候选抢占式结束`.
+- [x] **Step 1:** Add failing tests selecting during render/evaluation/revision and rejecting late artifacts.
+- [x] **Step 2:** Add a failing test that ComfyUI interrupt is invoked once.
+- [x] **Step 3:** Implement revision guards, special abort reason and atomic selection.
+- [x] **Step 4:** Wire Assistant and preload without exposing unrestricted orchestrator mutation.
+- [x] **Step 5:** Run focused tests and `npm run check`.
+- [x] **Step 6:** Commit `V1.4.224：支持最终候选抢占式结束`.
 
 ### Task 5: Generation Controls And Manual Feedback UI
 

@@ -151,6 +151,7 @@ function createAssistant(options = {}) {
       batchCount: input.batchCount,
       ...(input.sourceImageId ? { sourceImageId: input.sourceImageId } : {})
     }, context),
+    cancelRender: () => comfy?.cancel?.('current'),
     preflight: async (input, context) => {
       const value = await internalTool('comfy.status', {}, context);
       const profile = comfyProfiles.active();
@@ -308,6 +309,19 @@ function createAssistant(options = {}) {
     persist();
     return clone(found.message.result);
   }
+  async function selectGenerationFinal(value, candidateId, sessionId = state.currentId) {
+    const found = messageLocation(value, sessionId);
+    const jobId = text(found?.message?.result?.jobId);
+    if (!found || !jobId || typeof generation?.selectAndFinish !== 'function') return null;
+    const selected = await generation.selectAndFinish(jobId, candidateId, 'user');
+    if (!selected) return null;
+    found.message.result = { ...found.message.result, ...clone(selected), finalCandidateId: selected.selectedCandidateId, finalImageId: selected.selectedImageId, finalPrompt: selected.prompt, finalNegative: selected.negative };
+    found.message.artifacts = clone(array(selected.artifacts));
+    found.message.imageIds = ids(selected.imageIds);
+    found.session.updatedAt = Date.now();
+    persist();
+    return clone(found.message.result);
+  }
   async function rerunFromMessage(value, inputPatch = {}, config = {}, sessionId = state.currentId) {
     if (active) return failure('BUSY', '当前请求仍在处理中', active.id, active.sessionId);
     const found = messageLocation(value, sessionId); if (!found || found.session.id !== state.currentId) return failure('MESSAGE_NOT_FOUND', '没有找到要重新执行的消息');
@@ -338,7 +352,7 @@ function createAssistant(options = {}) {
     deleteSession(sessionId = state.currentId, value = {}) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); const result = imageRepository.deleteSession(sessionId, { retainImages: value.retainImages === true }); if (!sessionById()) state.currentId = state.sessions[0]?.id || ''; if (!state.sessions.length) newSession(); else persist(); return result; },
     clearSession(sessionId = state.currentId) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); imageRepository.clearSessionContent(sessionId); persist(); return clone(sessionById(sessionId)); },
     clearConversationImages(sessionId = state.currentId) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); const result = imageRepository.clearConversationImages(sessionId); persist(); return result; },
-    append, editMessage, deleteMessage, chooseCandidate, selectCandidate: chooseCandidate, rerunFromMessage, regenerateMessage: rerunFromMessage,
+    append, editMessage, deleteMessage, chooseCandidate, selectCandidate: chooseCandidate, selectGenerationFinal, rerunFromMessage, regenerateMessage: rerunFromMessage,
     exportSessions: () => JSON.stringify(sessionBundle(), null, 2),
     importSessions(value, replace = false) { const incoming = incomingBundle(value); if (!incoming) return false; cancel(); const usedSessions = new Set(replace ? [] : state.sessions.map(row => row.id)); const usedMessages = new Set(replace ? [] : state.sessions.flatMap(row => row.messages.map(message => message.id))); const normalized = incoming.sessions.map(row => normalizeSession(row, usedSessions, usedMessages)); state.sessions = replace ? normalized : [...state.sessions, ...normalized]; if (replace || !sessionById()) state.currentId = state.sessions[0]?.id || ''; for (const session of normalized) imageRepository.reconcileSessionMessages(session.id); imageRepository.reconcileSessions(); if (!state.sessions.length) newSession(); else persist(); return clone(state.sessions); },
     listFavorites: () => clone(favorites), getFavorites: () => clone(favorites), setFavorites(value) { favorites = array(value).map(clone); write('rewrite_favorites', favorites); return clone(favorites); }, addFavorite(value) { const item = object(value) ? clone(value) : { name: text(value, '未命名收藏') }; item.id = text(item.id, id('favorite')); favorites.push(item); write('rewrite_favorites', favorites); return clone(item); }, removeFavorite(favoriteId) { const index = favorites.findIndex(row => row.id === favoriteId); if (index < 0) return false; favorites.splice(index, 1); write('rewrite_favorites', favorites); return true; },

@@ -266,6 +266,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     parseReply: assistant.parseReply,
     chooseCandidate: assistant.chooseCandidate,
     selectCandidate: assistant.selectCandidate,
+    selectGenerationFinal: assistant.selectGenerationFinal,
     // 业务状态统一由 Assistant 持有，页面只通过这些薄方法读取或更新。
     getSettings: assistant.getSettings,
     setSettings: assistant.setSettings,

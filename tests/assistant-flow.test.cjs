@@ -155,6 +155,9 @@ async function testHighLevelGenerationPersistsCandidatesAndSelection() {
   const selected = assistant.chooseCandidate(message.id, 'candidate-1', 'user');
   assert.equal(selected.finalImageId, 'generated-1');
   assert.equal(selected.finalPrompt, '1girl, blue hair');
+  const finalized = await assistant.selectGenerationFinal(message.id, 'candidate-2');
+  assert.equal(finalized.finalCandidateId, 'candidate-2');
+  assert.equal(finalized.finalImageId, 'generated-2');
   assistant.destroy();
 }
 

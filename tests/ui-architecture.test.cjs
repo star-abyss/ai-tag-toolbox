@@ -50,3 +50,9 @@ test('generation UI consumes dotted state-machine events and keeps stable candid
   assert.match(app, /generation\.needs_input/);
   assert.match(css, /\.draw-candidates\s*\{[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,minmax\(260px,1fr\)\)/);
 });
+
+test('preload exposes the scoped final-selection command', () => {
+  const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
+  assert.match(preload, /selectGenerationFinal:\s*assistant\.selectGenerationFinal/);
+  assert.doesNotMatch(preload, /generation:\s*assistant\.generation/);
+});

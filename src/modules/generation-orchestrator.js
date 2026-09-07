@@ -122,6 +122,7 @@ function createGenerationOrchestrator(options = {}) {
   const storageKey = text(options.storageKey, 'generation_jobs');
   const runSubAgent = typeof options.runSubAgent === 'function' ? options.runSubAgent : null;
   const renderCandidate = typeof options.renderCandidate === 'function' ? options.renderCandidate : null;
+  const cancelRender = typeof options.cancelRender === 'function' ? options.cancelRender : async () => null;
   const preflight = typeof options.preflight === 'function' ? options.preflight : async () => ({ ready: true });
   const listConversationImages = typeof options.listConversationImages === 'function' ? options.listConversationImages : async () => ({ items: [] });
   const resolveCharacter = typeof options.resolveCharacter === 'function' ? options.resolveCharacter : null;
@@ -274,6 +275,7 @@ function createGenerationOrchestrator(options = {}) {
     active.delete(jobId);
   }
   function guard(job, context) {
+    if (job.stopReason === 'user_selected' || job.status === 'finishing') throw failure('USER_SELECTED', '用户已选择最终候选');
     if (job.status === 'cancelled' || context.signal?.aborted) throw context.signal?.reason || failure('CANCELLED', '请求已取消');
   }
   async function callAgent(job, context, name, input, stage, retry = true) {
@@ -633,6 +635,11 @@ function createGenerationOrchestrator(options = {}) {
       emit(job, context, 'generation.completed', { candidateCount: job.candidates.length, selectedCandidateId: job.selectedCandidateId, stopReason: job.stopReason });
       return result(job);
     } catch (error) {
+      if (job.stopReason === 'user_selected' || error?.code === 'USER_SELECTED') {
+        job.status = 'completed';
+        persist(job);
+        return result(job);
+      }
       if (job.status === 'cancelled' || context.signal.aborted || error?.code === 'CANCELLED') {
         job.status = 'cancelled';
         job.stopReason = 'cancelled';
@@ -734,7 +741,29 @@ function createGenerationOrchestrator(options = {}) {
     return result(job);
   }
 
-  return Object.freeze({ execute, resume, cancel, get, list, selectCandidate });
+  async function selectAndFinish(jobId, candidateId, source = 'user') {
+    const job = jobs.get(text(jobId));
+    if (!job || ['failed', 'cancelled'].includes(job.status)) return null;
+    const candidate = activeCandidate(job, text(candidateId));
+    if (!candidate) return null;
+    job.candidates = selectCandidateRows(job.candidates, candidate.id, source);
+    job.selectedCandidateId = candidate.id;
+    job.selectionReason = source === 'user' ? '用户选择最终候选' : text(source, '程序选择最终候选');
+    job.stopReason = 'user_selected';
+    job.status = 'finishing';
+    const running = active.get(job.jobId);
+    emit(job, running?.context || {}, 'generation.user_selected', { candidateId: candidate.id, imageId: candidate.imageId, source });
+    if (running && !running.controller.signal.aborted) running.controller.abort(failure('USER_SELECTED', '用户已选择最终候选'));
+    if (running) {
+      try { await cancelRender({ jobId: job.jobId, candidateId: candidate.id, imageId: candidate.imageId }); } catch { /* selection remains authoritative */ }
+    }
+    job.status = 'completed';
+    persist(job);
+    emit(job, running?.context || {}, 'generation.completed', { candidateCount: job.candidates.length, selectedCandidateId: candidate.id, stopReason: job.stopReason });
+    return result(job);
+  }
+
+  return Object.freeze({ execute, resume, cancel, get, list, selectCandidate, selectAndFinish });
 }
 
 module.exports = {

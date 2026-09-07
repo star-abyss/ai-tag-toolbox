@@ -56,6 +56,7 @@ function harness(options = {}) {
     storage,
     runSubAgent,
     renderCandidate,
+    cancelRender: options.cancelRender,
     preflight: options.preflight || (async () => ({ ready: true, connected: true, workflowProfileId: 'profile-1', workflowRevision: 'rev-1' })),
     listConversationImages: options.listConversationImages || (() => ({ items: [{ imageId: 'source-1', slotNo: 1 }] })),
     resolveCharacter: options.resolveCharacter,
@@ -252,4 +253,47 @@ test('manual mode pauses after one round and resumes only with explicit feedback
   const revision = app.subagentCalls.find(call => call.name === 'generateTags' && call.input.operation === 'revise');
   assert.equal(revision.input.evaluation.userFeedback, '保留人物，改成更强的低视角');
   assert.equal(revision.input.evaluation.candidateId, 'img-2');
+});
+
+test('final selection preempts an active render and discards its late artifact', async () => {
+  let secondStarted;
+  let resolveSecond;
+  let renderCount = 0;
+  let interrupts = 0;
+  const started = new Promise(resolve => { secondStarted = resolve; });
+  const app = harness({
+    settings: { generation: { autoRun: true, imagesPerRound: 1, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 99, minImprovement: 0 } },
+    renderCandidate: async payload => {
+      renderCount += 1;
+      if (renderCount === 1) return { artifacts: [{ imageId: 'img-1' }], parameters: { seed: 1 } };
+      secondStarted();
+      return new Promise(resolve => { resolveSecond = () => resolve({ artifacts: [{ imageId: 'late-image' }], parameters: { seed: 2 } }); });
+    },
+    reviewScores: [70],
+    cancelRender: async () => { interrupts += 1; }
+  });
+  const pending = app.orchestrator.execute({ originalRequirements: 'long auto task' }, app.context);
+  await started;
+  const jobId = app.orchestrator.list()[0].jobId;
+  const selected = await app.orchestrator.selectAndFinish(jobId, 'candidate-1', 'user');
+  assert.equal(selected.status, 'completed');
+  assert.equal(selected.selectedCandidateId, 'candidate-1');
+  assert.equal(selected.stopReason, 'user_selected');
+  assert.equal(interrupts, 1);
+  resolveSecond();
+  const completed = await pending;
+  assert.equal(completed.status, 'completed');
+  assert.equal(completed.selectedImageId, 'img-1');
+  assert.deepEqual(completed.imageIds, ['img-1']);
+  assert.equal(completed.candidates.some(candidate => candidate.imageId === 'late-image'), false);
+  assert(app.events.some(event => event.type === 'generation.user_selected'));
+});
+
+test('selecting while awaiting manual feedback completes without another render', async () => {
+  const app = harness({ settings: { generation: { autoRun: false, imagesPerRound: 1, maxAutoRounds: 3, maxRenderAttempts: 5 } }, reviewScores: [70] });
+  const paused = await app.orchestrator.execute({ originalRequirements: 'manual' }, app.context);
+  const selected = await app.orchestrator.selectAndFinish(paused.jobId, 'candidate-1', 'user');
+  assert.equal(selected.status, 'completed');
+  assert.equal(selected.selectedCandidateId, 'candidate-1');
+  assert.equal(selected.successfulRounds, 1);
 });

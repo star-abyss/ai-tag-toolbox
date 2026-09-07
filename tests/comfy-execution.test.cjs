@@ -134,3 +134,14 @@ test('internal render uploads and binds a current-session source or reports text
   assert.equal(approximate.data.recreationMode, 'text_approximation');
   assert.equal(calls.filter(call => call.type === 'upload').length, 1);
 });
+
+test('ComfyUI cancel interrupts the active render exactly once', async () => {
+  let interrupts = 0;
+  const comfy = createComfy({ base: 'http://example.test:8188', fetch: async url => {
+    if (new URL(url).pathname === '/interrupt') interrupts += 1;
+    return { ok: true, status: 200, json: async () => ({}) };
+  } });
+  const result = await comfy.cancel('current');
+  assert.equal(result.interrupted, true);
+  assert.equal(interrupts, 1);
+});
