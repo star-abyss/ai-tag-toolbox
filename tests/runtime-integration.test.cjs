@@ -106,3 +106,41 @@ test('records remain bounded and duplicate caller IDs do not cancel existing req
   for (let index = 0; index < 6; index++) { const handle = manager.begin(); manager.complete(handle.requestId); status.complete(handle.requestId); }
   assert.equal(manager.size(), 2); assert.equal(status.list().length, 2); manager.clear();
 });
+
+test('call monitor records primary, tool and subagent IO with sensitive payloads redacted', async () => {
+  let count = 0;
+  const translation = createTranslation({ dictionary: { 'zh-en': { '你好': 'hello' } } });
+  const { runtime } = stack({
+    translation,
+    getSettings: () => ({ ...baseSettings, primaryApi: { base: 'https://example.test/v1', model: 'test-model', key: 'secret-key' } }),
+    primaryClient: { complete: async () => count++ === 0
+      ? { toolCalls: [{ id: 'monitor-call', name: 'translation_translate', arguments: { text: '你好', direction: 'zh-en', source: 'local' } }] }
+      : { text: 'done', usage: { total_tokens: 5 } } }
+  });
+  const result = await runtime.runPrimary({ requestId: 'monitor-parent', input: { text: 'translate' }, config: { key: 'request-secret' } });
+  assert.equal(result.ok, true);
+  const records = runtime.listCallRecords();
+  assert(records.some(row => row.kind === 'primary' && row.input.messages.some(message => message.content === 'translate')));
+  assert(records.some(row => row.kind === 'tool:translation.translate' && row.input.args.text === '你好' && row.output.text === 'hello'));
+  assert(records.some(row => row.kind === 'subagent:translation' && row.input.text === '你好' && row.output.text === 'hello'));
+  const json = JSON.stringify(records);
+  assert.doesNotMatch(json, /secret-key|request-secret|data:image|base64,AQ==/);
+  assert.match(json, /\[REDACTED\]/);
+  runtime.clearCallRecords();
+  assert.deepEqual(runtime.listCallRecords(), []);
+});
+
+test('generateTags monitor record includes the actual prompt and raw provider output', async () => {
+  const app = require('../src/modules/assistant').createAssistant({
+    promptSource: { composeGenerate: () => 'GENERATOR SYSTEM PROMPT', get: () => '' },
+    visionGateway: { complete: async () => ({ ok: true, text: '{"positiveTags":["blue hair"]}', raw: { provider: 'raw-response' } }) }
+  });
+  const result = await app.runtime.runSubAgent('generateTags', { input: { requirements: 'blue-haired character' } });
+  assert.equal(result.ok, true);
+  const record = app.listCallRecords().find(row => row.kind === 'subagent:generateTags');
+  assert.match(record.exchanges[0].request.body.messages[0].content, /GENERATOR SYSTEM PROMPT/);
+  assert.equal(record.exchanges[0].request.body.messages[1].content[0].text, '当前要求：blue-haired character');
+  assert.equal(record.exchanges[0].response.raw.provider, 'raw-response');
+  assert.deepEqual(record.output.positiveTags, ['blue hair']);
+  app.destroy();
+});

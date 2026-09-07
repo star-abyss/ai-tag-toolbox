@@ -5,6 +5,7 @@ const { createStatusManager } = require('./status-manager');
 const { createUsageLimiter } = require('./usage-limiter');
 const { errorShape, resultOk, resultError } = require('./error-manager');
 const { assertValid } = require('./schema');
+const { createCallMonitor } = require('./call-monitor');
 
 const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
 const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
@@ -103,6 +104,7 @@ function createAgentRuntime(options = {}) {
     else if (row.status === 'error') statuses.fail(row.requestId, row.error, row);
   });
   const limiter = options.usageLimiter || createUsageLimiter();
+  const monitor = options.monitor || createCallMonitor({ maxRecords: options.maxCallRecords, filePath: options.callMonitorPath, getSecrets: () => [getSettings()?.primaryApi?.key, getSettings()?.visionApi?.key], onCallRecord: options.onCallRecord });
   const active = new Map();
   function registryTool(name) { const registry = getTools() || {}; return typeof registry.resolve === 'function' ? registry.resolve(name) : registry[name] || null; }
   function listTools() { return TOOL_NAMES.map(name => { const entry = registryTool(name); return entry ? { name, description: entry.description || '', parameters: clone(entry.parameters || entry.inputSchema || { type: 'object', additionalProperties: false }) } : null; }).filter(Boolean); }
@@ -116,6 +118,7 @@ function createAgentRuntime(options = {}) {
       if (context.parentContext.events.length > 256) context.parentContext.events.shift();
     }
     statuses.update(context.requestId, { event });
+    if (!isNoiseEvent(event)) monitor.event(context.requestId, event);
     try { context.onEvent?.(event); } catch { /* observers are optional */ }
   }
   async function execute(kind, request, timeoutMs, work) {
@@ -125,23 +128,31 @@ function createAgentRuntime(options = {}) {
     const id = handle.requestId; const rootId = parent?.rootRequestId || id;
     if (!parent) limiter.begin(rootId, getSettings()?.limits || {});
     const context = { requestId: id, parentRequestId: parentId, rootRequestId: rootId, signal: handle.signal, sessionId: request.sessionId || parent?.sessionId, messageId: request.messageId || parent?.messageId, settings: parent?.settings || clone(getSettings() || {}), events: [], onEvent: request.onEvent, parentContext: parent || null, partial: null };
+    monitor.begin({ requestId: id, rootRequestId: rootId, parentRequestId: parentId, sessionId: context.sessionId, messageId: context.messageId, kind, input: request.input || {} });
+    context.captureInput = input => monitor.update(id, { input });
     active.set(id, context);
     try {
-      const data = await race(() => work(context), handle.signal);
+      const data = await race(() => monitor.run(id, () => work(context)), handle.signal);
       if (handle.signal.aborted) throw handle.signal.reason;
       requests.complete(id);
+      monitor.finish(id, { status: 'completed', output: data, usage: limiter.snapshot(rootId), usageScope: 'root-total-at-completion' });
       return resultOk(data, id, limiter.snapshot(rootId));
     } catch (cause) {
       const state = requests.get(id); const error = errorShape(state?.error || cause, '请求失败');
       if (!state?.endedAt) requests.fail(id, error);
-      const result = resultError(error, id); result.data = context.partial || null; result.usage = limiter.snapshot(rootId); return result;
-    } finally { active.delete(id); if (!parent) limiter.end(rootId); }
+      const result = resultError(error, id); result.data = context.partial || null; result.usage = limiter.snapshot(rootId);
+      monitor.finish(id, { status: requests.get(id)?.status || 'error', output: context.partial, error, usage: result.usage, usageScope: 'root-total-at-completion' });
+      return result;
+    } finally {
+      active.delete(id); if (!parent) limiter.end(rootId);
+    }
   }
   async function runSubAgent(name, request = {}) {
     const registry = getSubagents() || {}; const entry = typeof registry.resolve === 'function' ? registry.resolve(name) : registry[name];
     return execute(`subagent:${name}`, request, entry?.timeoutMs || 120000, async context => {
       if (!['vision', 'translation', 'generateTags'].includes(name) || !entry) throw reject('SUBAGENT_UNAVAILABLE', `子代理不可用：${name}`);
       const input = request.input !== undefined ? clone(request.input) : Object.fromEntries(Object.entries(request).filter(([key]) => !['requestId', 'parentRequestId', 'signal', 'timeoutMs', 'sessionId', 'messageId', 'onEvent'].includes(key)));
+      context.captureInput(input);
       assertSchema(entry.inputSchema || { type: 'object' }, input, 'INVALID_INPUT');
       const run = typeof entry === 'function' ? entry : entry.run || entry.execute;
       if (typeof run !== 'function') throw reject('SUBAGENT_UNAVAILABLE', '子代理执行器不可用');
@@ -155,6 +166,7 @@ function createAgentRuntime(options = {}) {
   async function callTool(rawName, args = {}, request = {}) {
     const name = canonicalName(rawName);
     return execute(`tool:${name}`, request, name === 'comfy.render' ? 600000 : 120000, async context => {
+      context.captureInput({ args });
       if (!TOOL_NAMES.includes(name)) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
       const entry = registryTool(name); if (!entry) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
       assertSchema(entry.parameters || entry.inputSchema || { type: 'object' }, args, 'INVALID_INPUT');
@@ -185,6 +197,7 @@ function createAgentRuntime(options = {}) {
       const history = (Array.isArray(request.messages) ? request.messages : []).map(historyMessage).filter(Boolean).filter(item => item.role === 'tool' || item.content || item.tool_calls?.length);
       if (!history.length && typeof request.input?.text === 'string') history.push({ role: 'user', content: request.input.text });
       const messages = [{ role: 'system', content: prompt }, ...history]; const transcript = []; const toolCalls = []; const artifacts = []; const usedIds = new Set(); let round = 0;
+      context.captureInput({ messages, config: request.config || {} });
       const partial = () => ({ text: '', reasoning: '', toolCalls: toolCalls.slice(), events: context.events.slice(), artifacts: artifacts.map(clone), imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript: transcript.map(clone) });
       context.partial = partial();
       // 流式增量不逐片写入任务事件：缓冲后节流合并，避免刷满 256 条上限。
@@ -198,6 +211,7 @@ function createAgentRuntime(options = {}) {
         limiter.consume(context.rootRequestId, 'round'); round += 1; emit(context, 'round.start', { round });
         const settings = getSettings() || {};
         const primaryConfig = { ...publicConfig(settings.primaryApi), ...publicConfig(request.config), signal: context.signal, tools: schemas(), tool_choice: 'auto', onDelta: (delta, reasoning = '') => { deltaBuffer.text += typeof delta === 'string' ? delta : ''; deltaBuffer.reasoning += typeof reasoning === 'string' ? reasoning : ''; const accumulated = deltaBuffer.text.length + deltaBuffer.reasoning.length; if (accumulated >= 8 && Date.now() - deltaBuffer.emittedAt >= 200) flushDelta(); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } }, onEvent: event => { if (typeof event?.type === 'string' && event.type && !isNoiseEvent(event)) emit(context, event.type, event || {}); } /* 只接受带类型名的有意义事件；无类型名的流式分片（正文/推理/工具参数碎片）一律不产生任务事件，真正的调用由 tool.start/tool.complete 记录。 */ };
+        context.captureInput({ messages, config: primaryConfig });
         const response = await race(() => client.complete(messages, primaryConfig), context.signal);
         unwrap(response); limiter.add(context.rootRequestId, response?.usage); const calls = responseCalls(response).slice(0, 1).map(call => normalizeCall(call, usedIds));
         const responseText = outputText(response);
@@ -224,7 +238,7 @@ function createAgentRuntime(options = {}) {
       }
     });
   }
-  return { runPrimary, runSubAgent, callTool, cancel: id => requests.cancel(id), getStatus: id => statuses.get(id) || requests.get(id), getRequest: id => requests.get(id), listTools, status: statuses, requests, usage: limiter };
+  return { runPrimary, runSubAgent, callTool, cancel: id => requests.cancel(id), getStatus: id => statuses.get(id) || requests.get(id), getRequest: id => requests.get(id), listTools, listCallRecords: monitor.list, clearCallRecords: monitor.clear, getCallMonitorInfo: monitor.info, flushCallRecords: monitor.flush, status: statuses, requests, usage: limiter };
 }
 
 module.exports = { createAgentRuntime, resultOk, resultError, isNoiseEvent };

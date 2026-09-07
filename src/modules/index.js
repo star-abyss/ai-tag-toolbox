@@ -18,6 +18,7 @@ module.exports = {
   ...require('./draw-candidates'),
   ...require('./request-manager'),
   ...require('./status-manager'),
+  ...require('./call-monitor'),
   ...require('./agent-runtime'),
   ...require('./fixed-subagents'),
   ...require('./primary-tools'),

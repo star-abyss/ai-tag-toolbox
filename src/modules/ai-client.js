@@ -282,7 +282,7 @@ function eventParts(event) {
   return { content, reasoning, toolCalls, done: Boolean(event.done || kind === 'done' || kind === 'complete'), usage: event.usage || null, finishReason: event.finishReason || event.finish_reason || null, raw: event };
 }
 
-function createAiClient(initialConfig = {}, injectedGateway = null) {
+function createAiClient(initialConfig = {}, injectedGateway = null, monitor = null) {
   const gateway = injectedGateway && (typeof injectedGateway.complete === 'function' || typeof injectedGateway.stream === 'function')
     ? injectedGateway
     : (initialConfig && (typeof initialConfig.complete === 'function' || typeof initialConfig.stream === 'function') ? initialConfig : null);
@@ -335,11 +335,46 @@ function createAiClient(initialConfig = {}, injectedGateway = null) {
   }
 
   async function complete(messages, options = {}) {
+    if (!monitor) return completeRequest(messages, options);
+    let handle = null;
+    let partialText = '', partialReasoning = '';
+    const signal = options.signal;
+    const observe = action => { try { return action(); } catch { return null; } };
+    const finish = (result, error) => observe(() => monitor.endExchange(handle, result, error));
+    const aborted = () => finish({ text: partialText, reasoning: partialReasoning, partial: true }, signal.reason || { code: 'CANCELLED', message: '请求已取消' });
+    signal?.addEventListener('abort', aborted, { once: true });
+    try {
+      const result = await completeRequest(messages, {
+        ...options,
+        captureRequest: (request, key) => { handle = observe(() => monitor.beginExchange(request, [key])); },
+        onDelta: (delta, reasoning) => {
+          if (partialText.length < 128 * 1024) partialText += contentText(delta);
+          if (partialReasoning.length < 128 * 1024) partialReasoning += contentText(reasoning);
+          options.onDelta?.(delta, reasoning);
+        }
+      });
+      finish(result, null); return result;
+    } catch (error) {
+      finish({ text: partialText, reasoning: partialReasoning, partial: true }, error); throw error;
+    } finally { signal?.removeEventListener('abort', aborted); }
+  }
+  async function completeRequest(messages, options = {}) {
     if (typeof messages === 'string') messages = [{ role: 'user', content: messages }];
     else if (isObject(messages) && !Array.isArray(messages)) messages = [{ role: 'user', content: text(messages.text || messages.prompt) }];
     const opts = mergedOptions(options);
     const apiMessages = sanitiseApiMessages(list(messages).map((item) => messageForApi(item)).filter(Boolean));
     if (!apiMessages.length) apiMessages.push({ role: 'user', content: '' });
+    const stream = opts.stream !== false;
+    const body = { model: opts.model, messages: apiMessages, stream, temperature: Number.isFinite(Number(opts.temperature)) ? Number(opts.temperature) : 0.7 };
+    if (Array.isArray(opts.tools) && opts.tools.length) body.tools = clone(opts.tools);
+    if (opts.tool_choice != null) body.tool_choice = opts.tool_choice;
+    if (opts.maxTokens != null && Number(opts.maxTokens) > 0) body.max_tokens = Number(opts.maxTokens);
+    if (opts.reasoning_effort != null) body.reasoning_effort = opts.reasoning_effort;
+    if (opts.enable_thinking != null) body.enable_thinking = opts.enable_thinking;
+    if (opts.thinking != null) body.thinking = clone(opts.thinking);
+    let endpoint = '';
+    try { const url = new URL(requestUrl(opts.base)); endpoint = url.origin + url.pathname; } catch { /* incomplete config */ }
+    opts.captureRequest?.({ transport: gateway ? 'gateway' : 'http', endpoint, body, headers: opts.key ? { Authorization: `Bearer ${opts.key}` } : {} }, opts.key);
     if (gateway) {
       const startedAt = Date.now();
       const emit = (content, reasoning) => {
@@ -347,6 +382,7 @@ function createAiClient(initialConfig = {}, injectedGateway = null) {
         if (typeof opts.onDelta === 'function' && (content || reasoning)) opts.onDelta(contentText(content), contentText(reasoning));
       };
       const gatewayOptions = { ...opts, onDelta: emit, onEvent: emit };
+      delete gatewayOptions.captureRequest;
       let value;
       if (opts.stream !== false && typeof gateway.stream === 'function') value = await gateway.stream(apiMessages, gatewayOptions);
       else if (typeof gateway.complete === 'function') value = await gateway.complete(apiMessages, gatewayOptions);
@@ -364,17 +400,6 @@ function createAiClient(initialConfig = {}, injectedGateway = null) {
     const externalSignal = opts.signal;
     if (externalSignal?.aborted) throw externalSignal.reason || abortError('已停止', 'CANCELLED');
     const startedAt = Date.now();
-    const stream = opts.stream !== false;
-    const body = { model: opts.model, messages: apiMessages, stream, temperature: Number.isFinite(Number(opts.temperature)) ? Number(opts.temperature) : 0.7 };
-    if (Array.isArray(opts.tools) && opts.tools.length) body.tools = clone(opts.tools);
-    if (opts.tool_choice != null) body.tool_choice = opts.tool_choice;
-    if (opts.maxTokens != null && Number(opts.maxTokens) > 0) body.max_tokens = Number(opts.maxTokens);
-    // Some OpenAI-compatible providers expose a standard switch for their
-    // reasoning budget. Keep it opt-in so ordinary chat requests remain
-    // unchanged; translation passes `none` to request direct output.
-    if (opts.reasoning_effort != null) body.reasoning_effort = opts.reasoning_effort;
-    if (opts.enable_thinking != null) body.enable_thinking = opts.enable_thinking;
-    if (opts.thinking != null) body.thinking = clone(opts.thinking);
     try {
       const response = await fetch(requestUrl(opts.base), {
         method: 'POST',
@@ -408,11 +433,14 @@ function createAiClient(initialConfig = {}, injectedGateway = null) {
           raw: data
         });
         result.elapsedMs = Date.now() - startedAt;
+        result.httpStatus = response.status;
         if (typeof opts.onDelta === 'function' && result.text) opts.onDelta(result.text, result.reasoning || '');
         return result;
       }
       const result = await readStream(response.body, opts);
       result.elapsedMs = Date.now() - startedAt;
+      result.httpStatus = response.status;
+      result.responseFormat = 'assembled-stream';
       return result;
     } catch (error) {
       if (externalSignal?.aborted) throw externalSignal.reason || abortError('已停止', 'CANCELLED');

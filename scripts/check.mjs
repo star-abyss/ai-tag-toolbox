@@ -16,7 +16,7 @@ assert.equal(packageJson.version, '1.4.211', 'package version must be 1.4.211');
 assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.211/);
 assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.211/);
 
-for (const name of ['createAgentRuntime', 'createRequestManager', 'createStatusManager', 'createFixedSubagents', 'createPrimaryTools']) {
+for (const name of ['createAgentRuntime', 'createRequestManager', 'createStatusManager', 'createCallMonitor', 'createFixedSubagents', 'createPrimaryTools']) {
   assert.equal(typeof modules[name], 'function', `${name} export missing`);
 }
 

@@ -89,6 +89,7 @@ try {
     translation: translationProxyTarget,
     storage,
     promptDir: path.join(assetDir, '提示词素材'),
+    callMonitorPath: path.join(userDataDir, 'debug', 'ai-calls.json'),
     promptSource: prompts || undefined
   });
   // Translation only needs the generic AiService, so it can be assembled
@@ -276,6 +277,9 @@ contextBridge.exposeInMainWorld('AppModules', {
     ai: assistant.ai ? { listModels: assistant.listModels, getConfig: assistant.ai.getConfig } : null,
     visionAi: assistant.visionAi ? { listModels: assistant.listVisionModels, getConfig: assistant.visionAi.getConfig } : null,
     visionService: assistant.visionService ? { processOne: input => assistant.visionService.processOne(visionInputForRenderer(input)), available: assistant.visionService.available } : null,
+    listCallRecords: assistant.listCallRecords,
+    clearCallRecords: assistant.clearCallRecords,
+    getCallMonitorInfo: assistant.getCallMonitorInfo,
   } : null,
   runtime: runtime ? {
     runPrimary: runtime.runPrimary,
@@ -283,7 +287,9 @@ contextBridge.exposeInMainWorld('AppModules', {
     callTool: runtime.callTool,
     cancel: runtime.cancel,
     getStatus: runtime.getStatus,
-    listTools: runtime.listTools
+    listTools: runtime.listTools,
+    listCallRecords: runtime.listCallRecords,
+    clearCallRecords: runtime.clearCallRecords
   } : null,
   primaryTools: primaryTools ? {
     list: primaryTools.list,

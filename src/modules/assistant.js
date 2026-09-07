@@ -15,6 +15,7 @@ const { createSettings } = require('./settings');
 const { createAiClient, parseReply } = require('./ai-client');
 const { createPrimaryAgent, publicRequestConfig } = require('./primary-agent');
 const { errorShape, resultError } = require('./error-manager');
+const { createCallMonitor } = require('./call-monitor');
 
 const SESSION_FORMAT = 'ai-tag-sessions';
 const SESSION_VERSION = 1;
@@ -100,8 +101,9 @@ function createAssistant(options = {}) {
   function currentSession() { if (!sessionById()) newSession(); return sessionById(); }
   if (!state.sessions.length) newSession();
 
-  const ai = createAiClient(settings.primaryProfile(), options.primaryGateway || (options.ai?.complete || options.ai?.stream ? options.ai : null));
-  const visionAi = createAiClient(settings.visionProfile(), options.visionGateway);
+  const callMonitor = createCallMonitor({ filePath: options.callMonitorPath, getSecrets: () => [settings.primaryProfile().key, settings.visionProfile().key] });
+  const ai = createAiClient(settings.primaryProfile(), options.primaryGateway || (options.ai?.complete || options.ai?.stream ? options.ai : null), callMonitor);
+  const visionAi = createAiClient(settings.visionProfile(), options.visionGateway, callMonitor);
   function visionConfig() {
     const profile = settings.visionProfile();
     const imageCapable = VISION_MODEL_HINT.test(profile.model) || !TEXT_ONLY_MODEL_HINT.test(profile.model);
@@ -131,7 +133,7 @@ function createAssistant(options = {}) {
   const visionService = options.visionService || createVisionService({ images, visionTempStore, localVision: options.localVision || options.vision, visionAI: visionClient, parseMetadata: parsePngMetadata, getPrompt: key => prompts.getEffective?.(key) || prompts.get?.(key) || '' });
   const primary = createPrimaryAgent({ client: ai, prompts, getSettings: settings.snapshot, charactersEnabled: Boolean(options.characters) });
   const subagents = createFixedSubagents({ vision: visionService, translation: options.translation, ai, visionAI: visionClient, prompts, resolveImage, getSettings: settings.snapshot });
-  runtime = createAgentRuntime({ primaryClient: primary, subagents, tools: () => primaryTools, getSettings: settings.snapshot, getPrimaryPrompt: primary.getPrompt });
+  runtime = createAgentRuntime({ primaryClient: primary, subagents, tools: () => primaryTools, getSettings: settings.snapshot, getPrimaryPrompt: primary.getPrompt, monitor: callMonitor });
   primaryTools = createPrimaryTools({ tags, characters: options.characters, images, imageRepository, runtime, comfy, getSettings: settings.snapshot });
 
   function append(role, value, extra = {}, sessionId = state.currentId) {
@@ -280,6 +282,10 @@ function createAssistant(options = {}) {
     exportSessions: () => JSON.stringify(sessionBundle(), null, 2),
     importSessions(value, replace = false) { const incoming = incomingBundle(value); if (!incoming) return false; cancel(); const usedSessions = new Set(replace ? [] : state.sessions.map(row => row.id)); const usedMessages = new Set(replace ? [] : state.sessions.flatMap(row => row.messages.map(message => message.id))); const normalized = incoming.sessions.map(row => normalizeSession(row, usedSessions, usedMessages)); state.sessions = replace ? normalized : [...state.sessions, ...normalized]; if (replace || !sessionById()) state.currentId = state.sessions[0]?.id || ''; for (const session of normalized) imageRepository.reconcileSessionMessages(session.id); imageRepository.reconcileSessions(); if (!state.sessions.length) newSession(); else persist(); return clone(state.sessions); },
     listFavorites: () => clone(favorites), getFavorites: () => clone(favorites), setFavorites(value) { favorites = array(value).map(clone); write('rewrite_favorites', favorites); return clone(favorites); }, addFavorite(value) { const item = object(value) ? clone(value) : { name: text(value, '未命名收藏') }; item.id = text(item.id, id('favorite')); favorites.push(item); write('rewrite_favorites', favorites); return clone(item); }, removeFavorite(favoriteId) { const index = favorites.findIndex(row => row.id === favoriteId); if (index < 0) return false; favorites.splice(index, 1); write('rewrite_favorites', favorites); return true; },
+    listCallRecords: () => runtime?.listCallRecords?.() || [],
+    clearCallRecords: () => runtime?.clearCallRecords?.(),
+    getCallMonitorInfo: callMonitor.info,
+    flushCallRecords: callMonitor.flush,
     cancel, stop: cancel, destroy() { cancel(); destroyed = true; }
   };
   return Object.freeze(api);
