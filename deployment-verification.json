@@ -6,6 +6,7 @@
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
   "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.213-before220",
+  "oldDesktopSourceBackupMoved": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.192-source-backup-20260905-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
     "sourceCommitField": "build-info.json:sourceCommit",
@@ -25,9 +26,11 @@
     "command": "npm run check",
     "testsPassed": 110,
     "testsFailed": 0,
-    "slowUiSmokeRun": false,
-    "desktopSmoke": "Pending packaged Electron verification",
-    "screenshotVerification": false
+    "slowUiSmokeRun": true,
+    "desktopSmoke": "Packaged Electron V1.4.220 connected through CDP; local AI and ComfyUI fixtures completed 2 create candidates, 2 reference-image recreation candidates, prompt revision, comparison, source upload and cancellation",
+    "desktopSmokeCounts": { "apiCalls": 17, "submittedPrompts": 5, "sourceUploads": 2, "monitorRecords": 21 },
+    "viewports": ["1100x800", "1500x950"],
+    "screenshotVerification": true
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",
