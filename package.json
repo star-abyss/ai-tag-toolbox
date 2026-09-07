@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
-    "version":  "1.4.213",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.213 ComfyUI 配置工作区",
+    "version":  "1.4.220",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.220 自动迭代出图与候选评估",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",

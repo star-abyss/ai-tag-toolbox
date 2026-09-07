@@ -1,11 +1,11 @@
 {
-  "version": "1.4.213",
+  "version": "1.4.220",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.213",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.220",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.211-before213",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.213-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
     "sourceCommitField": "build-info.json:sourceCommit",
@@ -23,16 +23,17 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 80,
+    "testsPassed": 110,
     "testsFailed": 0,
-    "slowUiSmokeRun": true,
-    "desktopSmoke": "Packaged Electron V1.4.213 connected through CDP at 1100x800; local fixture reproduced invalid Tag output and verified toolbar, monitor, export and persistence",
-    "screenshotVerification": true
+    "slowUiSmokeRun": false,
+    "desktopSmoke": "Pending packaged Electron verification",
+    "screenshotVerification": false
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",
     "No role thumbnails, original images, or LoRA files were included.",
     "Character-specific terms stay out of ordinary tag search and are returned only through character data.",
-    "The existing ordinary-tag favorites format does not persist character selections."
+    "The existing ordinary-tag favorites format does not persist character selections.",
+    "Reference-image reproduction requires an explicitly configured source-image binding; otherwise the result is labeled text_approximation."
   ]
 }

@@ -107,6 +107,22 @@ test('record count and byte limits are enforced and truncation is explicit', () 
   assert.equal(monitor.list()[0].status, 'completed');
 });
 
+test('oversized diagnostics preserve the terminal error before bulky output', () => {
+  const monitor = createCallMonitor({ maxRecordBytes: 4096, maxBytes: 8192 });
+  monitor.begin({ requestId: 'terminal-error', kind: 'subagent:evaluateImages', input: { prompt: 'x'.repeat(12000) } });
+  monitor.finish('terminal-error', {
+    status: 'error',
+    output: { raw: 'y'.repeat(20000) },
+    error: { code: 'OUTPUT_INVALID', message: '最终评估 JSON 连续两次无效' },
+    usage: { total_tokens: 123 }
+  });
+  const row = monitor.list()[0];
+  assert.equal(row.status, 'error');
+  assert.equal(row.error.code, 'OUTPUT_INVALID');
+  assert.match(row.error.message, /连续两次无效/);
+  assert.equal(row.truncated, true);
+});
+
 test('HTTP request snapshots match the transmitted body and preserve assembled stream output', async () => {
   const http = require('node:http');
   const received = [];

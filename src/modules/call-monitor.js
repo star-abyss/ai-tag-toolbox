@@ -139,7 +139,15 @@ function createCallMonitor(options = {}) {
   }
   function finish(id, patch) {
     const row = records.get(id); if (!row || row.status !== 'running') return;
-    const value = safe(patch); Object.assign(row, value.value, { endedAt: Date.now() });
+    const source = patch && typeof patch === 'object' ? patch : {};
+    const ordered = {
+      status: source.status,
+      error: source.error,
+      usage: source.usage,
+      usageScope: source.usageScope,
+      ...Object.fromEntries(Object.entries(source).filter(([key]) => !['status', 'error', 'usage', 'usageScope'].includes(key)))
+    };
+    const value = safe(ordered); Object.assign(row, value.value, { endedAt: Date.now() });
     row.truncated ||= value.truncated;
     for (const exchange of row.exchanges) if (exchange.status === 'running') { exchange.status = row.status; exchange.endedAt = row.endedAt; exchange.error = row.error || null; }
     changed(row);
@@ -165,7 +173,7 @@ function createCallMonitor(options = {}) {
   function endExchange(handle, response, error) {
     const row = records.get(handle?.requestId); if (!row || row.status !== 'running') return;
     const exchange = row.exchanges.find(item => item.id === handle.id); if (!exchange || exchange.status !== 'running') return;
-    const captured = safe({ response, error: error || null, usage: response?.usage || null });
+    const captured = safe({ error: error || null, usage: response?.usage || null, response });
     Object.assign(exchange, captured.value, { endedAt: Date.now(), status: error || response?.ok === false ? 'error' : 'completed' });
     row.truncated ||= captured.truncated; changed(row);
     if (handle.standalone) finish(handle.requestId, { status: exchange.status, output: error ? null : response, error: error || null, usage: response?.usage || null });
