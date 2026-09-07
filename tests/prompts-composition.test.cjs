@@ -39,6 +39,7 @@ test('primary request composes only matched extensions; generateTags composes ar
   assert(genSystem.includes(prompts.get('generateTags')), '文生图主提示词缺失');
   assert(genSystem.includes(prompts.get('artistQuality')), '画师与品质词参考缺失');
   assert(genSystem.includes('系统输出协议'), '输出协议缺失');
+  assert.match(prompts.composeEvaluation(), /候选|评价|评估/);
 
   // 切换提示词组后，子代理与主 AI 使用新组的条目。
   const second = prompts.createSet({ name: '实验配置' });
@@ -46,6 +47,7 @@ test('primary request composes only matched extensions; generateTags composes ar
   prompts.set('primary', 'EXPERIMENT PRIMARY');
   prompts.set('generateTags', 'EXPERIMENT GEN');
   prompts.set('artistQuality', 'EXPERIMENT QUALITY');
+  prompts.set('candidateEvaluation', 'EXPERIMENT EVALUATION');
   await assistant.run({ text: '再画一张' });
   assert.match(systems.at(-1), /EXPERIMENT PRIMARY/);
   assert.doesNotMatch(systems.at(-1), /你是 AI 绘画 Tag 工具箱的主 AI。你负责理解用户要求/);
@@ -54,6 +56,7 @@ test('primary request composes only matched extensions; generateTags composes ar
   assert.equal(next.ok, true);
   assert(genSystem.includes('EXPERIMENT GEN'));
   assert(genSystem.includes('EXPERIMENT QUALITY'));
+  assert.equal(prompts.composeEvaluation(), 'EXPERIMENT EVALUATION');
 });
 
 console.log('prompts-composition: ok');

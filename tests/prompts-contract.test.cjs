@@ -6,9 +6,11 @@ const modules = require('../src/modules');
 const assetDir = path.resolve('assets/提示词素材');
 const fresh = () => modules.createPrompts({ dir: assetDir, storage: modules.createStorage({ prefix: 'prompt-contract-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) }) });
 
-test('main prompt sets: fixed 5-item structure, batch switch, per-item editing', () => {
+test('main prompt sets: fixed 6-item structure, batch switch, per-item editing', () => {
   const prompts = fresh();
-  assert.deepEqual(prompts.keys(), ['primary', 'generateTags', 'artistQuality', 'vision', 'translation']);
+  assert.deepEqual(prompts.keys(), ['primary', 'generateTags', 'artistQuality', 'vision', 'candidateEvaluation', 'translation']);
+  assert.match(prompts.get('candidateEvaluation'), /候选|评价|评估/);
+  assert.equal(prompts.composeEvaluation(), prompts.get('candidateEvaluation'));
   assert.equal(prompts.sets().length, 1);
   assert.equal(prompts.sets()[0].id, 'prompt-set-default');
   assert.equal(prompts.activeSetId(), 'prompt-set-default');
@@ -19,13 +21,13 @@ test('main prompt sets: fixed 5-item structure, batch switch, per-item editing',
   assert.equal(prompts.get('primary'), 'primary override');
   assert.equal(prompts.getEffective('primary'), 'primary override');
 
-  // 新建提示词组：自动创建 5 个空白条目，且不自动切换。
+  // 新建提示词组：自动创建 6 个空白条目，且不自动切换。
   const set = prompts.createSet({ name: '实验配置' });
   assert.equal(prompts.sets().length, 2);
   for (const key of prompts.keys()) assert.equal(set.items[key], '');
   assert.equal(prompts.activeSetId(), 'prompt-set-default');
 
-  // 批量切换：5 个条目整体切换。
+  // 批量切换：6 个条目整体切换。
   prompts.setActive(set.id);
   assert.equal(prompts.get('primary'), '');
   prompts.set('primary', 'experiment primary');
@@ -78,7 +80,7 @@ test('extension prompts: create/edit/delete, always and keyword matching, only i
   assert(generated.includes(prompts.get('artistQuality')));
 });
 
-test('bundle v2 round-trips all sets and extensions; single set import appends', () => {
+test('bundle v3 round-trips all sets and extensions; v2 migrates and single set import appends', () => {
   const prompts = fresh();
   prompts.set('primary', 'set 1 primary');
   const second = prompts.createSet({ name: '实验配置' });
@@ -87,7 +89,7 @@ test('bundle v2 round-trips all sets and extensions; single set import appends',
   prompts.createExtension({ name: '规则', text: '规则文本', activation: { mode: 'keywords', keywords: ['规则'] } });
   const bundle = prompts.exportBundle();
   assert.equal(bundle.format, 'ai-tag-prompts');
-  assert.equal(bundle.version, 2);
+  assert.equal(bundle.version, 3);
   assert.equal(bundle.sets.length, 2);
 
   const restored = fresh();
@@ -99,6 +101,16 @@ test('bundle v2 round-trips all sets and extensions; single set import appends',
   assert.equal(restored.sets().find(row => row.id === second.id).items.primary, '');
   assert.equal(restored.extensions().length, 1);
   assert.match(restored.composePrimary('规则来了'), /规则文本/);
+
+  const migratedV2 = fresh();
+  const v2 = {
+    format: 'ai-tag-prompts', version: 2, activeSetId: 'old', extensions: [],
+    sets: [{ id: 'old', name: '旧组', items: { primary: 'user primary', generateTags: '', artistQuality: '', vision: 'user vision', translation: '' } }]
+  };
+  migratedV2.importBundle(v2);
+  assert.equal(migratedV2.get('primary'), 'user primary');
+  assert.equal(migratedV2.get('vision'), 'user vision');
+  assert.match(migratedV2.get('candidateEvaluation'), /候选|评价|评估/);
 
   // 单组导入：追加为新提示词组。
   const before = restored.sets().length;
@@ -121,6 +133,7 @@ test('v1 bundle and legacy persisted state migrate to default set plus always ex
   assert.equal(fromV1.get('primary'), 'legacy primary');
   assert.equal(fromV1.get('generateTags'), 'legacy gen');
   assert.equal(fromV1.get('artistQuality'), fromV1.getDefault('artistQuality'));
+  assert.equal(fromV1.get('candidateEvaluation'), fromV1.getDefault('candidateEvaluation'));
   assert.equal(fromV1.extensions().length, 1);
   assert.equal(fromV1.extensions()[0].activation.mode, 'always');
 

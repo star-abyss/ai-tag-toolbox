@@ -604,7 +604,7 @@
           </div>
           <details id="mainPromptSetCard" open class="promptcard">
             <summary data-i18n-title="ui.promptExtra.toggleTitle">
-              <span>主提示词组</span> <span class="pcsub">固定 5 个条目，可整体切换</span>
+              <span>主提示词组</span> <span class="pcsub">固定 6 个条目，可整体切换</span>
             </summary>
             <div class="pcbody">
               <div class="wbrow">
@@ -621,8 +621,8 @@
                 <button class="abtn ghost danger btn btn-danger" id="promptSetReset">恢复本组默认</button>
               </div>
               <div class="hint" style="margin: 4px 0 10px">
-                主提示词组固定包含 5 个条目：主 AI 提示词、文生图提示词、画师与品质词参考提示词、识图提示词、翻译提示词。
-                不允许单独增加或删除条目，只能整组批量切换、批量导入导出；新建提示词组时自动创建 5 个空白条目，选中后生效。
+                主提示词组固定包含 6 个条目：主 AI 提示词、文生图提示词、画师与品质词参考提示词、识图提示词、候选图评估提示词、翻译提示词。
+                不允许单独增加或删除条目，只能整组批量切换、批量导入导出；新建提示词组时自动创建 6 个空白条目，选中后生效。
                 条目内容可单独修改，修改只影响当前提示词组。
               </div>
               <details class="pmod-lead" data-special="primary" open>
@@ -662,9 +662,19 @@
                 <div class="pmod-mods"></div>
                 <div class="qprefix"><textarea id="psVision" rows="6"></textarea></div>
               </details>
+              <details class="pmod-lead" data-special="candidateEvaluation" open>
+                <summary>
+                  <span>4. 候选图评估提示词</span>
+                  <span class="pcsub">用于候选单图评分、参考图差异分析与最终横向选择</span>
+                  <span style="flex: 1"></span>
+                  <button class="abtn ghost danger btn btn-danger" id="psCandidateEvaluationReset">恢复默认</button>
+                </summary>
+                <div class="pmod-mods"></div>
+                <div class="form"><textarea id="psCandidateEvaluation" rows="8"></textarea></div>
+              </details>
               <details class="pmod-lead" data-special="translation" open>
                 <summary>
-                  <span>4. 翻译提示词</span>
+                  <span>5. 翻译提示词</span>
                   <span class="pcsub">翻译方向、Tag 与专有名词保留、未知 Tag 处理、输出格式</span>
                   <span style="flex: 1"></span>
                   <button class="abtn ghost danger btn btn-danger" id="psTranslationReset">恢复默认</button>

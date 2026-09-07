@@ -1,14 +1,15 @@
 'use strict';
 
 /**
- * 提示词素材模块（V2：主提示词组 + 扩展提示词）。
+ * 提示词素材模块（V3：主提示词组 + 扩展提示词）。
  *
  * 主提示词组（Main Prompt Set）：
- *   - 固定包含 5 个条目：primary / generateTags / artistQuality / vision / translation；
+ *   - 固定包含 6 个条目：primary / generateTags / artistQuality / vision /
+ *     candidateEvaluation / translation；
  *   - 条目不允许单独增加或删除，只允许整组批量切换、批量导入导出；
  *   - 每个条目内容可以单独编辑，编辑只影响当前提示词组；
  *   - 允许多个提示词组，当前使用的提示词组是主 AI 与固定子代理的提示词来源；
- *   - 新建提示词组时自动创建 5 个空白条目。
+ *   - 新建提示词组时自动创建 6 个空白条目。
  *
  * 扩展提示词（Extension Prompt）：
  *   - 独立列表，允许新增、删除、编辑、导入、导出、单独启用/停用；
@@ -17,8 +18,8 @@
  *     AI 不参与判断）；匹配成功的扩展提示词才会进入主 AI 请求。
  *
  * 存储结构（storageKey 默认 rewrite_prompt_state）：
- *   { version: 2, sets: [{ id, name, items: { primary, generateTags,
- *     artistQuality, vision, translation } }], activeSetId, extensions: [
+ *   { version: 3, sets: [{ id, name, items: { primary, generateTags,
+ *     artistQuality, vision, candidateEvaluation, translation } }], activeSetId, extensions: [
  *     { id, name, text, enabled, activation: { mode, keywords } } ] }
  *
  * 兼容旧版：旧版状态 { overrides, enabled, custom } 会在首次读取时自动迁移为
@@ -28,12 +29,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const PROMPT_ITEM_KEYS = Object.freeze(['primary', 'generateTags', 'artistQuality', 'vision', 'translation']);
+const PROMPT_ITEM_KEYS = Object.freeze(['primary', 'generateTags', 'artistQuality', 'vision', 'candidateEvaluation', 'translation']);
 const PROMPT_FILES = Object.freeze({
   primary: '10-主AI固定提示词-PRIMARY_AGENT.txt',
   generateTags: '09-固定生成Tag子代理-GENERATE_TAGS_AGENT.txt',
   artistQuality: '11-画师与品质词参考提示词-ARTIST_QUALITY.txt',
   vision: '04-识图描述提示词-DEFAULT_VISION_PROMPT.txt',
+  candidateEvaluation: '12-候选图评估提示词-CANDIDATE_EVALUATION.txt',
   translation: '08-固定翻译子代理-TRANSLATION_AGENT.txt'
 });
 const PROMPT_META = Object.freeze({
@@ -41,6 +43,7 @@ const PROMPT_META = Object.freeze({
   generateTags: { label: '文生图提示词（主提示词）', kind: 'main' },
   artistQuality: { label: '文生图提示词的画师与品质词部分', kind: 'main' },
   vision: { label: '识图提示词', kind: 'main' },
+  candidateEvaluation: { label: '候选图评估提示词', kind: 'main' },
   translation: { label: '翻译提示词', kind: 'main' }
 });
 const PROMPT_ALIASES = Object.freeze({
@@ -57,11 +60,14 @@ const PROMPT_ALIASES = Object.freeze({
   quality: 'artistQuality',
   defaultVision: 'vision',
   image: 'vision',
-  visionPrompt: 'vision'
+  visionPrompt: 'vision',
+  candidateEvaluator: 'candidateEvaluation',
+  evaluation: 'candidateEvaluation',
+  evaluationPrompt: 'candidateEvaluation'
 });
 
 const BUNDLE_FORMAT = 'ai-tag-prompts';
-const BUNDLE_VERSION = 2;
+const BUNDLE_VERSION = 3;
 const SET_FORMAT = 'ai-tag-prompt-set';
 const SET_VERSION = 1;
 const EXT_FORMAT = 'ai-tag-prompt-extensions';
@@ -97,8 +103,8 @@ function createPrompts(options = {}) {
   const storageKey = String(options.storageKey || 'rewrite_prompt_state');
   const defaults = {};
   let loaded = false;
-  // 当前状态：V2 结构。
-  let state = { version: 2, sets: [], activeSetId: '', extensions: [] };
+  // 当前状态：V3 结构。
+  let state = { version: 3, sets: [], activeSetId: '', extensions: [] };
 
   function defaultDir() {
     return path.resolve(__dirname, '..', '..', 'assets', '提示词素材');
@@ -160,7 +166,7 @@ function createPrompts(options = {}) {
     for (const key of PROMPT_ITEM_KEYS) {
       if (!Object.prototype.hasOwnProperty.call(sourceItems, key)) {
         // 缺失的键用素材默认补齐；显式写成空字符串的条目保持空白。
-        items[key] = useDefaults ? (defaults[key] || '') : '';
+        items[key] = useDefaults || key === 'candidateEvaluation' ? (defaults[key] || '') : '';
       } else {
         items[key] = text(sourceItems[key]);
       }
@@ -170,14 +176,14 @@ function createPrompts(options = {}) {
 
   function freshState() {
     const set = defaultSet();
-    return { version: 2, sets: [set], activeSetId: set.id, extensions: [] };
+    return { version: 3, sets: [set], activeSetId: set.id, extensions: [] };
   }
-  function parseV2(saved) {
+  function parseCurrent(saved) {
     const sets = saved.sets.map(entry => normalizeSet(entry, true));
     let activeSetId = text(saved.activeSetId);
     if (!sets.some(set => set.id === activeSetId)) activeSetId = sets[0].id;
     const extensions = Array.isArray(saved.extensions) ? saved.extensions.map(normalizeExtension) : [];
-    return { version: 2, sets, activeSetId, extensions };
+    return { version: 3, sets, activeSetId, extensions };
   }
   function migrateLegacy(saved) {
     const set = defaultSet();
@@ -192,14 +198,14 @@ function createPrompts(options = {}) {
       normalized.activation = { mode: 'always', keywords: [] };
       return normalized;
     });
-    return { version: 2, sets: [set], activeSetId: set.id, extensions };
+    return { version: 3, sets: [set], activeSetId: set.id, extensions };
   }
   function readState() {
     if (!loaded) loadDefaults();
     let saved = null;
     try { saved = storage?.get?.(storageKey, null); } catch { saved = null; }
     if (!saved || typeof saved !== 'object') { state = freshState(); writeState(); return; }
-    if (Array.isArray(saved.sets) && saved.sets.length) { state = parseV2(saved); writeState(); return; }
+    if (Array.isArray(saved.sets) && saved.sets.length) { state = parseCurrent(saved); writeState(); return; }
     if (isObject(saved.overrides) || isObject(saved.custom) || isObject(saved.enabled)) { state = migrateLegacy(saved); writeState(); return; }
     state = freshState(); writeState();
   }
@@ -370,6 +376,9 @@ function createPrompts(options = {}) {
   function composeGenerate() {
     return [get('generateTags'), get('artistQuality')].filter(Boolean).join('\n\n');
   }
+  function composeEvaluation() {
+    return get('candidateEvaluation');
+  }
 
   function exportBundle() {
     return { format: BUNDLE_FORMAT, version: BUNDLE_VERSION, activeSetId: activeSetId(), sets: clone(state.sets), extensions: clone(state.extensions) };
@@ -394,9 +403,9 @@ function createPrompts(options = {}) {
     const source = typeof value === 'string' ? JSON.parse(value) : value;
     if (!source || typeof source !== 'object') throw new Error('提示词包无效');
     if (source.format === BUNDLE_FORMAT) {
-      if (source.version === BUNDLE_VERSION) {
+      if (source.version === BUNDLE_VERSION || source.version === 2) {
         if (!Array.isArray(source.sets) || !source.sets.length) throw new Error('提示词包中没有提示词组');
-        state = parseV2({ ...source, sets: normalizeSetList(source.sets) });
+        state = parseCurrent({ ...source, sets: normalizeSetList(source.sets) });
         writeState();
         return snapshot();
       }
@@ -414,7 +423,7 @@ function createPrompts(options = {}) {
           normalized.activation = { mode: 'always', keywords: [] };
           return normalized;
         });
-        state = { version: 2, sets: [set], activeSetId: set.id, extensions };
+        state = { version: 3, sets: [set], activeSetId: set.id, extensions };
         writeState();
         return snapshot();
       }
@@ -437,7 +446,7 @@ function createPrompts(options = {}) {
     if (!source || typeof source !== 'object') throw new Error('扩展提示词包无效');
     const list = source.format === EXT_FORMAT && source.version === EXT_VERSION && Array.isArray(source.extensions)
       ? source.extensions
-      : (source.format === BUNDLE_FORMAT && source.version === BUNDLE_VERSION && Array.isArray(source.extensions)) ? source.extensions : null;
+      : (source.format === BUNDLE_FORMAT && [2, BUNDLE_VERSION].includes(source.version) && Array.isArray(source.extensions)) ? source.extensions : null;
     if (!list) throw new Error('扩展提示词包格式无效');
     let count = 0;
     for (const entry of list) {
@@ -450,7 +459,7 @@ function createPrompts(options = {}) {
 
   function snapshot() {
     const result = {
-      version: 2,
+      version: 3,
       sets: clone(state.sets),
       activeSetId: activeSetId(),
       activeSet: activeSetInfo(),
@@ -504,6 +513,7 @@ function createPrompts(options = {}) {
     // 组合。
     composePrimary,
     composeGenerate,
+    composeEvaluation,
     // 包导入导出。
     exportBundle,
     exportSet,

@@ -60,8 +60,8 @@ function boot(options = {}) {
   const callRecords = options.callRecords ? options.callRecords.slice() : [];
   assistant.listCallRecords = () => callRecords.slice();
   assistant.clearCallRecords = () => { callRecords.length = 0; };
-  const promptKeys = ['primary', 'generateTags', 'artistQuality', 'vision', 'translation'];
-  const promptSet = { id: 'prompt-set-default', name: '默认提示词', items: { primary: 'prompt text', generateTags: 'prompt text', artistQuality: 'prompt text', vision: 'prompt text', translation: 'prompt text' } };
+  const promptKeys = ['primary', 'generateTags', 'artistQuality', 'vision', 'candidateEvaluation', 'translation'];
+  const promptSet = { id: 'prompt-set-default', name: '默认提示词', items: { primary: 'prompt text', generateTags: 'prompt text', artistQuality: 'prompt text', vision: 'prompt text', candidateEvaluation: 'evaluation prompt', translation: 'prompt text' } };
   const extension = { id: 'ext-1', name: '扩展 1', text: 'ext text', enabled: true, activation: { mode: 'always', keywords: [] } };
   const prompts = {
     get: () => 'prompt text', getEffective: () => 'prompt text', set: () => 'prompt text', getDefault: () => 'default',
@@ -73,9 +73,9 @@ function boot(options = {}) {
     createSet: () => ({ id: 'prompt-set-2', name: '提示词组 2', items: {} }), deleteSet: () => true, renameSet: () => ({ name: '提示词组 2' }), setActive: () => true, resetSet: () => ({}),
     extensions: () => [extension], createExtension: () => ({ id: 'ext-2', name: '扩展 2', text: '', enabled: true, activation: { mode: 'always', keywords: [] } }),
     updateExtension: () => ({}), deleteExtension: () => true, matchExtensions: () => [],
-    composePrimary: () => 'composed primary', composeGenerate: () => 'composed generate',
-    snapshot: () => ({ version: 2, sets: [promptSet], activeSetId: promptSet.id, activeSet: promptSet, items: {}, extensions: [extension], defaults: {}, metadata: {} }),
-    exportBundle: () => ({ format: 'ai-tag-prompts', version: 2, sets: [promptSet], extensions: [extension] }),
+    composePrimary: () => 'composed primary', composeGenerate: () => 'composed generate', composeEvaluation: () => 'evaluation prompt',
+    snapshot: () => ({ version: 3, sets: [promptSet], activeSetId: promptSet.id, activeSet: promptSet, items: {}, extensions: [extension], defaults: {}, metadata: {} }),
+    exportBundle: () => ({ format: 'ai-tag-prompts', version: 3, sets: [promptSet], extensions: [extension] }),
     importBundle: () => ({ sets: [promptSet], extensions: [extension] }),
     exportExtensions: () => ({ format: 'ai-tag-prompt-extensions', version: 1, extensions: [extension] }), importExtensions: () => ({ ok: true, count: 1 })
   };
@@ -98,6 +98,8 @@ test('full DOM startup renders extracted views and conversation click uses assis
   assert.ok(app.window.document.querySelector('#extensionPromptsCard'));
   assert.equal(app.window.document.querySelectorAll('#extList .ext-row').length, 1);
   assert.equal(app.window.document.querySelector('#promptSetSel')?.options?.length, 1);
+  assert.ok(app.window.document.querySelector('#psCandidateEvaluation'));
+  assert.equal(app.window.document.querySelector('#psCandidateEvaluation').value, 'prompt text');
   app.window.document.querySelector('#talkIn').value = '生成一张图';
   app.window.document.querySelector('#talkSendBtn').click();
   await new Promise(resolve => setTimeout(resolve, 0));

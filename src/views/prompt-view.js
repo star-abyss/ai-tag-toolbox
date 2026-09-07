@@ -1,14 +1,14 @@
 'use strict';
-/* Prompt editor: main prompt sets (fixed 5-item structure, batch switch) plus extension prompts (main-AI only). */
+/* Prompt editor: main prompt sets (fixed 6-item structure, batch switch) plus extension prompts (main-AI only). */
 (function installPromptView(root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.AppViews = root.AppViews || {};
   root.AppViews.prompt = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window, function createFactory() {
-  const ITEM_KEYS = ['primary', 'generateTags', 'artistQuality', 'vision', 'translation'];
-  const ITEM_IDS = { primary: 'psPrimary', generateTags: 'psGenerateTags', artistQuality: 'psArtistQuality', vision: 'psVision', translation: 'psTranslation' };
-  const ITEM_RESET_IDS = { primary: 'psPrimaryReset', generateTags: 'psGenerateTagsReset', artistQuality: 'psArtistQualityReset', vision: 'psVisionReset', translation: 'psTranslationReset' };
+  const ITEM_KEYS = ['primary', 'generateTags', 'artistQuality', 'vision', 'candidateEvaluation', 'translation'];
+  const ITEM_IDS = { primary: 'psPrimary', generateTags: 'psGenerateTags', artistQuality: 'psArtistQuality', vision: 'psVision', candidateEvaluation: 'psCandidateEvaluation', translation: 'psTranslation' };
+  const ITEM_RESET_IDS = { primary: 'psPrimaryReset', generateTags: 'psGenerateTagsReset', artistQuality: 'psArtistQualityReset', vision: 'psVisionReset', candidateEvaluation: 'psCandidateEvaluationReset', translation: 'psTranslationReset' };
   const text = (value, fallback = '') => value == null || value === '' ? fallback : String(value);
 
   function createPromptView({ document, prompts, notify, download, autoBind = true } = {}) {
@@ -42,7 +42,7 @@
         if (area) area.value = get(key);
       }
       const info = q('#promptSetInfo');
-      if (info) info.textContent = '当前提示词组：「' + activeName() + '」—— 切换提示词组时 5 个条目一起切换；单独修改条目内容会保存在当前提示词组中。';
+      if (info) info.textContent = '当前提示词组：「' + activeName() + '」—— 切换提示词组时 6 个条目一起切换；单独修改条目内容会保存在当前提示词组中。';
     }
     function iconForMode(mode) {
       return mode === 'keywords' ? '关键词' : '常驻';
@@ -201,7 +201,7 @@
         if (!name?.trim()) return;
         const created = safe(() => prompts?.createSet?.({ name: name.trim() }), null);
         render();
-        notify?.(`已创建提示词组「${created?.name || name.trim()}」（5 个空白条目，选中后才生效）`);
+        notify?.(`已创建提示词组「${created?.name || name.trim()}」（6 个空白条目，选中后才生效）`);
       });
       q('#promptSetRename')?.addEventListener('click', () => {
         const current = activeName();
@@ -214,20 +214,20 @@
       q('#promptSetDelete')?.addEventListener('click', () => {
         const current = activeId();
         if (setList().length <= 1) { notify?.('至少保留一个提示词组'); return; }
-        const answer = doc.defaultView?.confirm?.(`删除提示词组「${activeName()}」？其 5 个条目内容将一并删除，且不可恢复。`);
+        const answer = doc.defaultView?.confirm?.(`删除提示词组「${activeName()}」？其 6 个条目内容将一并删除，且不可恢复。`);
         if (answer !== true) return;
         const removed = safe(() => prompts?.deleteSet?.(current), false);
         render();
         if (removed === true) notify?.('提示词组已删除');
       });
       q('#promptSetReset')?.addEventListener('click', () => {
-        const answer = doc.defaultView?.confirm?.('将当前提示词组的 5 个条目恢复为素材默认内容？');
+        const answer = doc.defaultView?.confirm?.('将当前提示词组的 6 个条目恢复为素材默认内容？');
         if (answer !== true) return;
         const reset = safe(() => prompts?.resetSet?.(activeId()), null);
         render();
         if (reset) notify?.('当前提示词组已恢复为默认内容');
       });
-      // 主提示词组：5 个条目内容编辑（条目结构不允许增删）。
+      // 主提示词组：6 个条目内容编辑（条目结构不允许增删）。
       ITEM_KEYS.forEach(key => {
         const area = q('#' + ITEM_IDS[key]);
         area?.addEventListener('change', () => { safe(() => prompts?.set?.(key, area.value), null); });
