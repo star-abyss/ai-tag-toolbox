@@ -1357,8 +1357,8 @@
     async function importWorkflow(file) {
       if (!file) return;
       try {
-        const apply = (value) => {
-          const parsed = comfy?.importApiWorkflow?.(value);
+          const apply = (value) => {
+            const parsed = comfy?.importApiWorkflow?.(value);
           if (!parsed) {
             const raw = typeof value === "string" ? value : JSON.stringify(value, null, 2);
             $("#comfyWf").value = raw;
@@ -1372,8 +1372,11 @@
           if (parsed.height !== "" && $("#comfyH")) $("#comfyH").value = parsed.height;
           if (parsed.steps !== "" && $("#comfySteps")) $("#comfySteps").value = parsed.steps;
           if (parsed.cfg !== "" && $("#comfyCfg")) $("#comfyCfg").value = parsed.cfg;
-          views.comfy?.save?.();
-          return parsed;
+            views.comfy?.save?.();
+            const report = comfy?.analyze?.(value);
+            const profile = comfy?.profiles?.active?.();
+            if (report && profile && comfy?.profiles?.save) comfy.profiles.save({ ...profile, analysis: report, bindings: report.suggestedBindings || profile.bindings, workflow: parsed.text });
+            return parsed;
         };
         if (file.type === "application/json" || /\.json$/i.test(file.name || "")) {
           const parsed = apply(await readText(file));

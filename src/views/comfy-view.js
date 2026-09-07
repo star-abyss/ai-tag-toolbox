@@ -80,7 +80,13 @@
       if (q('#comfyScheduler')) q('#comfyScheduler').value = value.comfyScheduler || 'normal';
       const active = comfy?.profiles?.active?.();
       const profileLabel = q('#comfyProfileSelector');
-      if (profileLabel && active) { profileLabel.hidden = false; profileLabel.textContent = `当前工作流：${active.name}`; }
+      if (profileLabel && active) {
+        profileLabel.hidden = false;
+        let select = profileLabel.querySelector('select');
+        if (!select) { select = doc.createElement('select'); select.className = 'wbselect'; profileLabel.replaceChildren(select); select.addEventListener('change', () => { comfy?.profiles?.setActive?.(select.value); render(read()); }); }
+        select.replaceChildren();
+        for (const item of comfy?.profiles?.list?.() || [active]) { const option = doc.createElement('option'); option.value = item.id; option.textContent = item.name; option.selected = item.id === active.id; select.appendChild(option); }
+      }
       const analysis = q('#comfyAnalysisSummary');
       if (analysis && active?.analysis) { analysis.hidden = false; analysis.textContent = `兼容等级：${active.analysis.level || 'manual'} · 节点 ${active.analysis.nodeCount || 0}`; }
       const overrides = q('#comfyOverrides');
