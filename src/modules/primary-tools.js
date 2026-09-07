@@ -73,7 +73,11 @@ function createPrimaryTools(options = {}) {
   const repository = options.imageRepository || options.imagesRepository;
   const images = options.images;
   const comfy = options.comfy;
-  function currentComfy() { return getSettings()?.comfy || {}; }
+  function currentComfy() {
+    const settings = getSettings()?.comfy || {};
+    const profile = comfy?.profiles?.active?.();
+    return profile ? { ...settings, base: profile.base || settings.base, workflow: profile.workflow || settings.workflow } : settings;
+  }
   function guardSignal(context) { if (context.signal?.aborted) throw context.signal.reason || failure('CANCELLED', '请求已取消'); }
   function syncComfy(settings) { if (settings.base && typeof comfy?.setBase === 'function') comfy.setBase(settings.base); }
   async function subagent(name, args, context) {
@@ -88,7 +92,11 @@ function createPrimaryTools(options = {}) {
       const result = await comfy.result(promptId, { signal: context.signal }); guardSignal(context);
       if (result?.status === 'error') throw failure('COMFY_FAILED', text(result.error) || 'ComfyUI 出图失败');
       const known = new Set(rows.filter(item => item?.dataUrl || item?.bytes).map(item => [item.filename, item.subfolder || '', item.type || 'output'].join('|')));
-      for (const output of result?.outputs || []) for (const file of output.files || []) {
+      const configuredOutputs = comfy?.profiles?.active?.()?.bindings?.outputs;
+      const outputRows = Array.isArray(configuredOutputs) && configuredOutputs.length
+        ? (result?.outputs || []).filter(output => configuredOutputs.includes(String(output.nodeId)))
+        : (result?.outputs || []);
+      for (const output of outputRows) for (const file of output.files || []) {
         const key = [file.filename, file.subfolder || '', file.type || 'output'].join('|');
         if (known.has(key)) continue;
         known.add(key); rows.push(await comfy.fetchImage(file, context.signal)); guardSignal(context);
