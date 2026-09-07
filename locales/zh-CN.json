@@ -149,7 +149,9 @@
       "workflowPng": "🖼 上传 PNG（含工作流）",
       "workflowCopy": "📋 复制工作流",
       "workflowOpen": "🌐 打开 ComfyUI 页面",
-      "workflowSync": "🔄 同步工作流设置"
+      "workflowSync": "🔄 同步工作流设置",
+      "workflowClear": "清空工作流",
+      "comfyRestoreDefault": "恢复默认"
       ,"timeoutEnable": "启用 AI 自动超时停止",
       "timeoutSeconds": "自动停止时间",
       "timeoutHint": "默认不自动截断 AI 请求；AI 持续思考时会一直等待，直到 AI 返回、你点击“停止”或发生连接错误。启用自动超时后，最短为 300 秒。",

@@ -129,6 +129,15 @@ test('ComfyUI gets a dedicated AI tab and the conversation debug button opens it
   app.dom.window.close();
 });
 
+test('ComfyUI workflow action buttons have localized labels', () => {
+  const zh = JSON.parse(fs.readFileSync(path.join(root, 'locales', 'zh-CN.json'), 'utf8'));
+  const en = JSON.parse(fs.readFileSync(path.join(root, 'locales', 'en-US.json'), 'utf8'));
+  assert.match(zh.ui.settings.workflowClear, /清空/);
+  assert.match(zh.ui.settings.comfyRestoreDefault, /默认/);
+  assert.match(en.ui.settings.workflowClear, /Clear/i);
+  assert.match(en.ui.settings.comfyRestoreDefault, /default/i);
+});
+
 test('conversation image clear button confirms and clears only current conversation images', () => {
   let clearedSession = '';
   const app = boot({ conversationItems: [{ refId: 'r1', imageId: 'img-1', slotNo: 1, source: 'upload', sent: true }], clearConversationImages: sessionId => { clearedSession = sessionId; } });

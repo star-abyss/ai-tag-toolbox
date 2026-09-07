@@ -186,6 +186,8 @@
       "workflowCopy": "📋 Copy workflow",
       "workflowOpen": "🌐 Open ComfyUI",
       "workflowSync": "🔄 Sync workflow settings",
+      "workflowClear": "Clear workflow",
+      "comfyRestoreDefault": "Restore defaults",
       "timeoutEnable": "Enable automatic AI timeout",
       "timeoutSeconds": "Auto-stop after",
       "timeoutHint": "Automatic truncation is off by default; AI can keep thinking until it replies, you stop it, or the connection fails. When enabled, the minimum is 300 seconds.",
