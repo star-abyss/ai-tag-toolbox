@@ -85,13 +85,13 @@
 - Jobs produce `rounds`, `successfulRounds`, `awaiting_feedback` and `outcome`.
 - `generation.resume({ jobId, action:'continue', baseCandidateId, feedback })` resumes manual work.
 
-- [ ] **Step 1:** Add failing migration, multi-image round, automatic round-winner, manual pause and feedback-resume tests.
-- [ ] **Step 2:** Verify the current candidate-count strategy fails them.
-- [ ] **Step 3:** Implement settings migration and round normalization.
-- [ ] **Step 4:** Refactor rendering so one submission may register 1–8 candidates and only the round winner drives revision.
-- [ ] **Step 5:** Implement manual `awaiting_feedback` without automatic revision.
-- [ ] **Step 6:** Run focused tests and `npm run check`.
-- [ ] **Step 7:** Commit `V1.4.223：实现自动与手动批次生成状态机`.
+- [x] **Step 1:** Add failing migration, multi-image round, automatic round-winner, manual pause and feedback-resume tests.
+- [x] **Step 2:** Verify the current candidate-count strategy fails them.
+- [x] **Step 3:** Implement settings migration and round normalization.
+- [x] **Step 4:** Refactor rendering so one submission may register 1–8 candidates and only the round winner drives revision.
+- [x] **Step 5:** Implement manual `awaiting_feedback` without automatic revision.
+- [x] **Step 6:** Run focused tests and `npm run check`.
+- [x] **Step 7:** Commit `V1.4.223：实现自动与手动批次生成状态机`.
 
 ### Task 4: Preemptive User Final Selection
 

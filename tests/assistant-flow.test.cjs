@@ -82,11 +82,25 @@ async function testSessionFormatAndImport() {
   assert.equal(Array.isArray(imported), true);
 }
 
+async function testGenerationSettingsMigration() {
+  const migrated = modules.normaliseSettings({ comfy: { enabled: false, batchCount: 4 }, generation: { strategy: 'quick' } });
+  assert.equal(migrated.comfy.enabled, false);
+  assert.equal(migrated.generation.autoRun, true);
+  assert.equal(migrated.generation.imagesPerRound, 4);
+  assert.equal(migrated.generation.maxAutoRounds, 1);
+  const fresh = modules.normaliseSettings({});
+  assert.equal(fresh.comfy.enabled, true);
+  assert.equal(fresh.generation.autoRun, true);
+  assert.equal(fresh.generation.imagesPerRound, 1);
+  assert.equal(fresh.generation.maxAutoRounds, 3);
+}
+
 async function testHighLevelGenerationPersistsCandidatesAndSelection() {
   const storage = modules.createStorage({ prefix: `assistant-generation-${Date.now()}` });
   const images = modules.createImages({ storage });
   let primaryRound = 0;
   let renderCount = 0;
+  let reviewCount = 0;
   const comfy = {
     setBase: () => {},
     status: async () => ({ connected: true, workflowReady: true, render: true, error: '' }),
@@ -115,12 +129,15 @@ async function testHighLevelGenerationPersistsCandidatesAndSelection() {
       if (/operation="compare"/.test(system)) {
         const ids = [...userText.matchAll(/generated-\d+/g)].map(match => match[0]);
         const unique = [...new Set(ids)];
-        return { text: JSON.stringify({ operation: 'compare', recommendedCandidateId: unique.at(-1), ranking: unique.slice().reverse().map((candidateId, index) => ({ candidateId, score: 95 - index, reason: 'fixture' })), reason: '第二张更符合要求', confidence: 0.9 }) };
+        return { text: JSON.stringify({ operation: 'compare', recommendedCandidateId: unique[0], ranking: unique.map((candidateId, index) => ({ candidateId, score: 95 - index, reason: 'fixture' })), reason: '高分候选更符合要求', confidence: 0.9 }) };
       }
       if (/operation="review"/.test(system)) {
         const candidateId = userText.match(/generated-\d+/)?.[0];
-        return { text: JSON.stringify({ operation: 'review', evaluations: [{ candidateId, score: 92, verdict: 'accept', confidence: 0.9, dimensions: {}, hardErrors: [], issues: [], strengths: ['符合要求'], suggestedChanges: [], summary: '符合要求' }] }) };
+        reviewCount += 1;
+        const score = reviewCount === 1 ? 70 : 92;
+        return { text: JSON.stringify({ operation: 'review', evaluations: [{ candidateId, score, verdict: score >= 90 ? 'accept' : 'revise', confidence: 0.9, dimensions: {}, hardErrors: [], issues: [], strengths: [], suggestedChanges: score >= 90 ? [] : ['improve'], summary: score >= 90 ? '符合要求' : '继续优化' }] }) };
       }
+      if (/系统修订协议/.test(system)) return { text: '{"add":[],"remove":[],"preserve":[]}' };
       return { text: '{"positiveTags":["1girl","blue hair"]}' };
     } }
   });
@@ -145,6 +162,7 @@ async function testHighLevelGenerationPersistsCandidatesAndSelection() {
   await testConversationTranscriptAndImageScope();
   await testCancellationAndBusyGuard();
   await testSettingsCanonicalAndIndependentVision();
+  await testGenerationSettingsMigration();
   await testSessionFormatAndImport();
   await testHighLevelGenerationPersistsCandidatesAndSelection();
   console.log('assistant-flow: ok');

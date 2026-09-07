@@ -289,3 +289,11 @@ test('primary Vision tool returns a compact result without metadata', async () =
   assert.equal(result.data.workflow, undefined);
   assert(Buffer.byteLength(JSON.stringify(result.data)) < 1000);
 });
+
+test('generation resume schema accepts manual feedback and a base candidate', async () => {
+  const calls = [];
+  const tools = createPrimaryTools({ generation: { resume: async input => { calls.push(input); return { status: 'awaiting_feedback', jobId: input.jobId }; } } });
+  const result = await tools.call('generation.resume', { jobId: 'job-1', action: 'continue', baseCandidateId: 'candidate-2', feedback: '加强低视角' });
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.equal(calls[0].feedback, '加强低视角');
+});

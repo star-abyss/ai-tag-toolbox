@@ -42,6 +42,9 @@ function normaliseCandidate(value = {}, index = 0) {
   return {
     id,
     iteration,
+    roundId: text(source.roundId),
+    roundIndex: Math.max(1, Number(source.roundIndex) || 1),
+    indexInRound: Math.max(1, Number(source.indexInRound) || 1),
     imageId: text(source.imageId || artifact?.id),
     prompt: text(source.prompt, positiveTags.join(', ')),
     negative: text(source.negative, negativeTags.join(', ')),

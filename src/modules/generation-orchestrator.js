@@ -14,15 +14,15 @@ const { applyPromptPatch } = require('./prompt-patch');
 
 const JOB_STATES = Object.freeze([
   'preparing', 'compiling', 'rendering', 'evaluating', 'revising', 'selecting',
-  'needs_input', 'completed', 'failed', 'cancelled', 'interrupted'
+  'needs_input', 'awaiting_feedback', 'finishing', 'completed', 'failed', 'cancelled', 'interrupted'
 ]);
-const RUNNING_STATES = new Set(['preparing', 'compiling', 'rendering', 'evaluating', 'revising', 'selecting']);
+const RUNNING_STATES = new Set(['preparing', 'compiling', 'rendering', 'evaluating', 'revising', 'selecting', 'finishing']);
 const TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
 const GENERATION_STRATEGIES = Object.freeze(['quick', 'auto', 'fixed3']);
 const DEFAULT_GENERATION_POLICY = Object.freeze({
-  strategy: 'auto',
-  autoSelect: true,
-  maxSuccessfulRenders: 3,
+  autoRun: true,
+  imagesPerRound: 1,
+  maxAutoRounds: 3,
   maxRenderAttempts: 5,
   acceptScore: 90,
   minImprovement: 3
@@ -64,25 +64,23 @@ function unwrap(value) {
 }
 function policyFrom(value = {}, settings = {}) {
   const configured = object(settings?.generation) ? settings.generation : object(settings) ? settings : {};
-  const source = { ...DEFAULT_GENERATION_POLICY, ...configured, ...value };
-  const strategy = GENERATION_STRATEGIES.includes(source.strategy) ? source.strategy : DEFAULT_GENERATION_POLICY.strategy;
-  const maxSuccessfulRenders = Math.round(number(source.maxSuccessfulRenders, 3, 1, 3));
+  const overrides = Object.fromEntries(Object.entries(object(value) ? value : {}).filter(([, item]) => item !== undefined));
+  const source = { ...DEFAULT_GENERATION_POLICY, ...configured, ...overrides };
+  const strategy = GENERATION_STRATEGIES.includes(source.strategy) ? source.strategy : GENERATION_STRATEGIES.includes(source.legacyStrategy) ? source.legacyStrategy : '';
+  const autoRun = source.autoRun !== false;
+  const explicitMaxRounds = overrides.maxAutoRounds ?? configured.maxAutoRounds;
+  const maxAutoRounds = Math.round(number(explicitMaxRounds, strategy === 'quick' ? 1 : 3, 1, 3));
   return {
-    strategy,
+    autoRun,
     autoSelect: source.autoSelect !== false,
-    maxSuccessfulRenders,
-    maxRenderAttempts: Math.max(maxSuccessfulRenders, Math.round(number(source.maxRenderAttempts, 5, 1, 10))),
+    imagesPerRound: Math.round(number(source.imagesPerRound ?? settings?.comfy?.batchCount, 1, 1, 8)),
+    maxAutoRounds,
+    forceMaxRounds: source.forceMaxRounds === true || strategy === 'fixed3',
+    legacyStrategy: strategy,
+    maxRenderAttempts: Math.max(maxAutoRounds, Math.round(number(source.maxRenderAttempts, 5, 1, 10))),
     acceptScore: number(source.acceptScore, 90, 0, 100),
     minImprovement: number(source.minImprovement, 3, 0, 100)
   };
-}
-function candidateLimit(policy) {
-  return policy.strategy === 'quick' ? 1 : policy.maxSuccessfulRenders;
-}
-function minimumCandidates(policy) {
-  if (policy.strategy === 'quick') return 1;
-  if (policy.strategy === 'fixed3') return candidateLimit(policy);
-  return Math.min(2, candidateLimit(policy));
 }
 function promptSnapshot(value) {
   const source = object(value) ? value : {};
@@ -145,6 +143,16 @@ function createGenerationOrchestrator(options = {}) {
     const source = object(value) ? clone(value) : {};
     const status = JOB_STATES.includes(source.status) ? source.status : 'interrupted';
     const candidates = candidateSnapshot(source.candidates || []);
+    let rounds = Array.isArray(source.rounds) ? source.rounds.filter(object).map((round, index) => ({
+      roundId: text(round.roundId, `round-${index + 1}`),
+      roundIndex: Math.max(1, Number(round.roundIndex) || index + 1),
+      candidateIds: strings(round.candidateIds, 8),
+      recommendedCandidateId: text(round.recommendedCandidateId),
+      prompt: text(round.prompt),
+      negative: text(round.negative),
+      createdAt: Number(round.createdAt) || Date.now()
+    })) : [];
+    if (!rounds.length && candidates.length) rounds = candidates.map((candidate, index) => ({ roundId: candidate.roundId || `round-${index + 1}`, roundIndex: candidate.roundIndex || index + 1, candidateIds: [candidate.id], recommendedCandidateId: candidate.evaluation?.recommended ? candidate.id : '', prompt: candidate.prompt, negative: candidate.negative, createdAt: candidate.createdAt }));
     return {
       ...source,
       jobId: text(source.jobId, `job_${randomUUID()}`),
@@ -165,10 +173,12 @@ function createGenerationOrchestrator(options = {}) {
       negativeTags: strings(source.negativeTags),
       lockedTags: strings(source.lockedTags),
       candidates,
+      rounds,
       selectedCandidateId: text(source.selectedCandidateId),
       selectionReason: text(source.selectionReason),
       renderAttempts: Math.max(0, Number(source.renderAttempts) || 0),
       successfulRenders: candidates.length,
+      successfulRounds: Math.max(rounds.length, Number(source.successfulRounds) || 0),
       stopReason: text(source.stopReason),
       events: Array.isArray(source.events) ? clone(source.events).slice(-96) : [],
       errors: Array.isArray(source.errors) ? clone(source.errors).slice(-32) : [],
@@ -236,6 +246,8 @@ function createGenerationOrchestrator(options = {}) {
       imageIds: candidates.map(candidate => candidate.imageId).filter(Boolean),
       renderAttempts: job.renderAttempts,
       successfulRenders: job.successfulRenders,
+      successfulRounds: job.successfulRounds,
+      rounds: clone(job.rounds),
       stopReason: job.stopReason,
       comparison: job.comparison || null,
       error: job.error || null
@@ -402,23 +414,20 @@ function createGenerationOrchestrator(options = {}) {
       return unavailable;
     }
   }
-  function stoppingReason(job) {
-    const minimum = minimumCandidates(job.policy);
-    if (job.successfulRenders < minimum) return '';
-    if (job.policy.strategy === 'quick') return 'quick';
-    if (job.policy.strategy === 'fixed3') return job.successfulRenders >= candidateLimit(job.policy) ? 'max_successful_renders' : '';
-    const reviewedRows = job.candidates.filter(reviewed);
-    if (reviewedRows.some(candidate => hardErrorCount(candidate) === 0 && score(candidate) >= job.policy.acceptScore && candidate.evaluation.verdict === 'accept')) return 'accepted';
-    if (reviewedRows.length >= 2) {
-      const latest = reviewedRows.at(-1);
-      const previousBest = Math.max(...reviewedRows.slice(0, -1).map(score));
+  function stoppingReason(job, winner) {
+    if (!job.policy.autoRun) return '';
+    if (!job.policy.forceMaxRounds && winner && hardErrorCount(winner) === 0 && score(winner) >= job.policy.acceptScore && winner.evaluation?.verdict === 'accept') return 'accepted';
+    const winners = job.rounds.map(round => activeCandidate(job, round.recommendedCandidateId)).filter(reviewed);
+    if (!job.policy.forceMaxRounds && winners.length >= 2) {
+      const latest = winners.at(-1);
+      const previousBest = Math.max(...winners.slice(0, -1).map(score));
       if (score(latest) < previousBest + job.policy.minImprovement) return 'no_improvement';
     }
-    if (job.successfulRenders >= candidateLimit(job.policy)) return 'max_successful_renders';
+    if (job.successfulRounds >= job.policy.maxAutoRounds) return job.policy.legacyStrategy === 'quick' ? 'quick' : 'max_auto_rounds';
     return '';
   }
-  async function revise(job, evaluation, context) {
-    if (!evaluation || evaluation.status !== 'reviewed' || evaluation.verdict === 'accept') return false;
+  async function revise(job, evaluation, context, force = false) {
+    if (!evaluation || evaluation.status !== 'reviewed' || (!force && evaluation.verdict === 'accept')) return false;
     transition(job, 'revising');
     try {
       let patch = await callAgent(job, context, 'generateTags', {
@@ -458,20 +467,44 @@ function createGenerationOrchestrator(options = {}) {
       return false;
     }
   }
-  async function renderLoop(job, context) {
+  async function compareCandidates(job, candidates, context, stage) {
+    const ranked = programRanking(candidates);
+    if (!ranked.length) return { candidate: null, comparison: null, reason: '' };
+    if (ranked.length === 1) return { candidate: ranked[0], comparison: null, reason: '仅有一个成功候选' };
+    const finalists = ranked.slice(0, 3);
+    try {
+      const comparison = await callAgent(job, context, 'evaluateImages', {
+        operation: 'compare', mode: job.mode, brief: job.brief,
+        ...(job.sourceImageId ? { sourceImageId: job.sourceImageId } : {}),
+        candidateImageIds: finalists.map(candidate => candidate.imageId),
+        previousEvaluations: finalists.filter(reviewed).map(candidate => candidate.evaluation)
+      }, stage, false);
+      const proposed = activeCandidate(job, comparison?.recommendedCandidateId);
+      const cleanExists = ranked.some(candidate => reviewed(candidate) && hardErrorCount(candidate) === 0);
+      const legal = proposed && finalists.some(candidate => candidate.id === proposed.id) && !(cleanExists && hardErrorCount(proposed) > 0);
+      return { candidate: legal ? proposed : ranked[0], comparison: clone(comparison), reason: legal ? text(comparison.reason, '候选图横向比较结果') : '评估推荐不满足硬约束，已按硬约束和单图评分回退' };
+    } catch (error) {
+      if (context.signal.aborted || error?.code === 'CANCELLED') throw error;
+      return { candidate: ranked.some(reviewed) ? ranked[0] : null, comparison: { status: 'evaluation_unavailable', error: errorValue(error) }, reason: ranked.some(reviewed) ? '横向比较不可用，已按单图硬约束和评分排序' : '' };
+    }
+  }
+  async function renderRound(job, context) {
     if (!renderCandidate) throw failure('COMFY_UNAVAILABLE', 'ComfyUI 渲染器不可用');
-    const limit = candidateLimit(job.policy);
-    while (job.successfulRenders < limit && job.renderAttempts < job.policy.maxRenderAttempts) {
+    while (job.renderAttempts < job.policy.maxRenderAttempts) {
       guard(job, context);
       transition(job, 'rendering');
       job.renderAttempts += 1;
-      const iteration = job.successfulRenders + 1;
-      emit(job, context, 'candidate.rendering', { iteration, attempt: job.renderAttempts });
+      const roundIndex = job.successfulRounds + 1;
+      const roundId = `round-${roundIndex}`;
+      emit(job, context, 'candidate.rendering', { roundId, roundIndex, iteration: job.candidates.length + 1, attempt: job.renderAttempts, imagesPerRound: job.policy.imagesPerRound });
       let rendered;
       try {
         rendered = await renderCandidate({
           jobId: job.jobId,
-          iteration,
+          iteration: roundIndex,
+          roundId,
+          roundIndex,
+          batchCount: job.policy.imagesPerRound,
           mode: job.mode,
           sourceImageId: job.sourceImageId,
           positiveTags: job.positiveTags.slice(),
@@ -487,21 +520,25 @@ function createGenerationOrchestrator(options = {}) {
         emit(job, context, 'candidate.failed', { attempt: job.renderAttempts, error: value });
         continue;
       }
-      const artifacts = normalizeArtifactRows(rendered);
+      const artifacts = normalizeArtifactRows(rendered).slice(0, job.policy.imagesPerRound);
       if (!artifacts.length) {
         const value = errorValue(failure('OUTPUT_INVALID', 'ComfyUI 未返回图片'));
         job.errors.push({ stage: 'render', attempt: job.renderAttempts, ...value, at: Date.now() });
         emit(job, context, 'candidate.failed', { attempt: job.renderAttempts, error: value });
         continue;
       }
-      let latestEvaluation = null;
-      for (const artifact of artifacts) {
-        if (job.successfulRenders >= limit) break;
+      const candidateIds = [];
+      job.successfulRounds += 1;
+      for (const [indexInRound, artifact] of artifacts.entries()) {
         job.successfulRenders += 1;
         const candidateId = `candidate-${job.successfulRenders}`;
+        candidateIds.push(candidateId);
         job.candidates = addCandidate(job.candidates, {
           id: candidateId,
           iteration: job.successfulRenders,
+          roundId,
+          roundIndex,
+          indexInRound: indexInRound + 1,
           imageId: artifact.imageId,
           artifact,
           positiveTags: job.positiveTags,
@@ -513,56 +550,53 @@ function createGenerationOrchestrator(options = {}) {
           workflowRevision: text(rendered?.workflowRevision, job.workflowRevision),
           recreationMode: text(rendered?.recreationMode, job.recreationMode)
         });
-        emit(job, context, 'candidate.ready', { candidateId, imageId: artifact.imageId, iteration: job.successfulRenders });
-        latestEvaluation = await evaluateOne(job, activeCandidate(job, candidateId), context);
+        emit(job, context, 'candidate.ready', { candidateId, imageId: artifact.imageId, iteration: job.successfulRenders, roundId, roundIndex, indexInRound: indexInRound + 1 });
+        await evaluateOne(job, activeCandidate(job, candidateId), context);
       }
-      job.stopReason = stoppingReason(job);
+      const roundCandidates = candidateIds.map(id => activeCandidate(job, id)).filter(Boolean);
+      const recommendation = await compareCandidates(job, roundCandidates, context, 'round_compare');
+      if (recommendation.candidate) {
+        job.candidates = job.candidates.map(candidate => ({ ...candidate, roundRecommended: candidate.id === recommendation.candidate.id }));
+      }
+      const round = { roundId, roundIndex, candidateIds, recommendedCandidateId: recommendation.candidate?.id || '', prompt: job.positiveTags.join(', '), negative: job.negativeTags.join(', '), comparison: recommendation.comparison, createdAt: Date.now() };
+      job.rounds.push(round);
+      emit(job, context, 'round.completed', { roundId, roundIndex, candidateCount: candidateIds.length, recommendedCandidateId: round.recommendedCandidateId });
+      persist(job);
+      return { round, winner: recommendation.candidate };
+    }
+    return null;
+  }
+  async function renderLoop(job, context) {
+    const roundsThisRun = job.policy.autoRun ? Math.max(0, job.policy.maxAutoRounds - job.successfulRounds) : 1;
+    for (let index = 0; index < roundsThisRun && job.renderAttempts < job.policy.maxRenderAttempts; index += 1) {
+      const rendered = await renderRound(job, context);
+      if (!rendered) break;
+      if (!job.policy.autoRun) {
+        job.status = 'awaiting_feedback';
+        job.stopReason = 'awaiting_feedback';
+        emit(job, context, 'generation.awaiting_feedback', { roundId: rendered.round.roundId, recommendedCandidateId: rendered.round.recommendedCandidateId });
+        return;
+      }
+      job.stopReason = stoppingReason(job, rendered.winner);
       persist(job);
       if (job.stopReason) break;
-      await revise(job, latestEvaluation, context);
+      await revise(job, rendered.winner?.evaluation, context);
     }
-    if (!job.stopReason) {
-      if (job.successfulRenders >= limit) job.stopReason = job.policy.strategy === 'quick' ? 'quick' : 'max_successful_renders';
-      else if (job.renderAttempts >= job.policy.maxRenderAttempts) job.stopReason = 'render_attempts_exhausted';
-    }
+    if (!job.stopReason) job.stopReason = job.renderAttempts >= job.policy.maxRenderAttempts ? 'render_attempts_exhausted' : 'max_auto_rounds';
     persist(job);
   }
   async function chooseRecommendation(job, context) {
     transition(job, 'selecting');
-    const ranked = programRanking(job.candidates);
-    let recommended = '';
-    let reason = '';
-    if (job.candidates.length === 1) {
-      recommended = job.candidates[0].id;
-      reason = '仅有一个成功候选';
-    } else if (job.candidates.length >= 2) {
-      try {
-        const comparison = await callAgent(job, context, 'evaluateImages', {
-          operation: 'compare', mode: job.mode, brief: job.brief,
-          ...(job.sourceImageId ? { sourceImageId: job.sourceImageId } : {}),
-          candidateImageIds: job.candidates.map(candidate => candidate.imageId),
-          previousEvaluations: job.candidates.filter(reviewed).map(candidate => candidate.evaluation)
-        }, 'candidate_compare', false);
-        job.comparison = clone(comparison);
-        const proposed = activeCandidate(job, comparison?.recommendedCandidateId);
-        const cleanExists = ranked.some(candidate => reviewed(candidate) && hardErrorCount(candidate) === 0);
-        const legal = proposed && !(cleanExists && hardErrorCount(proposed) > 0);
-        recommended = legal ? proposed.id : ranked[0]?.id || '';
-        reason = legal ? text(comparison.reason, '候选图横向比较结果') : '评估推荐不满足硬约束，已按硬约束和单图评分回退';
-      } catch (error) {
-        if (context.signal.aborted || error?.code === 'CANCELLED') throw error;
-        job.comparison = { status: 'evaluation_unavailable', error: errorValue(error) };
-        if (ranked.some(reviewed)) {
-          recommended = ranked[0]?.id || '';
-          reason = '横向比较不可用，已按单图硬约束和评分排序';
-        }
-      }
-    }
+    const finalists = job.rounds.map(round => activeCandidate(job, round.recommendedCandidateId)).filter(Boolean);
+    const recommendation = await compareCandidates(job, finalists.length ? finalists : job.candidates, context, 'candidate_compare');
+    const recommended = recommendation.candidate?.id || '';
+    const reason = recommendation.reason;
+    job.comparison = recommendation.comparison;
     if (recommended) {
       job.candidates = markRecommended(job.candidates, recommended);
       job.selectionReason = reason;
       emit(job, context, 'candidate.recommended', { candidateId: recommended, imageId: activeCandidate(job, recommended)?.imageId, reason });
-      if (job.policy.autoSelect) {
+      if (job.policy.autoSelect !== false) {
         job.candidates = selectCandidateRows(job.candidates, recommended, 'ai');
         job.selectedCandidateId = recommended;
       }
@@ -574,15 +608,26 @@ function createGenerationOrchestrator(options = {}) {
     job.needsInput = null;
     job.error = null;
     try {
-      emit(job, context, 'generation.started', { mode: job.mode, strategy: job.policy.strategy });
+      emit(job, context, 'generation.started', { mode: job.mode, autoRun: job.policy.autoRun, imagesPerRound: job.policy.imagesPerRound, maxAutoRounds: job.policy.maxAutoRounds });
       const prepared = await prepare(job, context);
       if (prepared !== true) return prepared;
       await compile(job, context);
       const ready = await checkPreflight(job, context);
       if (ready !== true) return ready;
+      if (job.pendingFeedback) {
+        const base = activeCandidate(job, job.pendingFeedback.baseCandidateId);
+        if (!base) throw failure('CANDIDATE_NOT_FOUND', '没有找到要继续优化的候选图');
+        job.positiveTags = base.positiveTags.slice();
+        job.negativeTags = base.negativeTags.slice();
+        await revise(job, { ...(base.evaluation || {}), status: 'reviewed', candidateId: base.imageId, userFeedback: job.pendingFeedback.feedback }, context, true);
+        job.feedbackHistory = [...(job.feedbackHistory || []), { baseCandidateId: base.id, feedback: job.pendingFeedback.feedback, at: Date.now() }].slice(-32);
+        job.pendingFeedback = null;
+        persist(job);
+      }
       await renderLoop(job, context);
       guard(job, context);
       if (!job.candidates.length) throw failure('NO_CANDIDATE', '在允许的尝试次数内没有生成可用图片');
+      if (job.status === 'awaiting_feedback') return result(job);
       await chooseRecommendation(job, context);
       transition(job, 'completed');
       emit(job, context, 'generation.completed', { candidateCount: job.candidates.length, selectedCandidateId: job.selectedCandidateId, stopReason: job.stopReason });
@@ -610,7 +655,7 @@ function createGenerationOrchestrator(options = {}) {
     if (!originalRequirements) throw failure('INVALID_INPUT', '生成任务缺少 originalRequirements');
     let mode = ['create', 'recreate'].includes(input.mode) ? input.mode : 'auto';
     if (mode === 'auto') mode = input.sourceImageId || Number.isInteger(input.sourceSlot) ? 'recreate' : 'create';
-    const policy = policyFrom({ strategy: input.strategy, autoSelect: input.autoSelect }, getSettings());
+    const policy = policyFrom({ strategy: input.strategy, autoSelect: input.autoSelect, autoRun: input.autoRun, imagesPerRound: input.imagesPerRound, maxAutoRounds: input.maxAutoRounds }, getSettings());
     const now = Date.now();
     const job = normalizeJob({
       jobId: `job_${randomUUID()}`,
@@ -640,6 +685,13 @@ function createGenerationOrchestrator(options = {}) {
     if (!job) throw failure('JOB_NOT_FOUND', '没有找到生成任务');
     if (TERMINAL_STATES.has(job.status)) return result(job);
     if (active.has(job.jobId)) throw failure('JOB_BUSY', '生成任务仍在执行中');
+    if (job.status === 'awaiting_feedback') {
+      if (input.action !== 'continue') throw failure('INVALID_INPUT', '手动任务需要明确的 continue 操作');
+      const feedback = text(input.feedback);
+      const baseCandidateId = text(input.baseCandidateId);
+      if (!feedback || !baseCandidateId) throw failure('INVALID_INPUT', '继续优化需要基础候选和用户反馈');
+      job.pendingFeedback = { baseCandidateId, feedback };
+    }
     if (input.sourceImageId !== undefined) job.sourceImageId = text(input.sourceImageId);
     if (input.characterIds !== undefined) {
       job.characterIds = strings(input.characterIds, 8);
@@ -647,7 +699,7 @@ function createGenerationOrchestrator(options = {}) {
       job.characterReferences = [];
     }
     if (input.workflowProfileId !== undefined) job.workflowProfileId = text(input.workflowProfileId);
-    job.policy = policyFrom({ strategy: input.strategy ?? job.policy.strategy, autoSelect: input.autoSelect ?? job.policy.autoSelect }, { generation: job.policy });
+    job.policy = policyFrom({ strategy: input.strategy ?? job.policy.legacyStrategy, autoSelect: input.autoSelect ?? job.policy.autoSelect, autoRun: input.autoRun ?? job.policy.autoRun, imagesPerRound: input.imagesPerRound ?? job.policy.imagesPerRound, maxAutoRounds: input.maxAutoRounds ?? job.policy.maxAutoRounds }, { generation: job.policy });
     job.sessionId = text(context.sessionId, job.sessionId);
     job.status = 'preparing';
     persist(job);

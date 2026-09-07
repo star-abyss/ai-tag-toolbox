@@ -35,7 +35,7 @@ function harness(options = {}) {
       }] });
     }
     if (name === 'evaluateImages' && input.operation === 'compare') {
-      const selected = options.compareCandidateId || input.candidateImageIds.at(-1);
+      const selected = options.compareCandidateId || input.candidateImageIds[0];
       return ok({ operation: 'compare', recommendedCandidateId: selected, ranking: input.candidateImageIds.slice().reverse().map((candidateId, index) => ({ candidateId, rank: index + 1, score: 90 - index, reason: `排序 ${index + 1}` })), reason: '最后一张最符合要求', confidence: 0.85 });
     }
     throw error('SUBAGENT_UNAVAILABLE', name);
@@ -97,14 +97,15 @@ test('failed renders consume attempts but not the successful-image budget', asyn
   assert(app.events.some(event => event.type === 'candidate.failed' && event.attempt === 1));
 });
 
-test('fixed3 ignores an early accept and never stores a fourth image from a batch', async () => {
-  const app = harness({ renderPlan: [['img-1', 'img-2', 'img-3', 'img-4']], reviewScores: [99, 98, 97] });
+test('legacy fixed3 maps to three successful rounds and caps each returned batch', async () => {
+  const app = harness({ settings: { generation: { strategy: 'fixed3', imagesPerRound: 2, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3 } }, renderPlan: [['img-1', 'img-2', 'ignored-1'], ['img-3', 'img-4', 'ignored-2'], ['img-5', 'img-6', 'ignored-3']], reviewScores: [99, 98, 97, 96, 95, 94] });
   const result = await app.orchestrator.execute({ requirements: 'three variations', mode: 'create', strategy: 'fixed3' }, app.context);
   assert.equal(result.status, 'completed');
-  assert.equal(result.successfulRenders, 3);
-  assert.deepEqual(result.imageIds, ['img-1', 'img-2', 'img-3']);
-  assert.equal(result.candidates.some(candidate => candidate.imageId === 'img-4'), false);
-  assert.equal(result.stopReason, 'max_successful_renders');
+  assert.equal(result.successfulRounds, 3);
+  assert.equal(result.successfulRenders, 6);
+  assert.deepEqual(result.imageIds, ['img-1', 'img-2', 'img-3', 'img-4', 'img-5', 'img-6']);
+  assert.equal(result.candidates.some(candidate => candidate.imageId.startsWith('ignored')), false);
+  assert.equal(result.stopReason, 'max_auto_rounds');
 });
 
 test('recreate without a source pauses and resume inspects the supplied source', async () => {
@@ -221,4 +222,34 @@ test('invalid revision patch is repaired once before the next render', async () 
   assert(!app.renders[1].positiveTags.includes('from above'));
   const repair = calls.filter(call => call.name === 'generateTags' && call.input.operation === 'revise')[1];
   assert.match(JSON.stringify(repair.input.evaluation), /patchValidation/);
+});
+
+test('automatic multi-image rounds revise from the round winner only', async () => {
+  const app = harness({ settings: { generation: { autoRun: true, imagesPerRound: 2, maxAutoRounds: 2, maxRenderAttempts: 4, acceptScore: 90, minImprovement: 3 } }, renderPlan: [['img-1', 'img-2'], ['img-3', 'img-4']], reviewScores: [60, 78, 82, 94] });
+  const result = await app.orchestrator.execute({ originalRequirements: 'two-image rounds', mode: 'create' }, app.context);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.successfulRounds, 2);
+  assert.equal(result.candidates.length, 4);
+  assert.equal(result.rounds.length, 2);
+  assert.deepEqual(result.rounds.map(round => round.candidateIds.length), [2, 2]);
+  assert.equal(result.rounds[0].recommendedCandidateId, 'candidate-2');
+  const revision = app.subagentCalls.find(call => call.name === 'generateTags' && call.input.operation === 'revise');
+  assert.equal(revision.input.evaluation.candidateId, 'img-2');
+  assert.equal(result.selectedCandidateId, 'candidate-4');
+});
+
+test('manual mode pauses after one round and resumes only with explicit feedback', async () => {
+  const app = harness({ settings: { generation: { autoRun: false, imagesPerRound: 2, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3 } }, renderPlan: [['img-1', 'img-2'], ['img-3', 'img-4']], reviewScores: [65, 75, 85, 88] });
+  const paused = await app.orchestrator.execute({ originalRequirements: 'manual portrait', mode: 'create' }, app.context);
+  assert.equal(paused.status, 'awaiting_feedback');
+  assert.equal(paused.successfulRounds, 1);
+  assert.equal(paused.candidates.length, 2);
+  assert.equal(app.subagentCalls.filter(call => call.name === 'generateTags' && call.input.operation === 'revise').length, 0);
+  const continued = await app.orchestrator.resume({ jobId: paused.jobId, action: 'continue', baseCandidateId: 'candidate-2', feedback: '保留人物，改成更强的低视角' }, app.context);
+  assert.equal(continued.status, 'awaiting_feedback');
+  assert.equal(continued.successfulRounds, 2);
+  assert.equal(continued.candidates.length, 4);
+  const revision = app.subagentCalls.find(call => call.name === 'generateTags' && call.input.operation === 'revise');
+  assert.equal(revision.input.evaluation.userFeedback, '保留人物，改成更强的低视角');
+  assert.equal(revision.input.evaluation.candidateId, 'img-2');
 });

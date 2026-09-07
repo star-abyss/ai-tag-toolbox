@@ -148,6 +148,7 @@ function createAssistant(options = {}) {
     renderCandidate: (input, context) => internalTool('comfy.render', {
       positiveTags: input.positiveTags,
       negativeTags: input.negativeTags,
+      batchCount: input.batchCount,
       ...(input.sourceImageId ? { sourceImageId: input.sourceImageId } : {})
     }, context),
     preflight: async (input, context) => {

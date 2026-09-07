@@ -66,7 +66,7 @@ test('assistant create/recreate workflows iterate, compare, upload source and pr
     }
     if (/operation="compare"/.test(system)) {
       const ids = [...new Set([...content.matchAll(/generated-\d+/g)].map(match => match[0]))];
-      return { text: JSON.stringify({ operation: 'compare', recommendedCandidateId: ids.at(-1), ranking: ids.slice().reverse().map((candidateId, index) => ({ candidateId, score: 95 - index, reason: 'fixture ranking' })), reason: '后一张更符合要求', confidence: 0.9 }) };
+      return { text: JSON.stringify({ operation: 'compare', recommendedCandidateId: ids[0], ranking: ids.map((candidateId, index) => ({ candidateId, score: 95 - index, reason: 'fixture ranking' })), reason: '高分候选更符合要求', confidence: 0.9 }) };
     }
     if (/系统修订协议/.test(system)) return { text: '{"add":["from side"],"remove":[],"preserve":["blue hair"]}' };
     if (/系统输出协议/.test(system)) return { text: '{"positiveTags":["1girl","blue hair"],"negativeTags":["lowres"]}' };
@@ -121,4 +121,3 @@ test('assistant create/recreate workflows iterate, compare, upload source and pr
   assert.equal(cancelledJob.status, 'cancelled');
   assistant.destroy();
 });
-

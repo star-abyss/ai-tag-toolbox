@@ -5,9 +5,9 @@ const GROUPS = Object.freeze(['primaryApi', 'visionApi', 'comfy', 'limits', 'gen
 const DEFAULT_SETTINGS = Object.freeze({
   primaryApi: { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', temperature: 0.7, timeoutMs: 120000, maxTokens: null },
   visionApi: { inheritPrimary: true, base: '', model: '', key: '', temperature: 0.2, timeoutMs: 120000, maxTokens: null },
-  comfy: { enabled: false, base: 'http://127.0.0.1:8188', workflow: '', profiles: { version: 2, activeProfileId: 'profile-default', items: [] }, positiveTags: '', negativeTags: '', width: 768, height: 1024, steps: 25, cfg: 7, seed: null, sampler: '', scheduler: '', batchCount: 1 },
+  comfy: { enabled: true, base: 'http://127.0.0.1:8188', workflow: '', profiles: { version: 2, activeProfileId: 'profile-default', items: [] }, positiveTags: '', negativeTags: '', width: 768, height: 1024, steps: 25, cfg: 7, seed: null, sampler: '', scheduler: '', batchCount: 1 },
   limits: { maxComfyCalls: 3, maxToolRounds: 8, maxToolCalls: 32, primaryTimeoutMs: 120000 },
-  generation: { strategy: 'auto', autoSelect: true, maxSuccessfulRenders: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3, jobTimeoutMs: 1200000 },
+  generation: { autoRun: true, imagesPerRound: 1, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3, followSourceAspectRatio: true, jobTimeoutMs: 1200000 },
   generateNegativeTags: false
 });
 const FORM_FIELDS = Object.freeze({
@@ -19,7 +19,8 @@ const FORM_FIELDS = Object.freeze({
   comfyW: ['comfy', 'width'], comfyH: ['comfy', 'height'], comfySteps: ['comfy', 'steps'], comfyCfg: ['comfy', 'cfg'], comfySeed: ['comfy', 'seed'],
   comfySampler: ['comfy', 'sampler'], comfyScheduler: ['comfy', 'scheduler'], batchCount: ['comfy', 'batchCount'],
   maxComfyCalls: ['limits', 'maxComfyCalls'], maxToolRounds: ['limits', 'maxToolRounds'], maxToolCalls: ['limits', 'maxToolCalls'], primaryTimeoutMs: ['limits', 'primaryTimeoutMs'],
-  generationStrategy: ['generation', 'strategy'], generationAutoSelect: ['generation', 'autoSelect']
+  generationStrategy: ['generation', 'strategy'], generationAutoSelect: ['generation', 'autoSelect'],
+  generationAutoRun: ['generation', 'autoRun'], imagesPerRound: ['generation', 'imagesPerRound'], maxAutoRounds: ['generation', 'maxAutoRounds']
 });
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -47,13 +48,16 @@ function normaliseSettings(value = {}) {
   const comfy = object(source.comfy) ? source.comfy : {};
   const limits = object(source.limits) ? source.limits : {};
   const generation = object(source.generation) ? source.generation : {};
+  const legacyStrategy = ['quick', 'auto', 'fixed3'].includes(generation.strategy) ? generation.strategy : '';
+  const imagesPerRound = number(generation.imagesPerRound, number(comfy.batchCount, DEFAULT_SETTINGS.generation.imagesPerRound, 1, 8, true), 1, 8, true);
+  const maxAutoRounds = number(generation.maxAutoRounds, legacyStrategy === 'quick' ? 1 : DEFAULT_SETTINGS.generation.maxAutoRounds, 1, 3, true);
   const defaults = DEFAULT_SETTINGS.comfy;
   const tagText = item => Array.isArray(item) ? item.map(value2 => string(value2)).filter(Boolean).join(', ') : string(item);
   return {
     primaryApi: apiProfile(source.primaryApi, DEFAULT_SETTINGS.primaryApi),
     visionApi: { inheritPrimary: source.visionApi?.inheritPrimary !== false, ...apiProfile(source.visionApi, DEFAULT_SETTINGS.visionApi) },
     comfy: {
-      enabled: comfy.enabled === true,
+      enabled: own(comfy, 'enabled') ? comfy.enabled === true : defaults.enabled,
       base: own(comfy, 'base') ? string(comfy.base) : defaults.base,
       workflow: object(comfy.workflow) ? clone(comfy.workflow) : string(comfy.workflow),
       profiles: object(comfy.profiles) && comfy.profiles.version === 1 ? clone(comfy.profiles) : clone(defaults.profiles),
@@ -61,7 +65,7 @@ function normaliseSettings(value = {}) {
       width: number(comfy.width, defaults.width, 64, 16384, true), height: number(comfy.height, defaults.height, 64, 16384, true),
       steps: number(comfy.steps, defaults.steps, 1, 1000, true), cfg: number(comfy.cfg, defaults.cfg, 0, 100),
       seed: optionalNumber(comfy.seed, 0, Number.MAX_SAFE_INTEGER), sampler: string(comfy.sampler), scheduler: string(comfy.scheduler),
-      batchCount: number(comfy.batchCount, defaults.batchCount, 1, 8, true)
+      batchCount: imagesPerRound
     },
     limits: {
       maxComfyCalls: number(limits.maxComfyCalls, DEFAULT_SETTINGS.limits.maxComfyCalls, 0, 128, true),
@@ -70,12 +74,14 @@ function normaliseSettings(value = {}) {
       primaryTimeoutMs: number(limits.primaryTimeoutMs, DEFAULT_SETTINGS.limits.primaryTimeoutMs, 1000, 3600000, true)
     },
     generation: {
-      strategy: ['quick', 'auto', 'fixed3'].includes(generation.strategy) ? generation.strategy : DEFAULT_SETTINGS.generation.strategy,
-      autoSelect: generation.autoSelect !== false,
-      maxSuccessfulRenders: number(generation.maxSuccessfulRenders, DEFAULT_SETTINGS.generation.maxSuccessfulRenders, 1, 3, true),
+      autoRun: own(generation, 'autoRun') ? generation.autoRun !== false : DEFAULT_SETTINGS.generation.autoRun,
+      imagesPerRound,
+      maxAutoRounds,
       maxRenderAttempts: number(generation.maxRenderAttempts, DEFAULT_SETTINGS.generation.maxRenderAttempts, 1, 10, true),
       acceptScore: number(generation.acceptScore, DEFAULT_SETTINGS.generation.acceptScore, 0, 100),
       minImprovement: number(generation.minImprovement, DEFAULT_SETTINGS.generation.minImprovement, 0, 100),
+      followSourceAspectRatio: generation.followSourceAspectRatio !== false,
+      ...(legacyStrategy ? { strategy: legacyStrategy, autoSelect: generation.autoSelect !== false } : {}),
       jobTimeoutMs: number(generation.jobTimeoutMs, DEFAULT_SETTINGS.generation.jobTimeoutMs, 120000, 3600000, true)
     },
     generateNegativeTags: source.generateNegativeTags === true
@@ -85,6 +91,8 @@ function applySettingsPatch(current, patch = {}, form = false) {
   const source = object(patch) ? patch : {};
   const next = clone(current);
   if (form) for (const [key, [group, name]] of Object.entries(FORM_FIELDS)) if (own(source, key)) next[group][name] = clone(source[key]);
+  if (form && own(source, 'batchCount') && !own(source, 'imagesPerRound')) next.generation.imagesPerRound = clone(source.batchCount);
+  if (form && own(source, 'imagesPerRound')) next.comfy.batchCount = clone(source.imagesPerRound);
   for (const group of GROUPS) if (object(source[group])) Object.assign(next[group], clone(source[group]));
   if (own(source, 'generateNegativeTags')) next.generateNegativeTags = source.generateNegativeTags;
   return normaliseSettings(next);
