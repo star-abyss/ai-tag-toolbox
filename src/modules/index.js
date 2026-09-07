@@ -13,6 +13,8 @@ module.exports = {
   ...require('./vision-service'),
   ...require('./storage'),
   ...require('./comfy'),
+  ...require('./comfy-workflow'),
+  ...require('./comfy-profiles'),
   ...require('./draw-candidates'),
   ...require('./request-manager'),
   ...require('./status-manager'),

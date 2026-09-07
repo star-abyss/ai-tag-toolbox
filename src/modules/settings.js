@@ -5,7 +5,7 @@ const GROUPS = Object.freeze(['primaryApi', 'visionApi', 'comfy', 'limits']);
 const DEFAULT_SETTINGS = Object.freeze({
   primaryApi: { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', temperature: 0.7, timeoutMs: 120000, maxTokens: null },
   visionApi: { inheritPrimary: true, base: '', model: '', key: '', temperature: 0.2, timeoutMs: 120000, maxTokens: null },
-  comfy: { enabled: false, base: 'http://127.0.0.1:8188', workflow: '', positiveTags: '', negativeTags: '', width: 768, height: 1024, steps: 25, cfg: 7, seed: null, sampler: '', scheduler: '', batchCount: 1 },
+  comfy: { enabled: false, base: 'http://127.0.0.1:8188', workflow: '', profiles: { version: 1, activeProfileId: 'profile-default', items: [] }, positiveTags: '', negativeTags: '', width: 768, height: 1024, steps: 25, cfg: 7, seed: null, sampler: '', scheduler: '', batchCount: 1 },
   limits: { maxComfyCalls: 3, maxToolRounds: 8, maxToolCalls: 32, primaryTimeoutMs: 120000 },
   generateNegativeTags: false
 });
@@ -53,6 +53,7 @@ function normaliseSettings(value = {}) {
       enabled: comfy.enabled === true,
       base: own(comfy, 'base') ? string(comfy.base) : defaults.base,
       workflow: object(comfy.workflow) ? clone(comfy.workflow) : string(comfy.workflow),
+      profiles: object(comfy.profiles) && comfy.profiles.version === 1 ? clone(comfy.profiles) : clone(defaults.profiles),
       positiveTags: tagText(comfy.positiveTags), negativeTags: tagText(comfy.negativeTags),
       width: number(comfy.width, defaults.width, 64, 16384, true), height: number(comfy.height, defaults.height, 64, 16384, true),
       steps: number(comfy.steps, defaults.steps, 1, 1000, true), cfg: number(comfy.cfg, defaults.cfg, 0, 100),
