@@ -520,13 +520,19 @@ function createComfy(options = {}) {
   const fetchImpl = options.fetch || globalThis.fetch;
   const clientId = asText(options.clientId, `aitag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   let workflow = options.workflow || '';
+  const profiles = options.profiles || null;
+  function activeProfile() { return profiles?.active?.() || null; }
 
   function setBase(value) {
     base = asText(value, base).replace(/\/+$/, '');
+    const current = activeProfile();
+    if (current && typeof profiles.save === 'function') profiles.save({ ...current, base });
     return base;
   }
   function setWorkflow(value) {
     workflow = typeof value === 'string' ? value.trim() : value || '';
+    const current = activeProfile();
+    if (current && typeof profiles.save === 'function') profiles.save({ ...current, workflow });
     return workflow;
   }
   function url(pathname) {
@@ -535,7 +541,7 @@ function createComfy(options = {}) {
   function buildWorkflow(params = {}) {
     // A render call may provide a one-off workflow (useful for the current
     // session) without changing the connector's default workflow.
-    const selectedWorkflow = params.workflow || workflow;
+    const selectedWorkflow = params.workflow || activeProfile()?.workflow || workflow;
     if (!selectedWorkflow) return defaultWorkflow(params);
     let parsed;
     try {
@@ -590,7 +596,7 @@ function createComfy(options = {}) {
   }
   async function status(options2 = {}) {
     const enabled = options2.enabled !== false;
-    const selectedWorkflow = options2.workflow !== undefined ? options2.workflow : workflow;
+    const selectedWorkflow = options2.workflow !== undefined ? options2.workflow : activeProfile()?.workflow || workflow;
     const workflowInfo = workflowStatus(selectedWorkflow);
     let connected = false;
     if (typeof fetchImpl === 'function') connected = await check();
@@ -805,6 +811,7 @@ function createComfy(options = {}) {
     buildWorkflow,
     parseWorkflow,
     importApiWorkflow
+    ,profiles: profiles ? Object.freeze({ list: profiles.list, active: profiles.active, save: profiles.save, remove: profiles.remove, setActive: profiles.setActive, snapshot: profiles.snapshot }) : null
   };
 }
 

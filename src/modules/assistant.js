@@ -2,6 +2,7 @@
 
 const { randomUUID } = require('node:crypto');
 const { createComfy } = require('./comfy');
+const { createComfyProfiles } = require('./comfy-profiles');
 const { createImageRepository } = require('./image-repository');
 const { parsePngMetadata } = require('./images');
 const { createVisionTempStore } = require('./vision-temp-store');
@@ -51,6 +52,7 @@ function createAssistant(options = {}) {
   const prompts = options.promptSource || options.prompts || createPrompts({ storage, dir: options.promptDir });
   const initialPrimary = options.primaryApi || options.ai?.config || options.ai || {};
   const settings = createSettings({ storage, initial: { primaryApi: publicRequestConfig(initialPrimary), visionApi: options.visionApi || {}, ...(object(options.settings) ? options.settings : {}) } });
+  const comfyProfiles = createComfyProfiles({ storage, initial: settings.snapshot() });
   const state = { sessions: [], currentId: '', busy: false, status: 'idle', jobId: '', lastError: '' };
   let active = null;
   let runtime;
@@ -125,7 +127,7 @@ function createAssistant(options = {}) {
     const mime = /^image\//i.test(image.mime || '') ? image.mime : 'image/png';
     return { ...image, dataUrl: `data:${mime};base64,${Buffer.from(bytes).toString('base64')}` };
   }
-  const comfy = options.comfy && typeof options.comfy.render === 'function' ? options.comfy : createComfy(options.comfyOptions || {});
+  const comfy = options.comfy && typeof options.comfy.render === 'function' ? options.comfy : createComfy({ ...(options.comfyOptions || {}), profiles: comfyProfiles });
   const visionService = options.visionService || createVisionService({ images, visionTempStore, localVision: options.localVision || options.vision, visionAI: visionClient, parseMetadata: parsePngMetadata, getPrompt: key => prompts.getEffective?.(key) || prompts.get?.(key) || '' });
   const primary = createPrimaryAgent({ client: ai, prompts, getSettings: settings.snapshot, charactersEnabled: Boolean(options.characters) });
   const subagents = createFixedSubagents({ vision: visionService, translation: options.translation, ai, visionAI: visionClient, prompts, resolveImage, getSettings: settings.snapshot });
@@ -263,7 +265,7 @@ function createAssistant(options = {}) {
   function resetSettings(group) { settings.reset(group); return settings.getForm(); }
   const api = {
     run: runPrimaryWithRuntime, runtime, primaryTools, imageRepository, visionTempStore, visionService, parseReply,
-    getSettings: settings.getForm, getCanonicalSettings: settings.snapshot, setSettings, updateSettings: setSettings, resetSettings,
+    getSettings: settings.getForm, getCanonicalSettings: settings.snapshot, setSettings, updateSettings: setSettings, resetSettings, comfyProfiles,
     getPrimaryConfig: settings.primaryProfile, getVisionConfig: visionConfig,
     listModels: config => ai.listModels({ ...settings.primaryProfile(), ...publicRequestConfig(config) }), listVisionModels: config => visionAi.listModels({ ...settings.visionProfile(), ...publicRequestConfig(config) }),
     testConnection: config => runtime.runPrimary({ requestId: id('connection'), messages: [{ role: 'user', content: 'Please reply OK.' }], config: { ...publicRequestConfig(config), stream: false } }),

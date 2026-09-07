@@ -78,6 +78,9 @@
       if (q('#comfySeed')) q('#comfySeed').value = value.comfySeed ?? '';
       if (q('#comfySampler')) q('#comfySampler').value = value.comfySampler || 'euler';
       if (q('#comfyScheduler')) q('#comfyScheduler').value = value.comfyScheduler || 'normal';
+      const active = comfy?.profiles?.active?.();
+      const profileLabel = q('#comfyProfileSelector');
+      if (profileLabel && active) { profileLabel.hidden = false; profileLabel.textContent = `当前工作流：${active.name}`; }
       return value;
     }
     async function refresh() {
