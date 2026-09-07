@@ -10,7 +10,7 @@ function createRequestManager(options = {}) {
   const defaultTimeoutMs = Math.max(1, Number(options.timeoutMs) || 120000);
   const listeners = new Set(typeof options.onChange === 'function' ? [options.onChange] : []);
   function snapshot(row) {
-    return row ? { requestId: row.requestId, parentRequestId: row.parentRequestId, rootRequestId: row.rootRequestId, kind: row.kind, status: row.status, timeoutMs: row.timeoutMs, startedAt: row.startedAt, endedAt: row.endedAt, error: row.error && { ...row.error } } : null;
+    return row ? { requestId: row.requestId, parentRequestId: row.parentRequestId, rootRequestId: row.rootRequestId, kind: row.kind, status: row.status, timeoutMs: row.timeoutMs, deadlineAt: row.deadlineAt, startedAt: row.startedAt, endedAt: row.endedAt, error: row.error && { ...row.error } } : null;
   }
   function emit(row, event) { for (const listener of listeners) { try { listener({ event, request: snapshot(row) }); } catch { /* observers do not affect execution */ } } }
   function prune() { for (const [id, row] of records) { if (records.size <= maxRecords) break; if (row.endedAt) records.delete(id); } }
@@ -24,11 +24,18 @@ function createRequestManager(options = {}) {
     if (state === 'cancelled' || state === 'timeout') row.controller.abort(row.error);
     emit(row, state); prune(); return snapshot(row);
   }
+  function arm(row) {
+    clearTimeout(row.timer);
+    const remaining = Math.max(1, row.deadlineAt - Date.now());
+    row.timer = setTimeout(() => finish(row.requestId, 'timeout', { code: 'TIMEOUT', message: '请求超时', retryable: true }), remaining);
+  }
   function begin(requestId, config = {}) {
     const requested = String(requestId || '').trim();
     const id = requested && !records.has(requested) ? requested : newRequestId(String(config.kind || 'request').replace(/[^a-z0-9_-]/gi, '_'));
     const controller = new AbortController();
-    const row = { requestId: id, parentRequestId: String(config.parentRequestId || ''), rootRequestId: String(config.rootRequestId || id), kind: config.kind || 'request', status: 'running', timeoutMs: Math.max(1, Number(config.timeoutMs) || defaultTimeoutMs), startedAt: Date.now(), endedAt: 0, error: null, timer: null, externalSignal: config.signal || null, externalAbort: null, controller, signal: controller.signal };
+    const startedAt = Date.now();
+    const row = { requestId: id, parentRequestId: String(config.parentRequestId || ''), rootRequestId: String(config.rootRequestId || id), kind: config.kind || 'request', status: 'running', timeoutMs: Math.max(1, Number(config.timeoutMs) || defaultTimeoutMs), deadlineAt: 0, startedAt, endedAt: 0, error: null, timer: null, externalSignal: config.signal || null, externalAbort: null, controller, signal: controller.signal };
+    row.deadlineAt = startedAt + row.timeoutMs;
     records.set(id, row);
     row.externalAbort = () => {
       const reason = row.externalSignal?.reason;
@@ -36,7 +43,7 @@ function createRequestManager(options = {}) {
       finish(id, timedOut ? 'timeout' : 'cancelled', { code: timedOut ? 'TIMEOUT' : 'CANCELLED', message: timedOut ? '请求超时' : '请求已取消', retryable: timedOut });
     };
     if (!row.externalSignal?.aborted) row.externalSignal?.addEventListener('abort', row.externalAbort, { once: true });
-    row.timer = setTimeout(() => finish(id, 'timeout', { code: 'TIMEOUT', message: '请求超时', retryable: true }), row.timeoutMs);
+    arm(row);
     emit(row, 'started');
     if (row.externalSignal?.aborted) row.externalAbort();
     prune();
@@ -46,9 +53,18 @@ function createRequestManager(options = {}) {
     const row = records.get(String(id)); if (!row || row.endedAt) return false;
     const timeout = reason === 'TIMEOUT'; finish(id, timeout ? 'timeout' : 'cancelled', { code: timeout ? 'TIMEOUT' : 'CANCELLED', message: timeout ? '请求超时' : '请求已取消', retryable: timeout }); return true;
   }
+  function extend(id, timeoutMs) {
+    const row = records.get(String(id));
+    if (!row || row.endedAt) return snapshot(row);
+    const duration = Math.max(1, Number(timeoutMs) || defaultTimeoutMs);
+    row.deadlineAt = Math.max(row.deadlineAt, Date.now() + duration);
+    row.timeoutMs = Math.max(row.timeoutMs, row.deadlineAt - row.startedAt);
+    arm(row); emit(row, 'extended');
+    return snapshot(row);
+  }
   function remove(id) { const key = String(id); if (!records.has(key)) return false; cancel(key); return records.delete(key); }
   function clear() { for (const id of [...records.keys()]) remove(id); }
-  return { begin, start: begin, finish, complete: id => finish(id), fail: (id, error) => finish(id, 'error', error), cancel, get: id => snapshot(records.get(String(id))), getRecord: id => records.get(String(id)) || null, list: () => [...records.values()].map(snapshot), remove, clear, snapshot, size: () => records.size, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
+  return { begin, start: begin, extend, finish, complete: id => finish(id), fail: (id, error) => finish(id, 'error', error), cancel, get: id => snapshot(records.get(String(id))), getRecord: id => records.get(String(id)) || null, list: () => [...records.values()].map(snapshot), remove, clear, snapshot, size: () => records.size, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }
 
 module.exports = { createRequestManager, newRequestId, errorShape };

@@ -33,14 +33,16 @@ test('diagnostic copies redact nested JSON, embedded credentials, images and pat
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('real assistant connects primary rounds and raw Tag output under one root request', async () => {
+test('real assistant connects primary rounds and fixed-subagent output under one root request', async () => {
   let round = 0;
   const app = createAssistant({ promptSource,
     primaryApi: { base: 'https://example.test/v1', model: 'test-model', key: 'test-secret-key' },
-    primaryGateway: { complete: async () => ++round === 1
-      ? { toolCalls: [{ id: 'tag-call', name: 'agent_generateTags', arguments: { requirements: 'blue hair' } }], usage: { total_tokens: 3 } }
-      : { text: '完成', usage: { total_tokens: 4 } } },
-    visionGateway: { complete: async () => ({ text: '{"positiveTags":["blue hair","blue hair"]}', usage: { total_tokens: 6 } }) }
+    primaryGateway: { complete: async messages => {
+      if (messages[0]?.content === 'FIXED PROMPT') return { text: 'blue hair', usage: { total_tokens: 6 } };
+      return ++round === 1
+        ? { toolCalls: [{ id: 'translation-call', name: 'translation_translate', arguments: { text: '蓝发', direction: 'zh-en', source: 'ai' } }], usage: { total_tokens: 3 } }
+        : { text: '完成', usage: { total_tokens: 4 } };
+    } }
   });
   const result = await app.run({ text: '画蓝发人物', requestId: 'trace-root' });
   assert.equal(result.ok, true, JSON.stringify(result.error));
@@ -49,14 +51,14 @@ test('real assistant connects primary rounds and raw Tag output under one root r
   assert.equal(primary.exchanges.length, 2);
   assert.equal(primary.exchanges[0].request.body.messages.at(-1).content, '画蓝发人物');
   assert(primary.exchanges[1].request.body.messages.some(row => row.role === 'tool'));
-  assert.equal(primary.exchanges[0].request.body.tools.length, 9);
-  const child = rows.find(row => row.kind === 'subagent:generateTags');
-  const tool = rows.find(row => row.kind === 'tool:agent.generateTags');
+  assert.equal(primary.exchanges[0].request.body.tools.length, 8);
+  const child = rows.find(row => row.kind === 'subagent:translation');
+  const tool = rows.find(row => row.kind === 'tool:translation.translate');
   assert.equal(child.parentRequestId, tool.requestId);
   assert.equal(child.rootRequestId, primary.requestId);
-  assert.match(child.exchanges[0].request.body.messages[0].content, /系统输出协议/);
-  assert.equal(child.exchanges[0].response.text, '{"positiveTags":["blue hair","blue hair"]}');
-  assert.deepEqual(child.output.positiveTags, ['blue hair']);
+  assert.equal(child.exchanges[0].request.body.messages[0].content, 'FIXED PROMPT');
+  assert.equal(child.exchanges[0].response.text, 'blue hair');
+  assert.equal(child.output.text, 'blue hair');
   assert.equal(child.exchanges[0].usage.total_tokens, 6);
   assert.doesNotMatch(JSON.stringify(rows), /test-secret-key/);
   app.destroy();

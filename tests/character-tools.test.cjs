@@ -58,11 +58,14 @@ test('role IDs resolve into attributed references before the generation subagent
 });
 
 test('stored primary prompt receives the character contract without modifying the saved text', () => {
-  const prompts = { composePrimary: () => '我的自定义提示词' };
+  const prompts = { composePrimary: () => '我的自定义提示词：请调用 comfy.render' };
   const primary = createPrimaryAgent({ prompts, charactersEnabled: true });
   assert.match(primary.getPrompt(), /characters.search/);
   assert.match(primary.getPrompt(), /characterIds/);
   assert.match(primary.getPrompt(), /不确定.*Tag.*tags.search/);
   assert.match(primary.getPrompt(), /attachedData/);
-  assert.equal(prompts.composePrimary(), '我的自定义提示词');
+  assert.match(primary.getPrompt(), /generation\.execute/);
+  assert.match(primary.getPrompt(), /优先于上方.*不要调用.*comfy\.render/s);
+  assert(primary.getPrompt().lastIndexOf('generation.execute') > primary.getPrompt().indexOf('comfy.render'));
+  assert.equal(prompts.composePrimary(), '我的自定义提示词：请调用 comfy.render');
 });

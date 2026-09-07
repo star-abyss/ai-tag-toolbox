@@ -110,7 +110,11 @@ const primaryTools = modules.createPrimaryTools({
 });
 assert.deepEqual(primaryTools.names(), [
   'tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate',
-  'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render'
+  'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render', 'generation.execute', 'generation.resume'
+]);
+assert.deepEqual(primaryTools.primaryNames(), [
+  'tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate',
+  'comfy.status', 'generation.execute', 'generation.resume'
 ]);
 assert.equal(primaryTools.resolve('files.read'), null);
 const render = await primaryTools.call('comfy.render', { positiveTags: ['1girl'], negativeTags: ['lowres'] }, { sessionId: 's1' });
@@ -133,6 +137,6 @@ assert.match(limiterSource, /COMFY_CALL_LIMIT/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /createCallServer|migrateLegacyData|agentWriteEnabled/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), /migrateLegacyUserData|config-migration/);
 
-console.log('check ok: unified runtime, 4 fixed subagents, 9 primary tools, local characters, timeout/cancel, Comfy parameter boundary');
+console.log('check ok: unified runtime, 4 fixed subagents, 8 primary-visible tools, 11 registered tools, local characters, timeout/cancel, Comfy parameter boundary');
 
 

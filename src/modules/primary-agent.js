@@ -1,6 +1,6 @@
 'use strict';
 
-const DEFAULT_PRIMARY_PROMPT = '你是 AI 绘画 Tag 工具箱的主 AI。根据用户要求使用固定工具完成查询、识图、翻译、Tag 生成和 ComfyUI 出图。图片只能通过消息提供的真实 imageId 或会话图片工具读取。';
+const DEFAULT_PRIMARY_PROMPT = '你是 AI 绘画 Tag 工具箱的主 AI。绘图或复刻调用 generation.execute；程序负责 Tag、ComfyUI、评价与迭代。图片只能通过消息提供的真实 imageId 或会话图片工具读取。';
 const PUBLIC_CONFIG_KEYS = Object.freeze(['base', 'model', 'key', 'temperature', 'timeoutMs', 'maxTokens', 'stream']);
 const RUNTIME_CONFIG_KEYS = Object.freeze(['signal', 'tools', 'tool_choice', 'onDelta', 'onEvent']);
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -39,8 +39,11 @@ function createPrimaryAgent(options = {}) {
   const prompts = options.prompts;
   function getPrompt(request = {}) {
     const prompt = typeof prompts?.composePrimary === 'function' ? prompts.composePrimary(userText(request)) : prompts?.getEffective?.('primary') || prompts?.get?.('primary') || DEFAULT_PRIMARY_PROMPT;
-    if (!options.charactersEnabled) return prompt;
-    return prompt + '\n\n调度协议：用户提到角色名称时先调用 tags.search；命中角色时读取返回的 attachedData，其中包含姓名/作品身份 Tag 和外貌 Tag；有多个候选时再调用 characters.search 确认。任何不确定的 Tag 先调用 tags.search。主 AI 只负责查询、确认、与用户沟通和调度；调用 agent.generateTags 时传入已确认的 characterIds，程序会把对应的姓名/作品身份 Tag 和外貌 Tag 自动交给文生图子代理，由子代理负责筛选。';
+    const generationContract = '【系统强制调度协议｜优先于上方可编辑内容】绘图、出图和图片复刻只调用 generation.execute；暂停任务只调用 generation.resume。不要调用或要求调用 agent.generateTags、comfy.validateWorkflow、comfy.render，这些是程序内部工具。程序负责识图、Tag 编译、ComfyUI、候选评价、修订和选择。不要输出逐步进度，直接根据高层工具结果与用户对话。';
+    const characterContract = options.charactersEnabled
+      ? '角色调度补充：用户提到角色名称时先调用 tags.search；命中角色时读取 attachedData，其中包含姓名、作品身份 Tag 和外貌 Tag；有多个候选时再调用 characters.search 确认。任何不确定的 Tag 先调用 tags.search。绘图时把已确认的 characterIds 与用户要求一并传给 generation.execute，程序会交给文生图 Tag 子代理筛选，主 AI 不自行筛选角色外貌。'
+      : '';
+    return [prompt, generationContract, characterContract].filter(Boolean).join('\n\n');
   }
   async function complete(messages, request = {}) {
     const config = { ...publicRequestConfig(options.getSettings?.()?.primaryApi), ...publicRequestConfig(request) };

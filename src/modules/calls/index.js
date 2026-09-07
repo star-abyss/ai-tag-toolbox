@@ -1,11 +1,7 @@
 'use strict';
 
 const { createVisionService } = require('../vision-service');
-
-const TOOL_NAMES = Object.freeze([
-  'tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate',
-  'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render'
-]);
+const { TOOL_NAMES, PRIMARY_TOOL_NAMES } = require('../primary-tools');
 
 function text(value, fallback = '') {
   const result = value == null ? '' : String(value).trim();
@@ -75,7 +71,7 @@ function createCalls(options = {}) {
   function list() { return getPrimaryTools()?.list?.() || []; }
   function schemas() { return getPrimaryTools()?.schemas?.() || list(); }
   function openAiTools() { return getPrimaryTools()?.openAiTools?.() || []; }
-  return { visionService, call, list, listAvailable: list, schemas, schemasAvailable: schemas, openAiTools, openAiToolsAvailable: openAiTools, getCapabilities, refreshCapabilities, invalidateCapabilities, runtimeToolNames: TOOL_NAMES, agentRuntimeToolNames: TOOL_NAMES, describe: () => ({ version: '2.0', tools: list(), capabilities: getCapabilities() }) };
+  return { visionService, call, list, listAvailable: list, schemas, schemasAvailable: schemas, openAiTools, openAiToolsAvailable: openAiTools, getCapabilities, refreshCapabilities, invalidateCapabilities, runtimeToolNames: TOOL_NAMES, agentRuntimeToolNames: PRIMARY_TOOL_NAMES, describe: () => ({ version: '3.0', tools: list(), capabilities: getCapabilities() }) };
 }
 
-module.exports = { TOOL_NAMES, RUNTIME_TOOL_NAMES: TOOL_NAMES, AGENT_RUNTIME_TOOL_NAMES: TOOL_NAMES, createCalls, artifact };
+module.exports = { TOOL_NAMES, PRIMARY_TOOL_NAMES, RUNTIME_TOOL_NAMES: TOOL_NAMES, AGENT_RUNTIME_TOOL_NAMES: PRIMARY_TOOL_NAMES, createCalls, artifact };

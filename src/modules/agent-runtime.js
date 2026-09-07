@@ -7,7 +7,7 @@ const { errorShape, resultOk, resultError } = require('./error-manager');
 const { assertValid } = require('./schema');
 const { createCallMonitor } = require('./call-monitor');
 
-const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
+const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render', 'generation.execute', 'generation.resume']);
 const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
 function text(value, fallback = '') { const output = value == null ? '' : String(value).trim(); return output || fallback; }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -46,9 +46,9 @@ function isNoiseEvent(event) {
   return false;
 }
 function responseCalls(response) { const value = response?.toolCalls || response?.tool_calls || response?.data?.toolCalls || response?.choices?.[0]?.message?.tool_calls || []; if (!Array.isArray(value)) throw reject('OUTPUT_INVALID', '主 AI 工具调用格式无效'); return value; }
-function normalizeCall(call, usedIds) {
+function normalizeCall(call, usedIds, allowedNames = TOOL_NAMES) {
   const name = canonicalName(call?.function?.name || call?.name || '');
-  if (!TOOL_NAMES.includes(name)) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
+  if (!TOOL_NAMES.includes(name) || !allowedNames.has(name)) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
   let args = call?.function?.arguments ?? call?.arguments ?? {};
   if (typeof args === 'string') { try { args = JSON.parse(args); } catch { throw reject('INVALID_INPUT', `工具 ${name} 的参数不是有效 JSON`); } }
   if (!object(args)) throw reject('INVALID_INPUT', `工具 ${name} 的参数必须是对象`);
@@ -108,7 +108,18 @@ function createAgentRuntime(options = {}) {
   const active = new Map();
   function registryTool(name) { const registry = getTools() || {}; return typeof registry.resolve === 'function' ? registry.resolve(name) : registry[name] || null; }
   function listTools() { return TOOL_NAMES.map(name => { const entry = registryTool(name); return entry ? { name, description: entry.description || '', parameters: clone(entry.parameters || entry.inputSchema || { type: 'object', additionalProperties: false }) } : null; }).filter(Boolean); }
-  function schemas() { return listTools().map(entry => ({ type: 'function', function: { name: nativeName(entry.name), description: entry.description, parameters: entry.parameters } })); }
+  function schemas() {
+    const registry = getTools() || {};
+    if (typeof registry.openAiTools === 'function') {
+      const rows = registry.openAiTools();
+      if (Array.isArray(rows)) return rows.map(item => {
+        const fn = item?.function || item || {};
+        const name = canonicalName(fn.name || item?.name || '');
+        return { type: 'function', function: { name: nativeName(name), description: fn.description || item?.description || '', parameters: clone(fn.parameters || item?.parameters || { type: 'object', additionalProperties: false }) } };
+      }).filter(item => TOOL_NAMES.includes(canonicalName(item.function.name)));
+    }
+    return listTools().map(entry => ({ type: 'function', function: { name: nativeName(entry.name), description: entry.description, parameters: entry.parameters } }));
+  }
   function emit(context, type, payload = {}) {
     if (context.signal.aborted || !active.has(context.requestId)) return;
     const event = { ...clone(payload), type, requestId: context.requestId, rootRequestId: context.rootRequestId, at: Date.now() };
@@ -127,7 +138,7 @@ function createAgentRuntime(options = {}) {
     const handle = requests.begin(parentId ? undefined : request.requestId, { kind, parentRequestId: parentId, rootRequestId: parent?.rootRequestId, timeoutMs: request.timeoutMs || timeoutMs, signal: request.signal || parent?.signal });
     const id = handle.requestId; const rootId = parent?.rootRequestId || id;
     if (!parent) limiter.begin(rootId, getSettings()?.limits || {});
-    const context = { requestId: id, parentRequestId: parentId, rootRequestId: rootId, signal: handle.signal, sessionId: request.sessionId || parent?.sessionId, messageId: request.messageId || parent?.messageId, settings: parent?.settings || clone(getSettings() || {}), events: [], onEvent: request.onEvent, parentContext: parent || null, partial: null };
+    const context = { requestId: id, parentRequestId: parentId, rootRequestId: rootId, signal: handle.signal, sessionId: request.sessionId || parent?.sessionId, messageId: request.messageId || parent?.messageId, settings: parent?.settings || clone(getSettings() || {}), events: [], onEvent: request.onEvent, parentContext: parent || null, partial: null, extendRootTimeout: timeoutMs => requests.extend(rootId, timeoutMs) };
     monitor.begin({ requestId: id, rootRequestId: rootId, parentRequestId: parentId, sessionId: context.sessionId, messageId: context.messageId, kind, input: request.input || {} });
     context.captureInput = input => monitor.update(id, { input });
     active.set(id, context);
@@ -165,12 +176,18 @@ function createAgentRuntime(options = {}) {
   }
   async function callTool(rawName, args = {}, request = {}) {
     const name = canonicalName(rawName);
-    return execute(`tool:${name}`, request, name === 'comfy.render' ? 600000 : 120000, async context => {
+    const toolTimeoutMs = name === 'comfy.render'
+      ? 600000
+      : name === 'generation.execute' || name === 'generation.resume'
+        ? getSettings()?.generation?.jobTimeoutMs || 1200000
+        : 120000;
+    return execute(`tool:${name}`, request, toolTimeoutMs, async context => {
       context.captureInput({ args });
       if (!TOOL_NAMES.includes(name)) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
       const entry = registryTool(name); if (!entry) throw reject('TOOL_UNAVAILABLE', `工具不可用：${name}`);
       assertSchema(entry.parameters || entry.inputSchema || { type: 'object' }, args, 'INVALID_INPUT');
-      limiter.consume(context.rootRequestId, name === 'comfy.render' ? 'comfy' : 'tool');
+      if (name === 'comfy.render') limiter.check(context.rootRequestId, 'comfy');
+      else limiter.consume(context.rootRequestId, 'tool');
       emit(context, 'tool.start', { name, args });
       const registry = getTools();
       // 进度事件（如 ComfyUI 排队轮询）按队列值去重，避免每 1.2 秒刷一条任务事件。
@@ -185,6 +202,7 @@ function createAgentRuntime(options = {}) {
       } };
       const value = typeof registry.call === 'function' ? await registry.call(name, clone(args), childContext) : typeof entry === 'function' ? await entry(clone(args), childContext) : await entry.handler(clone(args), childContext);
       const data = unwrap(value); assertSchema(entry.outputSchema || {}, data, 'OUTPUT_INVALID');
+      if (name === 'comfy.render') limiter.complete(context.rootRequestId, 'comfy');
       if (!value?.requestId) limiter.add(context.rootRequestId, value?.usage);
       emit(context, 'tool.complete', { name, result: data }); return data;
     });
@@ -196,9 +214,9 @@ function createAgentRuntime(options = {}) {
       if (!prompt) throw reject('PROMPT_INVALID', '主 AI 提示词为空');
       const history = (Array.isArray(request.messages) ? request.messages : []).map(historyMessage).filter(Boolean).filter(item => item.role === 'tool' || item.content || item.tool_calls?.length);
       if (!history.length && typeof request.input?.text === 'string') history.push({ role: 'user', content: request.input.text });
-      const messages = [{ role: 'system', content: prompt }, ...history]; const transcript = []; const toolCalls = []; const artifacts = []; const usedIds = new Set(); let round = 0;
+      const messages = [{ role: 'system', content: prompt }, ...history]; const transcript = []; const toolCalls = []; const artifacts = []; const usedIds = new Set(); let generationResult = null; let round = 0;
       context.captureInput({ messages, config: request.config || {} });
-      const partial = () => ({ text: '', reasoning: '', toolCalls: toolCalls.slice(), events: context.events.slice(), artifacts: artifacts.map(clone), imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript: transcript.map(clone) });
+      const partial = () => ({ ...(generationResult ? clone(generationResult) : {}), text: '', reasoning: '', toolCalls: toolCalls.slice(), events: context.events.slice(), artifacts: artifacts.map(clone), imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript: transcript.map(clone) });
       context.partial = partial();
       // 流式增量不逐片写入任务事件：缓冲后节流合并，避免刷满 256 条上限。
       const deltaBuffer = { text: '', reasoning: '', emittedAt: 0 };
@@ -210,17 +228,19 @@ function createAgentRuntime(options = {}) {
       while (true) {
         limiter.consume(context.rootRequestId, 'round'); round += 1; emit(context, 'round.start', { round });
         const settings = getSettings() || {};
-        const primaryConfig = { ...publicConfig(settings.primaryApi), ...publicConfig(request.config), signal: context.signal, tools: schemas(), tool_choice: 'auto', onDelta: (delta, reasoning = '') => { deltaBuffer.text += typeof delta === 'string' ? delta : ''; deltaBuffer.reasoning += typeof reasoning === 'string' ? reasoning : ''; const accumulated = deltaBuffer.text.length + deltaBuffer.reasoning.length; if (accumulated >= 8 && Date.now() - deltaBuffer.emittedAt >= 200) flushDelta(); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } }, onEvent: event => { if (typeof event?.type === 'string' && event.type && !isNoiseEvent(event)) emit(context, event.type, event || {}); } /* 只接受带类型名的有意义事件；无类型名的流式分片（正文/推理/工具参数碎片）一律不产生任务事件，真正的调用由 tool.start/tool.complete 记录。 */ };
+        const primarySchemas = schemas();
+        const allowedPrimaryNames = new Set(primarySchemas.map(item => canonicalName(item?.function?.name || '')));
+        const primaryConfig = { ...publicConfig(settings.primaryApi), ...publicConfig(request.config), signal: context.signal, tools: primarySchemas, tool_choice: 'auto', onDelta: (delta, reasoning = '') => { deltaBuffer.text += typeof delta === 'string' ? delta : ''; deltaBuffer.reasoning += typeof reasoning === 'string' ? reasoning : ''; const accumulated = deltaBuffer.text.length + deltaBuffer.reasoning.length; if (accumulated >= 8 && Date.now() - deltaBuffer.emittedAt >= 200) flushDelta(); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } }, onEvent: event => { if (typeof event?.type === 'string' && event.type && !isNoiseEvent(event)) emit(context, event.type, event || {}); } /* 只接受带类型名的有意义事件；无类型名的流式分片（正文/推理/工具参数碎片）一律不产生任务事件，真正的调用由 tool.start/tool.complete 记录。 */ };
         context.captureInput({ messages, config: primaryConfig });
         const response = await race(() => client.complete(messages, primaryConfig), context.signal);
-        unwrap(response); limiter.add(context.rootRequestId, response?.usage); const calls = responseCalls(response).slice(0, 1).map(call => normalizeCall(call, usedIds));
+        unwrap(response); limiter.add(context.rootRequestId, response?.usage); const calls = responseCalls(response).slice(0, 1).map(call => normalizeCall(call, usedIds, allowedPrimaryNames));
         const responseText = outputText(response);
         if (!calls.length) {
           if (!responseText.trim()) throw reject('OUTPUT_INVALID', '主 AI 返回为空');
           const finalMessage = { role: 'assistant', content: responseText };
           messages.push(finalMessage); transcript.push(clone(finalMessage));
           flushDelta(); emit(context, 'round.complete', { round });
-          const data = { text: responseText, reasoning: typeof response?.reasoning === 'string' ? response.reasoning : '', toolCalls, events: context.events.slice(), artifacts, imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript };
+          const data = { ...(generationResult ? clone(generationResult) : {}), text: responseText, reasoning: typeof response?.reasoning === 'string' ? response.reasoning : '', toolCalls, events: context.events.slice(), artifacts, imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript };
           context.partial = data; return data;
         }
         const assistantMessage = { role: 'assistant', content: responseText || null, tool_calls: calls.map(call => call.native) };
@@ -228,6 +248,7 @@ function createAgentRuntime(options = {}) {
         for (const call of calls) {
           const outcome = await callTool(call.name, call.args, { parentRequestId: context.requestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: event => { try { request.onEvent?.(event); } catch {} } });
           const trace = { id: call.id, name: call.name, arguments: call.args, requestId: outcome.requestId, ok: outcome.ok, result: outcome.data, error: outcome.error }; toolCalls.push(trace);
+          if (call.name === 'generation.execute' || call.name === 'generation.resume') generationResult = outcome.ok && object(outcome.data) ? clone(outcome.data) : generationResult;
           if (Array.isArray(outcome.data?.artifacts)) for (const artifact of outcome.data.artifacts) if (!artifacts.some(item => item.imageId === artifact.imageId)) artifacts.push(clone(artifact));
           try { request.onToolCall?.([trace]); } catch {}
           const toolMessage = { role: 'tool', tool_call_id: call.id, content: JSON.stringify(outcome.ok ? outcome.data : outcome.error) };

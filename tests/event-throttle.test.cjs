@@ -87,11 +87,15 @@ test('render progress polling events are deduped and excluded from message task 
     settings: { comfy: { enabled: true, base: 'http://127.0.0.1:8188', workflow: {}, width: 768, height: 768, steps: 20, cfg: 7, negativeTags: [] } },
     primaryGateway: {
       complete: async () => {
-        if (gatewayFirst) { gatewayFirst = false; return { ok: true, toolCalls: [{ id: 'c1', type: 'function', function: { name: 'comfy_render', arguments: '{"positiveTags":["1girl"]}' } }] }; }
+        if (gatewayFirst) { gatewayFirst = false; return { ok: true, toolCalls: [{ id: 'c1', type: 'function', function: { name: 'generation_execute', arguments: '{"requirements":"1girl","mode":"create","strategy":"quick"}' } }] }; }
         return { ok: true, text: '完成' };
       }
     },
+    visionGateway: { complete: async messages => /operation="review"/.test(messages[0].content)
+      ? { text: '{"operation":"review","evaluations":[{"candidateId":"render-1","score":90,"verdict":"accept","confidence":0.9,"dimensions":{},"hardErrors":[],"issues":[],"strengths":[],"suggestedChanges":[],"summary":"ok"}]}' }
+      : { text: '{"positiveTags":["1girl"]}' } },
     comfy: {
+      status: async () => ({ connected: true, workflowReady: true, render: true, error: '' }),
       render: async ({ onProgress }) => {
         for (let i = 0; i < 80; i += 1) onProgress?.(1);
         return { artifact: { id: 'render-1', imageId: 'render-1', dataUrl: 'data:image/png;base64,AA==' } };
@@ -105,8 +109,8 @@ test('render progress polling events are deduped and excluded from message task 
   const message = assistant.currentSession().messages.at(-1);
   assert.equal(message.status, 'done');
   assert(message.events.every(event => event.type !== 'progress' && event.type !== 'delta'), 'no progress/delta in task events');
-  assert(message.events.some(event => event.type === 'tool.start' && event.name === 'comfy.render'), 'tool.start should be recorded');
-  assert(message.events.some(event => event.type === 'tool.complete' && event.name === 'comfy.render'), 'tool.complete should be recorded');
+  assert(message.events.some(event => event.type === 'tool.start' && event.name === 'comfy.render'), 'internal comfy tool.start should be recorded');
+  assert(message.events.some(event => event.type === 'tool.complete' && event.name === 'comfy.render'), 'internal comfy tool.complete should be recorded');
 });
 
 test('stream chunks with empty toolCalls array do not become provider.event task events', async () => {

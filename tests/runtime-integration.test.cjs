@@ -13,6 +13,7 @@ const { createVisionService } = require('../src/modules/vision-service');
 const { createComfy } = require('../src/modules/comfy');
 const { createCallMonitor } = require('../src/modules/call-monitor');
 const { createAiClient } = require('../src/modules/ai-client');
+const { createUsageLimiter } = require('../src/modules/usage-limiter');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const baseSettings = { generateNegativeTags: false, comfy: { enabled: true, base: 'http://example.test:8188', workflow: {}, width: 640, height: 768, steps: 0, cfg: 0, seed: 0, sampler: 'euler', scheduler: 'normal', batchCount: 2, negativeTags: ['lowres'] }, limits: { maxComfyCalls: 2, maxToolRounds: 6, maxToolCalls: 16, primaryTimeoutMs: 1000 } };
 function stack(options = {}) {
@@ -28,9 +29,11 @@ test('native tools run a real translation child without cancelling the primary a
   const requests = []; let count = 0;
   const { runtime, tools } = stack({ translation, primaryClient: { complete: async (messages, config) => {
     requests.push(structuredClone(messages));
-    assert.equal(config.tools.length, 9);
+    assert.equal(config.tools.length, 8);
     assert(config.tools.every(item => /^[A-Za-z0-9_-]+$/.test(item.function.name)));
     assert(config.tools.some(item => item.function.name === 'characters_search'));
+    assert(config.tools.some(item => item.function.name === 'generation_execute'));
+    assert(!config.tools.some(item => ['agent_generateTags', 'comfy_validateWorkflow', 'comfy_render'].includes(item.function.name)));
     if (!count++) return { text: '', usage: { total_tokens: 3 }, toolCalls: [{ id: 'provider-call-1', type: 'function', function: { name: 'translation_translate', arguments: '{"text":"蓝发","direction":"zh-en","source":"local"}' } }] };
     return { text: '完成', usage: { total_tokens: 4 } };
   } } });
@@ -86,7 +89,7 @@ test('generated tags use Vision AI, live prompt and controlled image and never e
   assert.equal(first.ok, true, JSON.stringify(first)); assert.deepEqual(first.data.positiveTags, ['1girl', '2girls']); assert.equal(first.data.negativeTags, undefined);
   baseSettings.generateNegativeTags = true;
   const enabled = await runtime.runSubAgent('generateTags', { input: { ...input, generateNegativeTags: false }, sessionId: 's1' });
-  assert.deepEqual(enabled.data.negativeTags, ['lowres']);
+  assert.equal(enabled.data.negativeTags, undefined);
   baseSettings.generateNegativeTags = false;
   prompt = 'SECOND'; const second = await runtime.runSubAgent('generateTags', { input, sessionId: 's1' }); assert.equal(second.ok, true);
   assert.match(messagesSeen[2][0].content, /^SECOND\n/); assert.match(messagesSeen[2][0].content, /系统输出协议/); assert.equal(messagesSeen[2].length, 2);
@@ -204,4 +207,73 @@ test('evaluateImages shares the Vision client and monitor redacts all image payl
   assert.equal(record.input.candidateImageIds[0], 'candidate-1');
   assert.equal(record.exchanges[0].request.body.messages[1].content[2].image_url, '[REDACTED]');
   assert.doesNotMatch(JSON.stringify(monitor.list()), /data:image|base64/);
+});
+
+test('primary uses one high-level generation tool and rejects hidden low-level calls', async () => {
+  let round = 0;
+  const generationCalls = [];
+  const { runtime, tools } = stack({
+    generation: {
+      execute: async (input, context) => { generationCalls.push({ input, requestId: context.requestId }); return { status: 'completed', jobId: 'job-1', selectedCandidateId: 'candidate-2', selectedImageId: 'img-2', positiveTags: ['1girl'], negativeTags: [], candidates: [{ id: 'candidate-2', imageId: 'img-2', prompt: '1girl' }], artifacts: [{ imageId: 'img-2' }], imageIds: ['img-2'] }; },
+      resume: async () => ({ status: 'completed', jobId: 'job-1' })
+    },
+    primaryClient: { complete: async (_messages, config) => {
+      const names = config.tools.map(item => item.function.name);
+      assert(names.includes('generation_execute'));
+      assert(names.includes('generation_resume'));
+      assert(!names.includes('comfy_render'));
+      if (round++ === 0) return { toolCalls: [{ id: 'generate-once', name: 'generation_execute', arguments: { requirements: '蓝发女孩', mode: 'create' } }] };
+      return { text: '已选择候选 2，提示词为 1girl' };
+    } }
+  });
+  assert(tools.names().includes('comfy.render'), 'internal tool must remain registered');
+  const result = await runtime.runPrimary({ requestId: 'high-level-root', input: { text: '画蓝发女孩' } });
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.equal(generationCalls.length, 1);
+  assert.equal(result.data.artifacts[0].imageId, 'img-2');
+  assert.equal(result.usage.toolCalls, 1);
+
+  const hidden = stack({ primaryClient: { complete: async () => ({ toolCalls: [{ id: 'hidden', name: 'comfy_render', arguments: { positiveTags: ['1girl'] } }] }) } });
+  const rejected = await hidden.runtime.runPrimary({ requestId: 'hidden-root', input: { text: '绕过高层工具' } });
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.error.code, 'TOOL_UNAVAILABLE');
+});
+
+test('request deadline extension and successful-only Comfy accounting are deterministic', async () => {
+  const manager = createRequestManager({ timeoutMs: 15 });
+  const handle = manager.begin('extended', { timeoutMs: 15 });
+  assert.equal(manager.extend('extended', 100).timeoutMs >= 100, true);
+  await wait(30);
+  assert.equal(manager.get('extended').status, 'running');
+  manager.complete('extended');
+  assert.equal(handle.signal.aborted, false);
+
+  const limiter = createUsageLimiter();
+  limiter.begin('root', { maxComfyCalls: 1, maxToolCalls: 3 });
+  limiter.check('root', 'comfy');
+  limiter.check('root', 'comfy');
+  assert.equal(limiter.snapshot('root').comfyCalls, 0);
+  limiter.complete('root', 'comfy');
+  assert.equal(limiter.snapshot('root').comfyCalls, 1);
+  assert.throws(() => limiter.check('root', 'comfy'), error => error.code === 'COMFY_CALL_LIMIT');
+});
+
+test('runtime leaves comfyCalls unchanged when the internal render fails', async () => {
+  let attempt = 0;
+  let tools;
+  const settings = { ...baseSettings, limits: { ...baseSettings.limits, maxComfyCalls: 1 } };
+  const runtime = createAgentRuntime({ tools: () => tools, getSettings: () => settings });
+  const stored = new Map();
+  tools = createPrimaryTools({
+    getSettings: () => settings,
+    images: { get: id => stored.get(id) || null, add: value => { const item = { ...value, id: value.id || 'render-ok' }; stored.set(item.id, item); return item; } },
+    imageRepository: { attachToConversation: (_sessionId, imageId) => ({ refId: `ref-${imageId}`, imageId }) },
+    comfy: { render: async () => { attempt += 1; if (attempt === 1) throw Object.assign(new Error('first submission failed'), { code: 'COMFY_FAILED' }); return { artifact: { id: 'render-ok', dataUrl: 'data:image/png;base64,AA==' } }; } }
+  });
+  const failed = await runtime.callTool('comfy.render', { positiveTags: ['1girl'] }, { requestId: 'failed-render', sessionId: 's1' });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.usage.comfyCalls, 0);
+  const succeeded = await runtime.callTool('comfy.render', { positiveTags: ['1girl'] }, { requestId: 'successful-render', sessionId: 's1' });
+  assert.equal(succeeded.ok, true, JSON.stringify(succeeded.error));
+  assert.equal(succeeded.usage.comfyCalls, 1);
 });

@@ -1,12 +1,13 @@
 'use strict';
 
 const SETTINGS_KEY = 'settings';
-const GROUPS = Object.freeze(['primaryApi', 'visionApi', 'comfy', 'limits']);
+const GROUPS = Object.freeze(['primaryApi', 'visionApi', 'comfy', 'limits', 'generation']);
 const DEFAULT_SETTINGS = Object.freeze({
   primaryApi: { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', temperature: 0.7, timeoutMs: 120000, maxTokens: null },
   visionApi: { inheritPrimary: true, base: '', model: '', key: '', temperature: 0.2, timeoutMs: 120000, maxTokens: null },
-  comfy: { enabled: false, base: 'http://127.0.0.1:8188', workflow: '', profiles: { version: 1, activeProfileId: 'profile-default', items: [] }, positiveTags: '', negativeTags: '', width: 768, height: 1024, steps: 25, cfg: 7, seed: null, sampler: '', scheduler: '', batchCount: 1 },
+  comfy: { enabled: false, base: 'http://127.0.0.1:8188', workflow: '', profiles: { version: 2, activeProfileId: 'profile-default', items: [] }, positiveTags: '', negativeTags: '', width: 768, height: 1024, steps: 25, cfg: 7, seed: null, sampler: '', scheduler: '', batchCount: 1 },
   limits: { maxComfyCalls: 3, maxToolRounds: 8, maxToolCalls: 32, primaryTimeoutMs: 120000 },
+  generation: { strategy: 'auto', autoSelect: true, maxSuccessfulRenders: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3, jobTimeoutMs: 1200000 },
   generateNegativeTags: false
 });
 const FORM_FIELDS = Object.freeze({
@@ -17,7 +18,8 @@ const FORM_FIELDS = Object.freeze({
   comfyOn: ['comfy', 'enabled'], comfyBase: ['comfy', 'base'], comfyWorkflow: ['comfy', 'workflow'], comfyPos: ['comfy', 'positiveTags'], comfyNeg: ['comfy', 'negativeTags'],
   comfyW: ['comfy', 'width'], comfyH: ['comfy', 'height'], comfySteps: ['comfy', 'steps'], comfyCfg: ['comfy', 'cfg'], comfySeed: ['comfy', 'seed'],
   comfySampler: ['comfy', 'sampler'], comfyScheduler: ['comfy', 'scheduler'], batchCount: ['comfy', 'batchCount'],
-  maxComfyCalls: ['limits', 'maxComfyCalls'], maxToolRounds: ['limits', 'maxToolRounds'], maxToolCalls: ['limits', 'maxToolCalls'], primaryTimeoutMs: ['limits', 'primaryTimeoutMs']
+  maxComfyCalls: ['limits', 'maxComfyCalls'], maxToolRounds: ['limits', 'maxToolRounds'], maxToolCalls: ['limits', 'maxToolCalls'], primaryTimeoutMs: ['limits', 'primaryTimeoutMs'],
+  generationStrategy: ['generation', 'strategy'], generationAutoSelect: ['generation', 'autoSelect']
 });
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -44,6 +46,7 @@ function normaliseSettings(value = {}) {
   const source = object(value) ? value : {};
   const comfy = object(source.comfy) ? source.comfy : {};
   const limits = object(source.limits) ? source.limits : {};
+  const generation = object(source.generation) ? source.generation : {};
   const defaults = DEFAULT_SETTINGS.comfy;
   const tagText = item => Array.isArray(item) ? item.map(value2 => string(value2)).filter(Boolean).join(', ') : string(item);
   return {
@@ -65,6 +68,15 @@ function normaliseSettings(value = {}) {
       maxToolRounds: number(limits.maxToolRounds, DEFAULT_SETTINGS.limits.maxToolRounds, 1, 128, true),
       maxToolCalls: number(limits.maxToolCalls, DEFAULT_SETTINGS.limits.maxToolCalls, 0, 512, true),
       primaryTimeoutMs: number(limits.primaryTimeoutMs, DEFAULT_SETTINGS.limits.primaryTimeoutMs, 1000, 3600000, true)
+    },
+    generation: {
+      strategy: ['quick', 'auto', 'fixed3'].includes(generation.strategy) ? generation.strategy : DEFAULT_SETTINGS.generation.strategy,
+      autoSelect: generation.autoSelect !== false,
+      maxSuccessfulRenders: number(generation.maxSuccessfulRenders, DEFAULT_SETTINGS.generation.maxSuccessfulRenders, 1, 3, true),
+      maxRenderAttempts: number(generation.maxRenderAttempts, DEFAULT_SETTINGS.generation.maxRenderAttempts, 1, 10, true),
+      acceptScore: number(generation.acceptScore, DEFAULT_SETTINGS.generation.acceptScore, 0, 100),
+      minImprovement: number(generation.minImprovement, DEFAULT_SETTINGS.generation.minImprovement, 0, 100),
+      jobTimeoutMs: number(generation.jobTimeoutMs, DEFAULT_SETTINGS.generation.jobTimeoutMs, 120000, 3600000, true)
     },
     generateNegativeTags: source.generateNegativeTags === true
   };
@@ -88,7 +100,7 @@ function createSettings(options = {}) {
   let current = normaliseSettings(options.initial);
   try {
     const stored = storage?.get ? storage.get(SETTINGS_KEY, null) : storage?.load?.(SETTINGS_KEY, null);
-    if (object(stored) && GROUPS.every(key => object(stored[key]))) current = normaliseSettings(stored);
+    if (object(stored) && ['primaryApi', 'visionApi', 'comfy', 'limits'].every(key => object(stored[key]))) current = normaliseSettings(stored);
   } catch { /* Invalid optional settings use the current defaults. */ }
   function persist() {
     const value = clone(current);
@@ -104,7 +116,7 @@ function createSettings(options = {}) {
     primaryProfile: () => clone(current.primaryApi),
     visionProfile: () => clone(current.visionApi.inheritPrimary ? current.primaryApi : apiProfile(current.visionApi, DEFAULT_SETTINGS.visionApi)),
     reset(group) {
-      if (group === 'primaryApi' || group === 'visionApi') current[group] = clone(DEFAULT_SETTINGS[group]);
+      if (GROUPS.includes(group)) current[group] = clone(DEFAULT_SETTINGS[group]);
       else current = normaliseSettings();
       persist(); return settingsForm(current);
     }

@@ -3,7 +3,8 @@
 const { SCHEMAS, OUTPUT_SCHEMAS } = require('./fixed-subagents');
 const { assertValid } = require('./schema');
 const { errorShape, resultOk, resultError } = require('./error-manager');
-const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render']);
+const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render', 'generation.execute', 'generation.resume']);
+const PRIMARY_TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'comfy.status', 'generation.execute', 'generation.resume']);
 const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
 function text(value) { return typeof value === 'string' ? value.trim() : ''; }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -23,6 +24,8 @@ const workflowSchema = schema({ ready: { type: 'boolean' }, error: string }, ['r
 const capabilitiesSchema = schema({ txt2img: { type: 'boolean' }, img2img: { type: 'boolean' }, controlImage: { type: 'boolean' }, mask: { type: 'boolean' } });
 const statusSchema = schema({ enabled: { type: 'boolean' }, connected: { type: 'boolean' }, workflowReady: { type: 'boolean' }, render: { type: 'boolean' }, error: string, workflowProfileId: string, workflowRevision: string, capabilities: capabilitiesSchema }, ['enabled', 'connected', 'workflowReady', 'render', 'error']);
 const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty }, prompt: string, negative: string, positiveTags: tagArray, negativeTags: tagArray, parameters: { type: 'object' }, workflowProfileId: string, workflowRevision: string, workflowHash: string, changedBindings: { type: 'array', items: string }, recreationMode: { type: 'string', enum: ['', 'reference_image', 'text_approximation'] } }, ['artifacts', 'imageIds']);
+const generationExecuteSchema = schema({ requirements: { type: 'string', minLength: 1, maxLength: 16000 }, mode: { type: 'string', enum: ['create', 'recreate', 'auto'] }, sourceImageId: nonempty, sourceSlot: { type: 'integer', minimum: 1, maximum: 10000 }, characterQueries: { type: 'array', maxItems: 8, items: nonempty }, characterIds: { type: 'array', maxItems: 8, items: nonempty }, strategy: { type: 'string', enum: ['quick', 'auto', 'fixed3'] }, autoSelect: { type: 'boolean' }, workflowProfileId: nonempty }, ['requirements']);
+const generationResumeSchema = schema({ jobId: nonempty, sourceImageId: nonempty, characterIds: { type: 'array', maxItems: 8, items: nonempty }, workflowProfileId: nonempty, strategy: { type: 'string', enum: ['quick', 'auto', 'fixed3'] }, autoSelect: { type: 'boolean' } }, ['jobId']);
 const DEFINITIONS = Object.freeze({
   'tags.search': { description: '查询本站标签及释义；Tag 含义、拼写或是否属于本站词库不确定时调用。命中角色名时附带角色出处和外貌 Tag。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, category: string, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 200, items: tagSchema } }, ['items']) },
   'characters.search': { description: '查询本地角色资料，返回中英文名、作品、身份词和可选特征；先确认具体角色再向 agent.generateTags 传 characterIds。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, seriesId: string, precision: { type: 'string', enum: ['exact', 'standard', 'broad'] }, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 10 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 10, items: characterSchema }, total: { type: 'integer', minimum: 0 } }, ['items', 'total']) },
@@ -32,7 +35,9 @@ const DEFINITIONS = Object.freeze({
   'agent.generateTags': { description: '使用 Vision AI，根据要求、已有 Tag、参考 Tag、可选 imageId 和 characters.search 返回的 characterIds 生成英文绘图 Tag。', parameters: generateParameters, outputSchema: OUTPUT_SCHEMAS?.generateTags },
   'comfy.status': { description: '读取 ComfyUI 连接、启用和工作流状态。', parameters: schema({}), outputSchema: statusSchema },
   'comfy.validateWorkflow': { description: '检查用户当前 API 工作流是否可用。', parameters: schema({}), outputSchema: workflowSchema },
-  'comfy.render': { description: '按正向 Tag 和可选负向 Tag 出图；内部复刻任务可传当前会话的 sourceImageId。', parameters: schema({ positiveTags: { ...tagArray, minItems: 1 }, negativeTags: tagArray, sourceImageId: nonempty, denoise: { type: 'number', minimum: 0, maximum: 1 }, controlStrength: { type: 'number', minimum: 0, maximum: 2 } }, ['positiveTags']), outputSchema: renderSchema }
+  'comfy.render': { description: '按正向 Tag 和可选负向 Tag 出图；内部复刻任务可传当前会话的 sourceImageId。', parameters: schema({ positiveTags: { ...tagArray, minItems: 1 }, negativeTags: tagArray, sourceImageId: nonempty, denoise: { type: 'number', minimum: 0, maximum: 1 }, controlStrength: { type: 'number', minimum: 0, maximum: 2 } }, ['positiveTags']), outputSchema: renderSchema },
+  'generation.execute': { description: '启动程序控制的绘图或复刻任务；程序会生成并评价 1 到 3 个候选、按需修订 Tag，并返回最佳图与每张图的实际提示词。', parameters: generationExecuteSchema, outputSchema: { type: 'object' } },
+  'generation.resume': { description: '为处于 needs_input 或 interrupted 的生成任务补充原图、角色、工作流或策略后继续执行。', parameters: generationResumeSchema, outputSchema: { type: 'object' } }
 });
 
 function failure(code, message) { return Object.assign(new Error(message), { code }); }
@@ -71,12 +76,14 @@ function publicImage(value) {
 function createPrimaryTools(options = {}) {
   const getSettings = typeof options.getSettings === 'function' ? options.getSettings : () => ({});
   const getRuntime = typeof options.runtime === 'function' ? options.runtime : () => options.runtime;
+  const getGeneration = typeof options.generation === 'function' ? options.generation : () => options.generation;
   const repository = options.imageRepository || options.imagesRepository;
   const images = options.images;
   const comfy = options.comfy;
+  const profiles = options.comfyProfiles || comfy?.profiles;
   function currentComfy() {
     const settings = getSettings()?.comfy || {};
-    const profile = comfy?.profiles?.active?.();
+    const profile = profiles?.active?.();
     return profile ? { ...settings, base: profile.base || settings.base, workflow: profile.workflow || settings.workflow } : settings;
   }
   function guardSignal(context) { if (context.signal?.aborted) throw context.signal.reason || failure('CANCELLED', '请求已取消'); }
@@ -93,7 +100,7 @@ function createPrimaryTools(options = {}) {
       const result = await comfy.result(promptId, { signal: context.signal }); guardSignal(context);
       if (result?.status === 'error') throw failure('COMFY_FAILED', text(result.error) || 'ComfyUI 出图失败');
       const known = new Set(rows.filter(item => item?.dataUrl || item?.bytes).map(item => [item.filename, item.subfolder || '', item.type || 'output'].join('|')));
-      const configuredOutputs = comfy?.profiles?.active?.()?.bindings?.outputs;
+      const configuredOutputs = profiles?.active?.()?.bindings?.outputs;
       const outputRows = Array.isArray(configuredOutputs) && configuredOutputs.length
         ? (result?.outputs || []).filter(output => configuredOutputs.includes(String(output.nodeId)))
         : (result?.outputs || []);
@@ -166,7 +173,7 @@ function createPrimaryTools(options = {}) {
       if (typeof comfy?.status !== 'function') throw failure('TOOL_UNAVAILABLE', 'ComfyUI 连接器不可用');
       const settings = currentComfy(); syncComfy(settings);
       const value = unwrap(await comfy.status({ enabled: settings.enabled === true, workflow: settings.workflow, signal: context.signal }));
-      const profile = comfy?.profiles?.active?.();
+      const profile = profiles?.active?.();
       return { enabled: settings.enabled === true, connected: value?.connected === true, workflowReady: value?.workflowReady === true, render: value?.render === true, error: text(value?.error), workflowProfileId: text(profile?.id), workflowRevision: profile?.updatedAt ? String(profile.updatedAt) : '', capabilities: object(profile?.capabilities) ? clone(profile.capabilities) : { txt2img: true, img2img: false, controlImage: false, mask: false } };
     },
     'comfy.validateWorkflow': async (_args, context) => {
@@ -180,7 +187,7 @@ function createPrimaryTools(options = {}) {
       if (!context.sessionId) throw failure('SESSION_REQUIRED', '当前会话不可用');
       if (typeof comfy?.render !== 'function') throw failure('TOOL_UNAVAILABLE', 'ComfyUI 连接器不可用');
       const settings = currentComfy(); if (settings.enabled !== true) throw failure('COMFY_DISABLED', 'ComfyUI 未启用'); syncComfy(settings);
-      const profile = comfy?.profiles?.active?.();
+      const profile = profiles?.active?.();
       const negative = args.negativeTags === undefined ? (Array.isArray(settings.negativeTags) ? settings.negativeTags : text(settings.negativeTags).split(/[,，\n]+/).filter(Boolean)) : args.negativeTags;
       let uploaded = null;
       let recreationMode = '';
@@ -216,10 +223,23 @@ function createPrimaryTools(options = {}) {
         changedBindings: Array.isArray(submitted?.changedBindings || raw?.changedBindings) ? (submitted?.changedBindings || raw.changedBindings).slice() : [],
         recreationMode
       });
+    },
+    'generation.execute': async (args, context) => {
+      const generation = getGeneration();
+      if (typeof generation?.execute !== 'function') throw failure('GENERATION_UNAVAILABLE', '自动生成任务模块不可用');
+      context.extendRootTimeout?.(getSettings()?.generation?.jobTimeoutMs || 1200000);
+      return generation.execute(args, context);
+    },
+    'generation.resume': async (args, context) => {
+      const generation = getGeneration();
+      if (typeof generation?.resume !== 'function') throw failure('GENERATION_UNAVAILABLE', '自动生成任务模块不可用');
+      context.extendRootTimeout?.(getSettings()?.generation?.jobTimeoutMs || 1200000);
+      return generation.resume(args, context);
     }
   };
   const resolve = value => { const name = NATIVE_NAMES.get(value) || value; return TOOL_NAMES.includes(name) ? { name, ...clone(DEFINITIONS[name]), handler: handlers[name] } : null; };
   const list = () => TOOL_NAMES.map(name => ({ name, ...clone(DEFINITIONS[name]) }));
+  const listPrimary = () => PRIMARY_TOOL_NAMES.map(name => ({ name, ...clone(DEFINITIONS[name]) }));
   async function call(name, args = {}, context = {}) {
     const entry = resolve(name); if (!entry) return resultError({ code: 'TOOL_UNAVAILABLE', message: `工具不可用：${name}` }, context.requestId);
     try {
@@ -228,7 +248,7 @@ function createPrimaryTools(options = {}) {
       return resultOk(data, value?.requestId || context.requestId, value?.usage);
     } catch (error) { return resultError(error, context.requestId); }
   }
-  return Object.freeze({ names: () => TOOL_NAMES.slice(), list, schemas: list, openAiTools: () => list().map(item => ({ type: 'function', function: { name: item.name.replace('.', '_'), description: item.description, parameters: item.parameters } })), resolve, call, has: name => Boolean(resolve(name)) });
+  return Object.freeze({ names: () => TOOL_NAMES.slice(), primaryNames: () => PRIMARY_TOOL_NAMES.slice(), list, listPrimary, schemas: list, openAiTools: () => listPrimary().map(item => ({ type: 'function', function: { name: item.name.replace('.', '_'), description: item.description, parameters: item.parameters } })), resolve, call, has: name => Boolean(resolve(name)) });
 }
 
-module.exports = { TOOL_NAMES, DEFINITIONS, createPrimaryTools };
+module.exports = { TOOL_NAMES, PRIMARY_TOOL_NAMES, DEFINITIONS, createPrimaryTools };

@@ -79,19 +79,19 @@ try {
     translateWithModel: (...args) => translationProxyTarget?.service?.translateWithModel?.(...args),
     translate: (...args) => translationProxyTarget?.service?.translate?.(...args)
   };
-  comfy = modules.createComfy ? modules.createComfy({ base: 'http://127.0.0.1:8188' }) : null;
   assistant = modules.createAssistant({
     tags,
     characters,
     images,
     vision,
-    comfy,
+    comfyOptions: { base: 'http://127.0.0.1:8188' },
     translation: translationProxyTarget,
     storage,
     promptDir: path.join(assetDir, '提示词素材'),
     callMonitorPath: path.join(userDataDir, 'debug', 'ai-calls.json'),
     promptSource: prompts || undefined
   });
+  comfy = assistant.comfy || null;
   // Translation only needs the generic AiService, so it can be assembled
   // after Assistant without introducing a reverse dependency.
   translation = modules.createTranslation({ tags, runner: translationRunner, ai: assistant.ai });
@@ -326,6 +326,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     // 组合与包。
     composePrimary: prompts.composePrimary,
     composeGenerate: prompts.composeGenerate,
+    composeEvaluation: prompts.composeEvaluation,
     exportBundle: prompts.exportBundle,
     exportSet: prompts.exportSet,
     importBundle: prompts.importBundle,

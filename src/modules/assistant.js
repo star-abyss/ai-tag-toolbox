@@ -16,6 +16,7 @@ const { createAiClient, parseReply } = require('./ai-client');
 const { createPrimaryAgent, publicRequestConfig } = require('./primary-agent');
 const { errorShape, resultError } = require('./error-manager');
 const { createCallMonitor } = require('./call-monitor');
+const { createGenerationOrchestrator } = require('./generation-orchestrator');
 
 const SESSION_FORMAT = 'ai-tag-sessions';
 const SESSION_VERSION = 1;
@@ -58,6 +59,7 @@ function createAssistant(options = {}) {
   let active = null;
   let runtime;
   let primaryTools;
+  let generation;
   let imageRepository;
   let destroyed = false;
   function read(key, fallback) { try { return storage?.get ? storage.get(key, fallback) : storage?.load?.(key, fallback) ?? fallback; } catch { return fallback; } }
@@ -134,7 +136,36 @@ function createAssistant(options = {}) {
   const primary = createPrimaryAgent({ client: ai, prompts, getSettings: settings.snapshot, charactersEnabled: Boolean(options.characters) });
   const subagents = createFixedSubagents({ vision: visionService, translation: options.translation, ai, visionAI: visionClient, prompts, resolveImage, getSettings: settings.snapshot });
   runtime = createAgentRuntime({ primaryClient: primary, subagents, tools: () => primaryTools, getSettings: settings.snapshot, getPrimaryPrompt: primary.getPrompt, monitor: callMonitor });
-  primaryTools = createPrimaryTools({ tags, characters: options.characters, images, imageRepository, runtime, comfy, getSettings: settings.snapshot });
+  primaryTools = createPrimaryTools({ tags, characters: options.characters, images, imageRepository, runtime, comfy, comfyProfiles, generation: () => generation, getSettings: settings.snapshot });
+  const internalTool = async (name, args, context) => {
+    const outcome = await runtime.callTool(name, args, { parentRequestId: context.requestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: context.onEvent });
+    if (outcome?.ok === false) throw Object.assign(new Error(outcome.error?.message || '内部工具调用失败'), { code: outcome.error?.code || 'TOOL_FAILED', retryable: outcome.error?.retryable === true });
+    return outcome.data;
+  };
+  generation = options.generation || createGenerationOrchestrator({
+    storage,
+    runSubAgent: runtime.runSubAgent,
+    renderCandidate: (input, context) => internalTool('comfy.render', {
+      positiveTags: input.positiveTags,
+      negativeTags: input.negativeTags,
+      ...(input.sourceImageId ? { sourceImageId: input.sourceImageId } : {})
+    }, context),
+    preflight: async (input, context) => {
+      const value = await internalTool('comfy.status', {}, context);
+      const profile = comfyProfiles.active();
+      const referenceReady = Boolean(profile?.bindings?.sourceImage && (profile?.capabilities?.img2img === true || profile?.capabilities?.controlImage === true));
+      return { ready: value.render === true, connected: value.connected === true, error: value.error || '', workflowProfileId: profile?.id || '', workflowRevision: profile?.updatedAt ? String(profile.updatedAt) : '', recreationMode: input.mode === 'recreate' ? (referenceReady ? 'reference_image' : 'text_approximation') : '' };
+    },
+    listConversationImages: sessionId => imageRepository.listConversation(sessionId, { includePending: true, includeDeleted: false }),
+    resolveCharacter: (value, context) => {
+      if (!options.characters) return null;
+      const includeAdult = tags?.stateSnapshot?.().includeAdult === true;
+      if (context.mode === 'id') return options.characters.get?.(value, { includeAdult }) || null;
+      return options.characters.page?.({ query: value, includeAdult, precision: 'standard', limit: 10 }) || null;
+    },
+    getSettings: settings.snapshot,
+    getPromptSnapshot: prompts.snapshot
+  });
 
   function append(role, value, extra = {}, sessionId = state.currentId) {
     const session = sessionById(sessionId); if (!session) return null;
@@ -248,6 +279,26 @@ function createAssistant(options = {}) {
   function messageLocation(value, sessionId = state.currentId) { const session = sessionById(sessionId); if (!session) return null; const index = typeof value === 'number' ? value : session.messages.findIndex(row => row.id === value); return index >= 0 && session.messages[index] ? { session, index, message: session.messages[index] } : null; }
   function editMessage(value, nextText, sessionId) { const found = messageLocation(value, sessionId); if (!found) return null; if (active?.sessionId === found.session.id) cancel(); found.message.text = typeof nextText === 'string' ? nextText : ''; found.message.transcript = []; found.session.updatedAt = Date.now(); persist(); return clone(found.message); }
   function deleteMessage(value, sessionId) { const found = messageLocation(value, sessionId); if (!found) return false; if (active?.sessionId === found.session.id) cancel(); found.session.messages.splice(found.index, 1); found.session.updatedAt = Date.now(); persist(); return true; }
+  function chooseCandidate(value, candidateId, source = 'user', sessionId = state.currentId) {
+    const found = messageLocation(value, sessionId);
+    const jobId = text(found?.message?.result?.jobId);
+    if (!found || !jobId) return null;
+    const selected = generation?.selectCandidate?.(jobId, candidateId, source);
+    if (!selected) return null;
+    found.message.result = {
+      ...found.message.result,
+      ...clone(selected),
+      finalCandidateId: selected.selectedCandidateId,
+      finalImageId: selected.selectedImageId,
+      finalPrompt: selected.prompt,
+      finalNegative: selected.negative
+    };
+    found.message.artifacts = clone(array(selected.artifacts));
+    found.message.imageIds = ids(selected.imageIds);
+    found.session.updatedAt = Date.now();
+    persist();
+    return clone(found.message.result);
+  }
   async function rerunFromMessage(value, inputPatch = {}, config = {}, sessionId = state.currentId) {
     if (active) return failure('BUSY', '当前请求仍在处理中', active.id, active.sessionId);
     const found = messageLocation(value, sessionId); if (!found || found.session.id !== state.currentId) return failure('MESSAGE_NOT_FOUND', '没有找到要重新执行的消息');
@@ -266,7 +317,7 @@ function createAssistant(options = {}) {
   function setSettings(value = {}) { const result = settings.setForm(value); ai.setConfig(settings.primaryProfile()); visionAi.setConfig(settings.visionProfile()); return result; }
   function resetSettings(group) { settings.reset(group); return settings.getForm(); }
   const api = {
-    run: runPrimaryWithRuntime, runtime, primaryTools, imageRepository, visionTempStore, visionService, parseReply,
+    run: runPrimaryWithRuntime, runtime, primaryTools, generation, comfy, imageRepository, visionTempStore, visionService, parseReply,
     getSettings: settings.getForm, getCanonicalSettings: settings.snapshot, setSettings, updateSettings: setSettings, resetSettings, comfyProfiles,
     getPrimaryConfig: settings.primaryProfile, getVisionConfig: visionConfig,
     listModels: config => ai.listModels({ ...settings.primaryProfile(), ...publicRequestConfig(config) }), listVisionModels: config => visionAi.listModels({ ...settings.visionProfile(), ...publicRequestConfig(config) }),
@@ -278,7 +329,7 @@ function createAssistant(options = {}) {
     deleteSession(sessionId = state.currentId, value = {}) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); const result = imageRepository.deleteSession(sessionId, { retainImages: value.retainImages === true }); if (!sessionById()) state.currentId = state.sessions[0]?.id || ''; if (!state.sessions.length) newSession(); else persist(); return result; },
     clearSession(sessionId = state.currentId) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); imageRepository.clearSessionContent(sessionId); persist(); return clone(sessionById(sessionId)); },
     clearConversationImages(sessionId = state.currentId) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); const result = imageRepository.clearConversationImages(sessionId); persist(); return result; },
-    append, editMessage, deleteMessage, rerunFromMessage, regenerateMessage: rerunFromMessage,
+    append, editMessage, deleteMessage, chooseCandidate, selectCandidate: chooseCandidate, rerunFromMessage, regenerateMessage: rerunFromMessage,
     exportSessions: () => JSON.stringify(sessionBundle(), null, 2),
     importSessions(value, replace = false) { const incoming = incomingBundle(value); if (!incoming) return false; cancel(); const usedSessions = new Set(replace ? [] : state.sessions.map(row => row.id)); const usedMessages = new Set(replace ? [] : state.sessions.flatMap(row => row.messages.map(message => message.id))); const normalized = incoming.sessions.map(row => normalizeSession(row, usedSessions, usedMessages)); state.sessions = replace ? normalized : [...state.sessions, ...normalized]; if (replace || !sessionById()) state.currentId = state.sessions[0]?.id || ''; for (const session of normalized) imageRepository.reconcileSessionMessages(session.id); imageRepository.reconcileSessions(); if (!state.sessions.length) newSession(); else persist(); return clone(state.sessions); },
     listFavorites: () => clone(favorites), getFavorites: () => clone(favorites), setFavorites(value) { favorites = array(value).map(clone); write('rewrite_favorites', favorites); return clone(favorites); }, addFavorite(value) { const item = object(value) ? clone(value) : { name: text(value, '未命名收藏') }; item.id = text(item.id, id('favorite')); favorites.push(item); write('rewrite_favorites', favorites); return clone(item); }, removeFavorite(favoriteId) { const index = favorites.findIndex(row => row.id === favoriteId); if (index < 0) return false; favorites.splice(index, 1); write('rewrite_favorites', favorites); return true; },
