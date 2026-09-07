@@ -22,8 +22,8 @@ function boot(options = {}) {
   window.prompt = () => '新名称';
   window.confirm = () => true;
 
-  const session = { id: 's1', title: '测试会话', messages: [] };
-  const images = new Map([['img-1', { id: 'img-1', dataUrl: 'data:image/png;base64,AA==' }]]);
+  const session = { id: 's1', title: '测试会话', messages: options.initialMessages ? structuredClone(options.initialMessages) : [] };
+  const images = new Map([['img-1', { id: 'img-1', dataUrl: 'data:image/png;base64,AA==' }], ['img-2', { id: 'img-2', dataUrl: 'data:image/png;base64,AQ==' }]]);
   const gallery = [{ imageId: 'img-1', filename: 'one.png', dataUrl: 'data:image/png;base64,AA==' }];
   let runCount = 0;
   let conversationItems = options.conversationItems ? options.conversationItems.slice() : [];
@@ -38,7 +38,8 @@ function boot(options = {}) {
     listConversation: () => ({ items: conversationItems.slice() }),
     clearConversationImages: sessionId => { options.clearConversationImages?.(sessionId); conversationItems = []; return { removed: 1, deletedImages: 1 }; }
   };
-  let settings = { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', comfyBase: 'http://127.0.0.1:8188', comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, batchCount: 1, maxComfyCalls: 3 };
+  let settings = { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', comfyBase: 'http://127.0.0.1:8188', comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, batchCount: 1, maxComfyCalls: 3, generationStrategy: 'auto', generationAutoSelect: true };
+  let cancelCount = 0;
   const assistant = {
     sessions: () => [session], currentSession: () => session, newSession: () => session,
     getSettings: () => settings,
@@ -52,7 +53,15 @@ function boot(options = {}) {
       if (options.runResult) session.messages.push({ id: `a${runCount}`, role: 'assistant', text: result.text, status: 'error' });
       return result;
     },
-    cancel: () => true,
+    cancel: () => { cancelCount += 1; return true; },
+    chooseCandidate: (messageId, candidateId, source = 'user') => {
+      const message = session.messages.find(item => item.id === messageId);
+      if (!message?.result?.candidates?.some(candidate => candidate.id === candidateId)) return null;
+      message.result.candidates = message.result.candidates.map(candidate => ({ ...candidate, selected: candidate.id === candidateId, selectionSource: candidate.id === candidateId ? source : '' }));
+      const candidate = message.result.candidates.find(item => item.id === candidateId);
+      Object.assign(message.result, { selectedCandidateId: candidateId, selectedImageId: candidate.imageId, finalCandidateId: candidateId, finalImageId: candidate.imageId, finalPrompt: candidate.prompt, finalNegative: candidate.negative || '' });
+      return structuredClone(message.result);
+    },
     clearConversationImages: sessionId => repository.clearConversationImages?.(sessionId),
     deleteSession: (sessionId, value) => { options.deleteSession?.(sessionId, value); return true; },
     imageRepository: repository
@@ -95,7 +104,7 @@ function boot(options = {}) {
   for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'views/call-monitor-view.js', 'app-view.js']) window.eval(source(file));
   const view = window.AppView.create(modules, window.document);
   view.start();
-  return { dom, window, view, assistant, repository, gallery, downloadBlobs, getRunCount: () => runCount, getComfyProfile: () => comfyProfile && structuredClone(comfyProfile) };
+  return { dom, window, view, assistant, repository, gallery, downloadBlobs, getRunCount: () => runCount, getCancelCount: () => cancelCount, getComfyProfile: () => comfyProfile && structuredClone(comfyProfile) };
 }
 
 test('full DOM startup renders extracted views and conversation click uses assistant runtime', async () => {
@@ -177,6 +186,48 @@ test('ComfyUI profile exposes explicit capabilities and reference bindings', () 
   source.dispatchEvent(new app.window.Event('change', { bubbles: true }));
   assert.deepEqual(app.getComfyProfile().bindings.sourceImage, { nodeId: '10', input: 'image' });
   assert.equal(app.view.views.comfy.snapshot().comfyBase, 'http://127.0.0.1:8188');
+  app.dom.window.close();
+});
+
+test('conversation generation controls persist strategy and automatic selection', () => {
+  const app = boot();
+  app.view.route('ai'); app.view.showAi('talk');
+  const strategy = app.window.document.querySelector('#generationStrategy');
+  const autoSelect = app.window.document.querySelector('#generationAutoSelect');
+  assert.equal(strategy.value, 'auto');
+  assert.equal(autoSelect.checked, true);
+  strategy.value = 'fixed3'; strategy.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  autoSelect.checked = false; autoSelect.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  assert.equal(app.assistant.getSettings().generationStrategy, 'fixed3');
+  assert.equal(app.assistant.getSettings().generationAutoSelect, false);
+  const beforeStop = app.getCancelCount();
+  app.window.document.querySelector('#talkStopBtn').click();
+  assert(app.getCancelCount() > beforeStop);
+  app.dom.window.close();
+});
+
+test('candidate comparison shows scores and issues and accepts a manual final choice', () => {
+  const candidates = [
+    { id: 'candidate-1', iteration: 1, imageId: 'img-1', prompt: '1girl, blue hair', negative: 'lowres', evaluation: { status: 'reviewed', score: 76, summary: '构图需要调整', issues: [{ severity: 'major', observed: '视角偏正面', suggestedChange: '加强侧身' }] } },
+    { id: 'candidate-2', iteration: 2, imageId: 'img-2', prompt: '1girl, blue hair, from side', negative: 'lowres', selected: true, evaluation: { status: 'reviewed', score: 94, summary: '符合要求', issues: [], recommended: true } }
+  ];
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', imageIds: ['img-1', 'img-2'], status: 'done', result: { status: 'completed', selectedCandidateId: 'candidate-2', selectedImageId: 'img-2', prompt: candidates[1].prompt, negative: 'lowres', candidates } }] });
+  app.view.route('ai'); app.view.showAi('talk'); app.view.renderTalk();
+  const cards = app.window.document.querySelectorAll('.draw-candidate');
+  assert.equal(cards.length, 2);
+  assert.match(cards[1].querySelector('.draw-candidate-score').textContent, /94/);
+  assert.match(cards[0].querySelector('.draw-candidate-issues').textContent, /视角偏正面/);
+  assert.equal(cards[1].classList.contains('selected'), true);
+  assert.match(app.window.document.querySelector('.genout').textContent, /from side/);
+  cards[0].querySelector('.draw-candidate-choose').click();
+  assert.equal(app.assistant.currentSession().messages[0].result.selectedCandidateId, 'candidate-1');
+  app.dom.window.close();
+});
+
+test('needs-input generation result is shown as an actionable conversation notice', () => {
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '请选择参考图', imageIds: [], status: 'done', result: { status: 'needs_input', jobId: 'job-1', needsInput: { kind: 'source_image', message: '请选择当前会话中的参考原图' }, candidates: [] } }] });
+  app.view.route('ai'); app.view.showAi('talk'); app.view.renderTalk();
+  assert.match(app.window.document.querySelector('.generation-needs-input').textContent, /参考原图/);
   app.dom.window.close();
 });
 

@@ -247,6 +247,14 @@ function createAssistant(options = {}) {
       if (!writable(job)) return;
       if (isNoiseEvent(event)) return; // 流式增量不写入任务事件，避免刷满 256 条上限。
       live.events.push(clone(event)); if (live.events.length > 256) live.events.shift(); live.activity = clone(live.events);
+      if (event?.jobId && typeof generation?.get === 'function') {
+        const generationState = generation.get(event.jobId);
+        if (generationState) {
+          live.result = { ...(object(live.result) ? live.result : {}), ...clone(generationState) };
+          live.artifacts = clone(array(generationState.artifacts));
+          live.imageIds = ids(generationState.imageIds);
+        }
+      }
       const output = event?.result?.data || event?.result;
       if (Array.isArray(output?.artifacts)) { for (const artifact of output.artifacts) if (!live.artifacts.some(item => item.imageId === artifact.imageId)) live.artifacts.push(clone(artifact)); live.imageIds = ids([...live.imageIds, ...live.artifacts.map(item => item.imageId)]); }
       persist(); observe(input.onEvent, clone(event)); observe(input.onToolEvent, clone(event));

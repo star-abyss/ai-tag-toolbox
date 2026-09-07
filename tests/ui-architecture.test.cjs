@@ -41,3 +41,12 @@ test('medium desktop header centers every navigation row on one axis', () => {
   assert.match(override, /\.header-leading\s*\{[\s\S]*?margin-inline\s*:\s*auto/);
   assert.match(css, /@media\s*\(min-width:1501px\)/, 'wide desktop rules should remain separate');
 });
+
+test('generation UI consumes dotted state-machine events and keeps stable candidate tracks', () => {
+  const app = fs.readFileSync(path.join(root, 'src', 'app-view.js'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'src', 'app.css'), 'utf8');
+  assert.match(app, /candidate\.ready/);
+  assert.match(app, /candidate\.evaluated/);
+  assert.match(app, /generation\.needs_input/);
+  assert.match(css, /\.draw-candidates\s*\{[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,minmax\(260px,1fr\)\)/);
+});

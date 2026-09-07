@@ -735,6 +735,12 @@
         status.classList.toggle("is-comfy-error", !connected);
       }
       const toggle = $("#talkComfyOn"); if (toggle) toggle.checked = settings().comfyOn === true || settings().comfy?.enabled === true;
+      const workflow = $("#generationWorkflowName");
+      if (workflow) {
+        const active = comfy?.profiles?.active?.();
+        workflow.textContent = active?.name || "默认工作流";
+        workflow.title = formatText(localized("ui.ai.generationWorkflow", "工作流：{name}"), { name: active?.name || "默认工作流" });
+      }
     }
     async function refreshCapabilitiesStatus(options = {}) {
       if (typeof assistant?.refreshCapabilities !== "function") return null;
@@ -2206,7 +2212,7 @@
             : null;
           const drawPrompt = drawReply
             ? candidateRows.length
-              ? (message.result?.finalPrompt || (message.result?.finalCandidateId ? message.result?.prompt : ""))
+              ? (message.result?.finalPrompt || ((message.result?.finalCandidateId || message.result?.selectedCandidateId) ? message.result?.prompt : ""))
               : message.result?.prompt || parsedDraw?.prompt
             : "";
           const bodyText = drawReply && (candidateRows.length || drawPrompt) ? "" : message.text || "";
@@ -2216,6 +2222,12 @@
           if (!bodyText && message.status === "done" && candidateRows.length && !drawPrompt)
             body.textContent = "请选择一张候选图作为最终结果";
           row.appendChild(body);
+          if (message.result?.status === "needs_input" && message.result?.needsInput) {
+            const notice = doc.createElement("div");
+            notice.className = "generation-needs-input";
+            notice.textContent = message.result.needsInput.message || "生成任务需要补充信息后继续";
+            row.appendChild(notice);
+          }
           const reasoning = message.reasoning || parsedDraw?.thinking || "";
           if (reasoning) {
             const details = doc.createElement("details");
@@ -2325,7 +2337,7 @@
         : null;
       const drawPrompt = messageHasRender(message)
         ? candidateRows.length
-          ? (message.result?.finalPrompt || (message.result?.finalCandidateId ? message.result?.prompt : ""))
+          ? (message.result?.finalPrompt || ((message.result?.finalCandidateId || message.result?.selectedCandidateId) ? message.result?.prompt : ""))
           : message.result?.prompt || parsedDraw?.prompt
         : "";
       const bodyText = messageHasRender(message) && message.role !== "error" && (candidateRows.length || drawPrompt) ? "" : message.text || "";
@@ -2571,9 +2583,15 @@
       if (item.type === "subagent.complete") return `子代理 ${item.name || ""} 完成`.trim();
       if (item.type === "tool" || item.type === "tool.start") return `调用 ${toolName}`;
       if (item.type === "tool.complete") return item.result?.ok === false ? `${toolName} 失败` : `${toolName} 完成`;
-      if (item.type === "candidate" || item.type === "candidate-ready") return `第 ${item.iteration || 1} 次返图已显示`;
-      if (item.type === "evaluation" || item.type === "candidate-evaluated") return `已评估 ${item.candidateId || "候选结果"}`;
-      if (item.type === "recommendation" || item.type === "candidate-recommended") return `AI 推荐 ${item.candidateId || "候选结果"}`;
+      if (item.type === "candidate" || item.type === "candidate-ready" || item.type === "candidate.ready") return `第 ${item.iteration || 1} 次返图已显示`;
+      if (item.type === "evaluation" || item.type === "candidate-evaluated" || item.type === "candidate.evaluated") return `已评估 ${item.candidateId || "候选结果"}${Number.isFinite(Number(item.score)) ? ` · ${Math.round(Number(item.score))} 分` : ""}`;
+      if (item.type === "recommendation" || item.type === "candidate-recommended" || item.type === "candidate.recommended") return `AI 推荐 ${item.candidateId || "候选结果"}`;
+      if (item.type === "candidate.rendering") return `正在生成第 ${item.iteration || 1} 张候选`;
+      if (item.type === "prompt.compiled") return "绘图 Tag 已生成";
+      if (item.type === "prompt.revised") return "已按评价修订绘图 Tag";
+      if (item.type === "source.inspected") return "参考原图已分析";
+      if (item.type === "generation.needs_input") return item.needsInput?.message || "生成任务需要补充信息";
+      if (item.type === "generation.completed") return "候选生成与选择完成";
       if (item.type === "event") return item.name ? `${item.name} 事件` : "任务事件";
       return item.message || name || "任务事件";
     }
@@ -2661,12 +2679,18 @@
         head.className = "draw-candidate-head";
         const title = doc.createElement("strong");
         title.textContent = `第 ${Number(candidate.iteration) || 1} 次渲染`;
+        const numericScore = Number(candidate.evaluation?.score);
+        const hasScore = candidate.evaluation?.status === "reviewed" && Number.isFinite(numericScore);
+        const score = doc.createElement("span");
+        score.className = "draw-candidate-score";
+        score.textContent = formatText(localized("ui.ai.candidateScore", "{score} 分"), { score: Math.round(numericScore) });
+        score.hidden = !hasScore;
         const state = doc.createElement("span");
         state.className = "draw-candidate-state";
         state.textContent = candidate.id === selectedId || candidate.selected
           ? "最终选择"
           : candidate.evaluation?.recommended ? "AI 推荐" : "候选";
-        head.append(title, state);
+        head.append(title, score, state);
         card.appendChild(head);
         const image = candidateImage(candidate);
         const imageSource = image?.thumbnailDataUrl || image?.dataUrl || image?.viewUrl || "";
@@ -2692,6 +2716,22 @@
           evaluation.className = "draw-candidate-evaluation";
           evaluation.textContent = candidate.evaluation.summary;
           card.appendChild(evaluation);
+        }
+        const issueRows = [...(Array.isArray(candidate.evaluation?.hardErrors) ? candidate.evaluation.hardErrors : []), ...(Array.isArray(candidate.evaluation?.issues) ? candidate.evaluation.issues : [])]
+          .filter((issue, index, rows) => issue && rows.findIndex(other => `${other?.observed}|${other?.suggestedChange}` === `${issue?.observed}|${issue?.suggestedChange}`) === index)
+          .slice(0, 3);
+        if (issueRows.length) {
+          const issues = doc.createElement("div"); issues.className = "draw-candidate-issues";
+          const label = doc.createElement("strong"); label.textContent = localized("ui.ai.candidateIssues", "主要问题");
+          const list = doc.createElement("ul");
+          for (const issue of issueRows) {
+            const item = doc.createElement("li");
+            const observed = str(issue?.observed || issue?.expected || "待调整");
+            const suggestion = str(issue?.suggestedChange);
+            item.textContent = suggestion ? `${observed}；${suggestion}` : observed;
+            list.appendChild(item);
+          }
+          issues.append(label, list); card.appendChild(issues);
         }
         const tags = doc.createElement("details");
         tags.className = "draw-candidate-tags";
@@ -2731,7 +2771,20 @@
           const result = assistant?.chooseCandidate?.(message.id, candidate.id, "user");
           if (result) { renderTalk(); notify(`已选择第 ${Number(candidate.iteration) || 1} 次结果`); }
         };
-        actions.append(copyPrompt, copyPositive, copyNegative, choose);
+        const continueButton = doc.createElement("button");
+        continueButton.type = "button";
+        continueButton.className = "cico btn btn-secondary draw-candidate-continue";
+        continueButton.textContent = localized("ui.ai.candidateContinue", "继续优化");
+        continueButton.title = "基于这张候选图开始新的优化任务";
+        continueButton.onclick = () => {
+          const imageId = str(candidate.imageId);
+          const suggestions = issueRows.map(issue => str(issue?.suggestedChange || issue?.observed)).filter(Boolean).join("；");
+          const input = $("#talkIn");
+          if (!input) return;
+          input.value = `请基于对话图片 ${imageId} 继续优化${suggestions ? `，重点修正：${suggestions}` : "，保留当前优点并进一步提高匹配度"}`;
+          resizeTalkInput(); input.focus();
+        };
+        actions.append(copyPrompt, copyPositive, copyNegative, continueButton, choose);
         card.appendChild(actions);
         host.appendChild(card);
       });
@@ -2742,7 +2795,7 @@
       if (event?.type === "round.start") { put(selector, "AI 处理中…"); return; }
       if (!event || !event.name) return;
       const mode = event.args?.mode || event.arguments?.mode;
-      const label = event.name === "vision.processOne" ? (mode === "local" ? "本地识图" : mode === "metadata" ? "读取图片信息" : "识图 AI") : ({ 'tags.search': 'Tag 查询', 'characters.search': '角色查询', 'comfy.render': 'ComfyUI', 'agent.generateTags': 'Tag 生成', 'translation.translate': '翻译' }[event.name] || '工具');
+      const label = event.name === "vision.processOne" ? (mode === "local" ? "本地识图" : mode === "metadata" ? "读取图片信息" : "识图 AI") : ({ 'tags.search': 'Tag 查询', 'characters.search': '角色查询', 'comfy.render': 'ComfyUI', 'agent.generateTags': 'Tag 生成', 'translation.translate': '翻译', 'generation.execute': '自动生成任务', 'generation.resume': '恢复生成任务' }[event.name] || '工具');
       if (event.type === "ai-start") put(selector, `AI 正在思考（第 ${Number(event.round) || 1} 轮）…`);
       else if (event.type === "start" || event.type === "tool.start") put(selector, `正在调用 ${label}…`);
       else if (event.type === "event" && event.event?.type === "progress") put(selector, `${label} 排队中（队列 ${Number(event.event.queue) || 0}）…`);
@@ -2760,25 +2813,34 @@
     function handleTalkToolEvent(event) {
       toolProgress("#talkStatus", event);
       updateActivityTimeline();
-      if (event?.name !== "comfy.render") return;
-      if (event.type === "start") put("#talkStatus", "ComfyUI 渲染中…");
-      if (event.type === "complete" && event.result?.ok !== false) put("#talkStatus", "已收到 ComfyUI 返图");
-      if (event.type === "candidate-ready") {
+      const type = event?.type || "";
+      if (type === "generation.started") put("#talkStatus", "正在准备自动生成任务…");
+      if (type === "source.inspected") put("#talkStatus", "参考原图分析完成");
+      if (type === "prompt.compiled") put("#talkStatus", "绘图 Tag 已生成");
+      if (type === "candidate.rendering") put("#talkStatus", `正在生成第 ${Number(event.iteration) || 1} 张候选（尝试 ${Number(event.attempt) || 1}）…`);
+      if (type === "candidate.ready" || type === "candidate-ready") {
         if (event.candidate?.id && event.candidate?.previewUrl) ui.candidatePreviews[event.candidate.id] = event.candidate.previewUrl;
         updateStreamingCandidates();
         updateActivityTimeline();
-        put("#talkStatus", `已显示第 ${Number(event.candidate?.iteration) || 1} 次生成结果`);
+        put("#talkStatus", `已收到第 ${Number(event.iteration || event.candidate?.iteration) || 1} 张候选`);
       }
-      if (event.type === "candidate-recommended") {
+      if (type === "candidate.recommended" || type === "candidate-recommended") {
         updateStreamingCandidates();
         updateActivityTimeline();
         put("#talkStatus", `AI 推荐第 ${Number(String(event.candidateId).split(/[-_]/).pop()) || 1} 次结果`);
       }
-      if (event.type === "candidate-evaluated") {
+      if (type === "candidate.evaluated" || type === "candidate-evaluated") {
         updateStreamingCandidates();
         updateActivityTimeline();
-        put("#talkStatus", `已评估第 ${Number(String(event.candidateId).split(/[-_]/).pop()) || 1} 次结果`);
+        put("#talkStatus", `已评估第 ${Number(String(event.candidateId).split(/[-_]/).pop()) || 1} 次结果${Number.isFinite(Number(event.score)) ? ` · ${Math.round(Number(event.score))} 分` : ""}`);
       }
+      if (type === "prompt.revised") put("#talkStatus", "已按评价修订 Tag，准备下一张候选…");
+      if (type === "generation.needs_input") put("#talkStatus", event.needsInput?.message || "生成任务需要补充信息");
+      if (type === "generation.completed") { updateStreamingCandidates(); put("#talkStatus", "候选比较完成"); }
+      if (type === "generation.failed") put("#talkStatus", event.error?.message || "生成任务失败");
+      if (type === "generation.cancelled") put("#talkStatus", "生成任务已取消");
+      if (event?.name === "comfy.render" && (type === "start" || type === "tool.start")) put("#talkStatus", "ComfyUI 渲染中…");
+      if (event?.name === "comfy.render" && (type === "complete" || type === "tool.complete") && event.result?.ok !== false) put("#talkStatus", "已收到 ComfyUI 返图");
     }
     function talkScroll(force = false) {
       const host = $("#talkConv");

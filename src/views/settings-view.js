@@ -10,7 +10,8 @@
   const number = (value, fallback, min, max) => { const n = Number(value); if (!Number.isFinite(n)) return fallback; return Math.max(min, Math.min(max, n)); };
   const fields = {
     base: ['#aiBase', 'value'], model: ['#aiModel', 'value'], key: ['#aiKey', 'value'],
-    visionInheritPrimary: ['#visionInheritPrimary', 'checked'], visionBase: ['#visionBase', 'value'], visionModel: ['#visionModel', 'value'], visionKey: ['#visionKey', 'value']
+    visionInheritPrimary: ['#visionInheritPrimary', 'checked'], visionBase: ['#visionBase', 'value'], visionModel: ['#visionModel', 'value'], visionKey: ['#visionKey', 'value'],
+    generationStrategy: ['#generationStrategy', 'value'], generationAutoSelect: ['#generationAutoSelect', 'checked']
   };
   function createSettingsView({ document, api, runtime, comfy, notify, onChange, autoBind = true } = {}) {
     const doc = document || (typeof globalThis !== 'undefined' ? globalThis.document : null);
@@ -37,6 +38,8 @@
         base: text(readField('base', current.base), current.base || 'https://api.openai.com/v1').replace(/\/+$/, ''),
         model: text(readField('model', current.model), current.model || 'gpt-4o-mini'), key: text(readField('key', current.key), current.key),
         visionInheritPrimary: inherit, visionBase: text(readField('visionBase', current.visionBase), current.visionBase), visionModel: text(readField('visionModel', current.visionModel), current.visionModel), visionKey: text(readField('visionKey', current.visionKey), current.visionKey),
+        generationStrategy: ['quick', 'auto', 'fixed3'].includes(readField('generationStrategy', current.generationStrategy)) ? readField('generationStrategy', current.generationStrategy) : 'auto',
+        generationAutoSelect: Boolean(readField('generationAutoSelect', current.generationAutoSelect !== false)),
         temperature: number(current.temperature, 0.7, 0, 2)
       };
     }

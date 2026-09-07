@@ -562,6 +562,15 @@
                       <label class="opt comfy-inline-toggle"><input id="talkComfyOn" type="checkbox" /> ComfyUI 出图</label>
                       <button id="talkComfyDebug" class="btn btn-ghost" type="button">调试</button>
                     </div>
+                    <div class="generation-controls" role="group" data-i18n-title="ui.ai.generationControls">
+                      <select id="generationStrategy" data-i18n-title="ui.ai.generationStrategy" aria-label="候选生成模式">
+                        <option value="quick" data-i18n="ui.ai.generationQuick">快速 1 张</option>
+                        <option value="auto" data-i18n="ui.ai.generationAuto">自动 2–3 张</option>
+                        <option value="fixed3" data-i18n="ui.ai.generationFixed3">固定 3 张</option>
+                      </select>
+                      <label class="opt generation-auto-select"><input id="generationAutoSelect" type="checkbox" checked /> <span data-i18n="ui.ai.generationAutoSelect">自动选最佳图</span></label>
+                      <span id="generationWorkflowName" class="generation-workflow-name" title="当前工作流"></span>
+                    </div>
                     <button id="talkCallMonitor" class="btn btn-secondary" type="button">调用监视器</button>
                     <div class="cstatus talk-status" id="talkStatus" aria-live="polite"></div>
                   </div>
