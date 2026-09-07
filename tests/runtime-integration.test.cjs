@@ -11,6 +11,8 @@ const { createImageRepository } = require('../src/modules/image-repository');
 const { createTranslation } = require('../src/modules/translation');
 const { createVisionService } = require('../src/modules/vision-service');
 const { createComfy } = require('../src/modules/comfy');
+const { createCallMonitor } = require('../src/modules/call-monitor');
+const { createAiClient } = require('../src/modules/ai-client');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const baseSettings = { generateNegativeTags: false, comfy: { enabled: true, base: 'http://example.test:8188', workflow: {}, width: 640, height: 768, steps: 0, cfg: 0, seed: 0, sampler: 'euler', scheduler: 'normal', batchCount: 2, negativeTags: ['lowres'] }, limits: { maxComfyCalls: 2, maxToolRounds: 6, maxToolCalls: 16, primaryTimeoutMs: 1000 } };
 function stack(options = {}) {
@@ -143,4 +145,41 @@ test('generateTags monitor record includes the actual prompt and raw provider ou
   assert.equal(record.exchanges[0].response.raw.provider, 'raw-response');
   assert.deepEqual(record.output.positiveTags, ['blue hair']);
   app.destroy();
+});
+
+test('evaluateImages shares the Vision client and monitor redacts all image payloads', async () => {
+  const monitor = createCallMonitor();
+  let providerMessages;
+  const visionClient = createAiClient({ model: 'vision-fixture' }, { complete: async messages => {
+    providerMessages = messages;
+    return { text: JSON.stringify({
+      operation: 'compare',
+      recommendedCandidateId: 'candidate-2',
+      ranking: [
+        { candidateId: 'candidate-2', score: 93, reason: '更符合要求' },
+        { candidateId: 'candidate-1', score: 81, reason: '构图稍弱' }
+      ],
+      reason: '候选 2 更准确',
+      confidence: 0.91
+    }) };
+  } }, monitor);
+  const subagents = createFixedSubagents({
+    prompts: { composeEvaluation: () => 'EVALUATION SYSTEM' },
+    visionAI: visionClient,
+    resolveImage: async id => ({ thumbnailDataUrl: `data:image/png;base64,${Buffer.from(id).toString('base64')}` })
+  });
+  assert.deepEqual(subagents.names(), ['vision', 'translation', 'generateTags', 'evaluateImages']);
+  const runtime = createAgentRuntime({ subagents, monitor });
+  const result = await runtime.runSubAgent('evaluateImages', {
+    requestId: 'evaluation-runtime',
+    sessionId: 'session-1',
+    input: { operation: 'compare', mode: 'create', brief: { requirements: '蓝发女孩' }, candidateImageIds: ['candidate-1', 'candidate-2'] }
+  });
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.equal(result.data.recommendedCandidateId, 'candidate-2');
+  assert.equal(providerMessages[1].content.filter(part => part.type === 'image_url').length, 2);
+  const record = monitor.list().find(row => row.kind === 'subagent:evaluateImages');
+  assert.equal(record.input.candidateImageIds[0], 'candidate-1');
+  assert.equal(record.exchanges[0].request.body.messages[1].content[2].image_url, '[REDACTED]');
+  assert.doesNotMatch(JSON.stringify(monitor.list()), /data:image|base64/);
 });

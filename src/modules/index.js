@@ -21,6 +21,7 @@ module.exports = {
   ...require('./call-monitor'),
   ...require('./agent-runtime'),
   ...require('./fixed-subagents'),
+  ...require('./candidate-evaluator'),
   ...require('./primary-tools'),
   ...require('./settings'),
   ...require('./ai-client'),

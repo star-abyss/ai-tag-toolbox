@@ -83,7 +83,7 @@ const subagents = modules.createFixedSubagents({
   ai: { complete: async () => ({ ok: true, text: '{"positiveTags":["1girl"]}' }) },
   getSettings: () => settings
 });
-assert.deepEqual(subagents.names(), ['vision', 'translation', 'generateTags']);
+assert.deepEqual(subagents.names(), ['vision', 'translation', 'generateTags', 'evaluateImages']);
 const subRuntime = modules.createAgentRuntime({ primaryClient, subagents, tools, getSettings: () => settings });
 const visionResult = await subRuntime.runSubAgent('vision', { input: { imageId: 'img-1', mode: 'metadata' }, requestId: 'check-vision' });
 assert.equal(visionResult.ok, true);
@@ -133,6 +133,6 @@ assert.match(limiterSource, /COMFY_CALL_LIMIT/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /createCallServer|migrateLegacyData|agentWriteEnabled/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), /migrateLegacyUserData|config-migration/);
 
-console.log('check ok: unified runtime, 3 fixed subagents, 9 primary tools, local characters, timeout/cancel, Comfy parameter boundary');
+console.log('check ok: unified runtime, 4 fixed subagents, 9 primary tools, local characters, timeout/cancel, Comfy parameter boundary');
 
 

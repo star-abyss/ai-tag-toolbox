@@ -150,7 +150,7 @@ function createAgentRuntime(options = {}) {
   async function runSubAgent(name, request = {}) {
     const registry = getSubagents() || {}; const entry = typeof registry.resolve === 'function' ? registry.resolve(name) : registry[name];
     return execute(`subagent:${name}`, request, entry?.timeoutMs || 120000, async context => {
-      if (!['vision', 'translation', 'generateTags'].includes(name) || !entry) throw reject('SUBAGENT_UNAVAILABLE', `子代理不可用：${name}`);
+      if (!['vision', 'translation', 'generateTags', 'evaluateImages'].includes(name) || !entry) throw reject('SUBAGENT_UNAVAILABLE', `子代理不可用：${name}`);
       const input = request.input !== undefined ? clone(request.input) : Object.fromEntries(Object.entries(request).filter(([key]) => !['requestId', 'parentRequestId', 'signal', 'timeoutMs', 'sessionId', 'messageId', 'onEvent'].includes(key)));
       context.captureInput(input);
       assertSchema(entry.inputSchema || { type: 'object' }, input, 'INVALID_INPUT');
