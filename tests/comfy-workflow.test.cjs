@@ -39,3 +39,30 @@ test('explicit bindings only change enabled overrides and reject stale paths', (
   assert.equal(built['5'].inputs.width, 768);
   assert.throws(() => workflow.applyExplicitBindings(standard, { positive: [{ nodeId: 'missing', input: 'text' }] }, { positive: 'x' }, overrides), /绑定失效/);
 });
+
+test('analyzes and applies explicit reference-image bindings for complex workflows', () => {
+  const complex = structuredClone(standard);
+  complex['3'].inputs.denoise = 0.65;
+  complex['10'] = { class_type: 'LoadImage', inputs: { image: 'old.png', upload: 'image' } };
+  complex['11'] = { class_type: 'ControlNetApplyAdvanced', inputs: { positive: ['6', 0], negative: ['7', 0], control_net: ['12', 0], image: ['10', 0], strength: 0.7 } };
+  const report = workflow.analyzeWorkflow(complex);
+  assert.equal(report.sourceImageCandidates[0].nodeId, '10');
+  assert.equal(report.sourceImageCandidates[0].input, 'image');
+  assert.equal(report.referenceFieldCandidates.denoise[0].nodeId, '3');
+  assert.equal(report.referenceFieldCandidates.controlStrength[0].nodeId, '11');
+  assert.deepEqual(report.suggestedBindings.sourceImage, { nodeId: '10', input: 'image' });
+
+  const bindings = {
+    ...report.suggestedBindings,
+    sourceImage: { nodeId: '10', input: 'image' },
+    denoise: { nodeId: '3', input: 'denoise' },
+    controlStrength: { nodeId: '11', input: 'strength' }
+  };
+  const built = workflow.applyExplicitBindings(complex, bindings, {
+    positive: 'new positive', negative: '', sourceImage: 'uploaded/source.png', denoise: 0.42, controlStrength: 0.9
+  }, workflow.DEFAULT_OVERRIDES);
+  assert.equal(built['10'].inputs.image, 'uploaded/source.png');
+  assert.equal(built['3'].inputs.denoise, 0.42);
+  assert.equal(built['11'].inputs.strength, 0.9);
+  assert.throws(() => workflow.applyExplicitBindings(complex, { ...bindings, sourceImage: { nodeId: 'missing', input: 'image' } }, { positive: 'x', sourceImage: 'new.png' }, workflow.DEFAULT_OVERRIDES), /绑定失效/);
+});

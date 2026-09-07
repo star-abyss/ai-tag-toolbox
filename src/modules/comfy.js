@@ -8,6 +8,7 @@
  */
 
 const fs = require('node:fs');
+const { createHash } = require('node:crypto');
 const workflowBindings = require('./comfy-workflow');
 
 function asText(value, fallback = '') {
@@ -562,8 +563,9 @@ function createComfy(options = {}) {
     const validation = validateApiWorkflow(parsed);
     if (!validation.ready) throw new Error(validation.error);
     const profile = activeProfile();
-    if (profile?.bindings && Object.keys(profile.bindings).length) {
-      const values = { positive: params.prompt, negative: params.negative, width: params.width ?? params.w, height: params.height ?? params.h, steps: params.steps, cfg: params.cfg, seed: params.seed, sampler: params.sampler, scheduler: params.scheduler, batchCount: params.batchCount, ckpt: params.ckpt ?? params.model };
+    const hasExplicitBindings = profile?.bindings && Object.entries(profile.bindings).some(([key, value]) => key !== 'samplerId' && key !== 'outputs' && (Array.isArray(value) ? value.length : Boolean(value)));
+    if (hasExplicitBindings) {
+      const values = { positive: params.prompt, negative: params.negative, width: params.width ?? params.w, height: params.height ?? params.h, steps: params.steps, cfg: params.cfg, seed: params.seed, sampler: params.sampler, scheduler: params.scheduler, batchCount: params.batchCount, ckpt: params.ckpt ?? params.model, sourceImage: params.sourceImage, denoise: params.denoise, controlStrength: params.controlStrength };
       return workflowBindings.applyExplicitBindings(validation.workflow, profile.bindings, values, profile.overrides, { profileName: profile.name });
     }
     return applyWorkflowOverrides(validation.workflow, params).workflow;
@@ -644,6 +646,32 @@ function createComfy(options = {}) {
     const contentType = response.headers?.get?.('content-type') || 'image/png';
     return { ...jsonClone(image), dataUrl: toDataUrl(bytes, contentType), viewUrl: viewUrl(image) };
   }
+  async function uploadImage(input = {}, signal) {
+    const bytes = Buffer.isBuffer(input.bytes)
+      ? Buffer.from(input.bytes)
+      : input.bytes instanceof Uint8Array
+        ? Buffer.from(input.bytes)
+        : input.bytes instanceof ArrayBuffer
+          ? Buffer.from(new Uint8Array(input.bytes))
+          : null;
+    if (!bytes?.length) throw new Error('ComfyUI 原图上传缺少图片数据');
+    if (typeof FormData !== 'function' || typeof Blob !== 'function') throw new Error('当前环境不支持 ComfyUI 图片上传');
+    const filename = asText(input.filename || input.name, `aitag-source-${Date.now()}.png`).split(/[\\/]/).pop();
+    const mime = /^image\//i.test(asText(input.mime || input.type)) ? asText(input.mime || input.type) : 'image/png';
+    const uploadType = ['input', 'temp', 'output'].includes(asText(input.uploadType || input.destinationType || (/^image\//i.test(asText(input.type)) ? '' : input.type)))
+      ? asText(input.uploadType || input.destinationType || input.type)
+      : 'input';
+    const body = new FormData();
+    body.append('image', new Blob([bytes], { type: mime }), filename);
+    body.append('type', uploadType);
+    body.append('overwrite', input.overwrite === false ? 'false' : 'true');
+    if (asText(input.subfolder)) body.append('subfolder', asText(input.subfolder));
+    const response = await request('/upload/image', { method: 'POST', body, signal });
+    const result = await response.json();
+    const name = asText(result?.name || result?.filename, filename);
+    if (!name) throw new Error('ComfyUI 原图上传后没有返回文件名');
+    return { name, subfolder: asText(result?.subfolder), type: asText(result?.type, uploadType) };
+  }
   async function wait(promptId, options2 = {}) {
     const deadline = Date.now() + (Number(options2.timeoutMs) || 10 * 60 * 1000);
     while (Date.now() < deadline) {
@@ -692,8 +720,22 @@ function createComfy(options = {}) {
     throw new Error('ComfyUI 生成超时，请检查队列和模型加载状态；必要时减少步数或迭代次数后重试');
   }
   async function render(params = {}) {
-    if (!params.workflow && !workflow) throw new Error('尚未设置 ComfyUI 工作流，请到「API 设置 → ComfyUI」上传或粘贴 API 格式工作流');
+    if (!params.workflow && !activeProfile()?.workflow && !workflow) throw new Error('尚未设置 ComfyUI 工作流，请到「API 设置 → ComfyUI」上传或粘贴 API 格式工作流');
     const built = buildWorkflow(params);
+    const workflowHash = createHash('sha256').update(JSON.stringify(built)).digest('hex');
+    const profile = activeProfile();
+    const changedBindings = [];
+    const bindingValues = { positive: params.prompt, negative: params.negative, width: params.width ?? params.w, height: params.height ?? params.h, steps: params.steps, cfg: params.cfg, seed: params.seed, sampler: params.sampler, scheduler: params.scheduler, batchCount: params.batchCount, ckpt: params.ckpt ?? params.model, sourceImage: params.sourceImage, denoise: params.denoise, controlStrength: params.controlStrength };
+    if (profile?.bindings) {
+      for (const [field, value] of Object.entries(bindingValues)) {
+        if (value === undefined || !profile.bindings[field]) continue;
+        if (Object.prototype.hasOwnProperty.call(profile.overrides || {}, field) && profile.overrides[field] !== true) continue;
+        changedBindings.push(field);
+      }
+    } else {
+      for (const field of ['positive', 'negative', 'width', 'height', 'steps', 'cfg', 'seed', 'sampler', 'scheduler', 'batchCount', 'ckpt']) if (bindingValues[field] !== undefined) changedBindings.push(field);
+    }
+    const parameters = Object.fromEntries(['width', 'height', 'steps', 'cfg', 'seed', 'sampler', 'scheduler', 'batchCount', 'ckpt', 'denoise', 'controlStrength'].filter(key => bindingValues[key] !== undefined).map(key => [key, jsonClone(bindingValues[key])]));
     const response = await request('/prompt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -703,7 +745,9 @@ function createComfy(options = {}) {
     const result = await response.json();
     if (result?.error) throw new Error(`ComfyUI 错误：${JSON.stringify(result.error).slice(0, 300)}。请检查工作流节点、模型文件和参数后重试`);
     if (!result?.prompt_id) throw new Error('ComfyUI 没有返回任务编号，请查看 ComfyUI 控制台日志并确认服务正常');
-    return wait(result.prompt_id, params);
+    try { params.onSubmitted?.({ promptId: result.prompt_id, workflowHash, changedBindings: [...new Set(changedBindings)], parameters }); } catch { /* diagnostics are optional */ }
+    const output = await wait(result.prompt_id, params);
+    return { ...output, workflowHash, changedBindings: [...new Set(changedBindings)], parameters };
   }
 
   /** 提交任意 API 格式工作流，只返回任务编号（外部 Agent 入口）。 */
@@ -825,6 +869,7 @@ function createComfy(options = {}) {
     list,
     viewUrl,
     fetchImage,
+    uploadImage,
     wait,
     render,
     submitPrompt,

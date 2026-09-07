@@ -83,12 +83,19 @@ function boot(options = {}) {
     stateSnapshot: () => ({ categories: [], categoryCounts: {}, selected: [], category: 'all', revision: 0 }), selected: () => [], page: () => ({ items: [], total: 0 }),
     restore: () => {}, setSearchPrecision: () => {}, setAdult: () => {}, setQuery: () => {}, size: () => 0, customTags: () => [], subcategories: () => [], getCategories: () => []
   };
-  const modules = { assistant, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy: { setBase: () => {}, setWorkflow: () => {}, check: async () => false }, locales: { 'zh-CN': {} }, version: '1.4.194' };
+  let comfyProfile = options.comfyProfile ? structuredClone(options.comfyProfile) : null;
+  const comfy = { setBase: () => {}, setWorkflow: () => {}, check: async () => false };
+  if (comfyProfile) comfy.profiles = {
+    active: () => structuredClone(comfyProfile), list: () => [structuredClone(comfyProfile)],
+    save: value => { comfyProfile = structuredClone(value); return structuredClone(comfyProfile); },
+    setActive: () => structuredClone(comfyProfile), remove: () => false
+  };
+  const modules = { assistant, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy, locales: { 'zh-CN': {} }, version: '1.4.194' };
 
   for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'views/call-monitor-view.js', 'app-view.js']) window.eval(source(file));
   const view = window.AppView.create(modules, window.document);
   view.start();
-  return { dom, window, view, assistant, repository, gallery, downloadBlobs, getRunCount: () => runCount };
+  return { dom, window, view, assistant, repository, gallery, downloadBlobs, getRunCount: () => runCount, getComfyProfile: () => comfyProfile && structuredClone(comfyProfile) };
 }
 
 test('full DOM startup renders extracted views and conversation click uses assistant runtime', async () => {
@@ -149,6 +156,28 @@ test('ComfyUI workflow action buttons have localized labels', () => {
   assert.match(zh.ui.settings.comfyRestoreDefault, /默认/);
   assert.match(en.ui.settings.workflowClear, /Clear/i);
   assert.match(en.ui.settings.comfyRestoreDefault, /default/i);
+});
+
+test('ComfyUI profile exposes explicit capabilities and reference bindings', () => {
+  const app = boot({ comfyProfile: {
+    id: 'profile-reference', name: '参考图工作流', workflow: {}, updatedAt: 1,
+    capabilities: { txt2img: true, img2img: true, controlImage: false, mask: false },
+    overrides: { positive: true, negative: true }, bindings: { sourceImage: null, denoise: null, controlStrength: null },
+    analysis: {
+      level: 'advanced', nodeCount: 12, samplerCandidates: [{ nodeId: '3', title: 'KSampler', classType: 'KSampler' }],
+      sourceImageCandidates: [{ nodeId: '10', input: 'image', title: 'Load Image', classType: 'LoadImage' }],
+      referenceFieldCandidates: { denoise: [{ nodeId: '3', input: 'denoise', title: 'KSampler', classType: 'KSampler' }], controlStrength: [] }
+    }
+  } });
+  app.view.route('ai'); app.view.showAi('comfy'); app.view.views.comfy.render();
+  assert.equal(app.window.document.querySelector('[data-capability="img2img"]').checked, true);
+  const source = app.window.document.querySelector('[data-binding="sourceImage"]');
+  assert.equal(source.options.length, 2);
+  source.value = '10::image';
+  source.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  assert.deepEqual(app.getComfyProfile().bindings.sourceImage, { nodeId: '10', input: 'image' });
+  assert.equal(app.view.views.comfy.snapshot().comfyBase, 'http://127.0.0.1:8188');
+  app.dom.window.close();
 });
 
 test('conversation image clear button confirms and clears only current conversation images', () => {

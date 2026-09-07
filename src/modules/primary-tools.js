@@ -20,8 +20,9 @@ const generateParameters = clone(SCHEMAS.generateTags);
 delete generateParameters.properties.characterReferences;
 const imageSchema = schema({ imageId: nonempty, refId: string, slotNo: { type: 'integer', minimum: 0 }, displayTitle: string, source: string, messageId: string, pending: { type: 'boolean' }, sent: { type: 'boolean' }, final: { type: 'boolean' }, width: { type: 'number', minimum: 0 }, height: { type: 'number', minimum: 0 }, hasBuiltinTags: { type: 'boolean' } }, ['imageId']);
 const workflowSchema = schema({ ready: { type: 'boolean' }, error: string }, ['ready', 'error']);
-const statusSchema = schema({ enabled: { type: 'boolean' }, connected: { type: 'boolean' }, workflowReady: { type: 'boolean' }, render: { type: 'boolean' }, error: string }, ['enabled', 'connected', 'workflowReady', 'render', 'error']);
-const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty } }, ['artifacts', 'imageIds']);
+const capabilitiesSchema = schema({ txt2img: { type: 'boolean' }, img2img: { type: 'boolean' }, controlImage: { type: 'boolean' }, mask: { type: 'boolean' } });
+const statusSchema = schema({ enabled: { type: 'boolean' }, connected: { type: 'boolean' }, workflowReady: { type: 'boolean' }, render: { type: 'boolean' }, error: string, workflowProfileId: string, workflowRevision: string, capabilities: capabilitiesSchema }, ['enabled', 'connected', 'workflowReady', 'render', 'error']);
+const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty }, prompt: string, negative: string, positiveTags: tagArray, negativeTags: tagArray, parameters: { type: 'object' }, workflowProfileId: string, workflowRevision: string, workflowHash: string, changedBindings: { type: 'array', items: string }, recreationMode: { type: 'string', enum: ['', 'reference_image', 'text_approximation'] } }, ['artifacts', 'imageIds']);
 const DEFINITIONS = Object.freeze({
   'tags.search': { description: '查询本站标签及释义；Tag 含义、拼写或是否属于本站词库不确定时调用。命中角色名时附带角色出处和外貌 Tag。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, category: string, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 200, items: tagSchema } }, ['items']) },
   'characters.search': { description: '查询本地角色资料，返回中英文名、作品、身份词和可选特征；先确认具体角色再向 agent.generateTags 传 characterIds。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, seriesId: string, precision: { type: 'string', enum: ['exact', 'standard', 'broad'] }, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 10 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 10, items: characterSchema }, total: { type: 'integer', minimum: 0 } }, ['items', 'total']) },
@@ -31,7 +32,7 @@ const DEFINITIONS = Object.freeze({
   'agent.generateTags': { description: '使用 Vision AI，根据要求、已有 Tag、参考 Tag、可选 imageId 和 characters.search 返回的 characterIds 生成英文绘图 Tag。', parameters: generateParameters, outputSchema: OUTPUT_SCHEMAS?.generateTags },
   'comfy.status': { description: '读取 ComfyUI 连接、启用和工作流状态。', parameters: schema({}), outputSchema: statusSchema },
   'comfy.validateWorkflow': { description: '检查用户当前 API 工作流是否可用。', parameters: schema({}), outputSchema: workflowSchema },
-  'comfy.render': { description: '按正向 Tag 和可选负向 Tag 出图；宽高、Steps、CFG、Seed、Sampler、Scheduler、batchCount 由用户设置决定。', parameters: schema({ positiveTags: { ...tagArray, minItems: 1 }, negativeTags: tagArray }, ['positiveTags']), outputSchema: renderSchema }
+  'comfy.render': { description: '按正向 Tag 和可选负向 Tag 出图；内部复刻任务可传当前会话的 sourceImageId。', parameters: schema({ positiveTags: { ...tagArray, minItems: 1 }, negativeTags: tagArray, sourceImageId: nonempty, denoise: { type: 'number', minimum: 0, maximum: 1 }, controlStrength: { type: 'number', minimum: 0, maximum: 2 } }, ['positiveTags']), outputSchema: renderSchema }
 });
 
 function failure(code, message) { return Object.assign(new Error(message), { code }); }
@@ -84,7 +85,7 @@ function createPrimaryTools(options = {}) {
     const runtime = getRuntime(); if (typeof runtime?.runSubAgent !== 'function') throw failure('SUBAGENT_UNAVAILABLE', '子代理运行器不可用');
     return runtime.runSubAgent(name, { input: args, parentRequestId: context.requestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: context.onEvent });
   }
-  async function renderedImages(raw, context) {
+  async function renderedImages(raw, context, details = {}) {
     const value = unwrap(raw);
     let rows = Array.isArray(value) ? value.slice() : Array.isArray(value?.artifacts) ? value.artifacts.slice() : Array.isArray(value?.images) ? value.images.slice() : value?.artifact ? [value.artifact] : value ? [value] : [];
     const promptId = text(value?.promptId || rows[0]?.promptId);
@@ -117,7 +118,7 @@ function createPrimaryTools(options = {}) {
       const artifact = publicImage({ ...stored, ...reference, imageId });
       if (!artifacts.some(item => item.imageId === imageId)) artifacts.push(artifact);
     }
-    return { artifacts, imageIds: artifacts.map(item => item.imageId) };
+    return { artifacts, imageIds: artifacts.map(item => item.imageId), ...clone(details) };
   }
   const handlers = {
     'tags.search': async args => {
@@ -165,7 +166,8 @@ function createPrimaryTools(options = {}) {
       if (typeof comfy?.status !== 'function') throw failure('TOOL_UNAVAILABLE', 'ComfyUI 连接器不可用');
       const settings = currentComfy(); syncComfy(settings);
       const value = unwrap(await comfy.status({ enabled: settings.enabled === true, workflow: settings.workflow, signal: context.signal }));
-      return { enabled: settings.enabled === true, connected: value?.connected === true, workflowReady: value?.workflowReady === true, render: value?.render === true, error: text(value?.error) };
+      const profile = comfy?.profiles?.active?.();
+      return { enabled: settings.enabled === true, connected: value?.connected === true, workflowReady: value?.workflowReady === true, render: value?.render === true, error: text(value?.error), workflowProfileId: text(profile?.id), workflowRevision: profile?.updatedAt ? String(profile.updatedAt) : '', capabilities: object(profile?.capabilities) ? clone(profile.capabilities) : { txt2img: true, img2img: false, controlImage: false, mask: false } };
     },
     'comfy.validateWorkflow': async (_args, context) => {
       const settings = currentComfy(); const method = comfy?.workflowStatus || comfy?.validateWorkflow;
@@ -178,9 +180,42 @@ function createPrimaryTools(options = {}) {
       if (!context.sessionId) throw failure('SESSION_REQUIRED', '当前会话不可用');
       if (typeof comfy?.render !== 'function') throw failure('TOOL_UNAVAILABLE', 'ComfyUI 连接器不可用');
       const settings = currentComfy(); if (settings.enabled !== true) throw failure('COMFY_DISABLED', 'ComfyUI 未启用'); syncComfy(settings);
+      const profile = comfy?.profiles?.active?.();
       const negative = args.negativeTags === undefined ? (Array.isArray(settings.negativeTags) ? settings.negativeTags : text(settings.negativeTags).split(/[,，\n]+/).filter(Boolean)) : args.negativeTags;
-      const raw = await comfy.render({ prompt: args.positiveTags.join(', '), negative: negative.join(', '), width: settings.width, height: settings.height, steps: settings.steps, cfg: settings.cfg, seed: settings.seed, sampler: settings.sampler, scheduler: settings.scheduler, batchCount: settings.batchCount, workflow: settings.workflow, signal: context.signal, onProgress: value => { if (!context.signal?.aborted) context.onEvent?.({ type: 'progress', tool: 'comfy.render', queue: typeof value === 'number' ? value : undefined }); } });
-      guardSignal(context); return renderedImages(raw, context);
+      let uploaded = null;
+      let recreationMode = '';
+      if (args.sourceImageId) {
+        if (!context.sessionId) throw failure('SESSION_REQUIRED', '复刻任务缺少当前会话');
+        const listed = await repository?.listConversation?.(context.sessionId, { includePending: true, includeDeleted: false });
+        const references = Array.isArray(listed) ? listed : listed?.items;
+        const sourceReference = Array.isArray(references) ? references.find(item => text(item?.imageId || item?.id) === args.sourceImageId && !item?.deleted) : null;
+        if (!sourceReference) throw failure('IMAGE_SCOPE', '参考原图不在当前会话中');
+        const canUseReference = Boolean(profile?.bindings?.sourceImage && (!profile.capabilities || profile.capabilities.img2img === true || profile.capabilities.controlImage === true));
+        if (canUseReference) {
+          if (typeof repository?.getOriginalBytes !== 'function' || typeof comfy?.uploadImage !== 'function') throw failure('IMAGE_UPLOAD_UNAVAILABLE', '当前环境无法向 ComfyUI 上传参考原图');
+          const bytes = await repository.getOriginalBytes(args.sourceImageId);
+          guardSignal(context);
+          if (!bytes?.length) throw failure('IMAGE_DATA_UNAVAILABLE', '无法读取参考原图内容');
+          const asset = images?.get?.(args.sourceImageId) || {};
+          uploaded = await comfy.uploadImage({ bytes, filename: text(asset.filename || asset.displayName, `${args.sourceImageId}.png`), type: text(asset.mime, 'image/png') }, context.signal);
+          guardSignal(context);
+          recreationMode = 'reference_image';
+        } else recreationMode = 'text_approximation';
+      }
+      let submitted = null;
+      const parameters = { width: settings.width, height: settings.height, steps: settings.steps, cfg: settings.cfg, seed: settings.seed, sampler: settings.sampler, scheduler: settings.scheduler, batchCount: settings.batchCount };
+      if (uploaded && profile?.bindings?.denoise && args.denoise !== undefined) parameters.denoise = args.denoise;
+      if (uploaded && profile?.bindings?.controlStrength && args.controlStrength !== undefined) parameters.controlStrength = args.controlStrength;
+      const raw = await comfy.render({ prompt: args.positiveTags.join(', '), negative: negative.join(', '), ...parameters, ...(uploaded ? { sourceImage: uploaded } : {}), workflow: settings.workflow, signal: context.signal, onSubmitted: value => { submitted = clone(value || {}); if (!context.signal?.aborted) context.onEvent?.({ type: 'comfy.submitted', workflowHash: text(value?.workflowHash), changedBindings: Array.isArray(value?.changedBindings) ? value.changedBindings.slice() : [], parameters: object(value?.parameters) ? clone(value.parameters) : {} }); }, onProgress: value => { if (!context.signal?.aborted) context.onEvent?.({ type: 'progress', tool: 'comfy.render', queue: typeof value === 'number' ? value : undefined }); } });
+      guardSignal(context);
+      return renderedImages(raw, context, {
+        prompt: args.positiveTags.join(', '), negative: negative.join(', '), positiveTags: args.positiveTags.slice(), negativeTags: negative.slice(),
+        parameters: { ...parameters, ...(object(submitted?.parameters) ? submitted.parameters : {}) },
+        workflowProfileId: text(profile?.id), workflowRevision: profile?.updatedAt ? String(profile.updatedAt) : '',
+        workflowHash: text(submitted?.workflowHash || raw?.workflowHash),
+        changedBindings: Array.isArray(submitted?.changedBindings || raw?.changedBindings) ? (submitted?.changedBindings || raw.changedBindings).slice() : [],
+        recreationMode
+      });
     }
   };
   const resolve = value => { const name = NATIVE_NAMES.get(value) || value; return TOOL_NAMES.includes(name) ? { name, ...clone(DEFINITIONS[name]), handler: handlers[name] } : null; };

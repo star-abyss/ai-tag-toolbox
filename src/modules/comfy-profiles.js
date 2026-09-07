@@ -1,17 +1,30 @@
 'use strict';
 
 const STORAGE_KEY = 'comfy_profiles';
-const PROFILE_VERSION = 1;
+const PROFILE_VERSION = 2;
 const DEFAULT_OVERRIDES = Object.freeze({ positive: true, negative: true, width: false, height: false, steps: false, cfg: false, seed: false, sampler: false, scheduler: false, batchCount: false, ckpt: false });
+const DEFAULT_CAPABILITIES = Object.freeze({ txt2img: true, img2img: false, controlImage: false, mask: false });
+const REFERENCE_BINDINGS = Object.freeze(['sourceImage', 'denoise', 'controlStrength']);
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
 function text(value, fallback = '') { const out = value == null ? '' : String(value).trim(); return out || fallback; }
 function profileId(value) { return text(value).replace(/[^a-z0-9_-]/gi, '-').replace(/^-+|-+$/g, '').toLowerCase(); }
 function normaliseOverrides(value) { return { ...DEFAULT_OVERRIDES, ...(object(value) ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, v === true])) : {}) }; }
+function normaliseCapabilities(value) { return { ...DEFAULT_CAPABILITIES, ...(object(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => Object.prototype.hasOwnProperty.call(DEFAULT_CAPABILITIES, key)).map(([key, enabled]) => [key, enabled === true])) : {}) }; }
+function normaliseBindings(value) {
+  const result = clone(object(value) ? value : {});
+  for (const key of REFERENCE_BINDINGS) {
+    const binding = object(result[key]) && text(result[key].nodeId) && text(result[key].input)
+      ? { nodeId: text(result[key].nodeId), input: text(result[key].input) }
+      : null;
+    result[key] = binding;
+  }
+  return result;
+}
 function normaliseProfile(value, fallbackId = 'profile-default') {
   const source = object(value) ? value : {};
   const id = profileId(source.id) || fallbackId;
-  return { id, name: text(source.name, id === 'profile-default' ? '默认工作流' : id), base: text(source.base, ''), workflow: clone(source.workflow || ''), analysis: clone(object(source.analysis) ? source.analysis : { level: 'manual', nodeCount: 0, missingClasses: [] }), bindings: clone(object(source.bindings) ? source.bindings : {}), overrides: normaliseOverrides(source.overrides), outputPolicy: text(source.outputPolicy, 'selected'), updatedAt: Number(source.updatedAt) || Date.now() };
+  return { id, name: text(source.name, id === 'profile-default' ? '默认工作流' : id), base: text(source.base, ''), workflow: clone(source.workflow || ''), analysis: clone(object(source.analysis) ? source.analysis : { level: 'manual', nodeCount: 0, missingClasses: [] }), capabilities: normaliseCapabilities(source.capabilities), bindings: normaliseBindings(source.bindings), overrides: normaliseOverrides(source.overrides), outputPolicy: text(source.outputPolicy, 'selected'), updatedAt: Number(source.updatedAt) || Date.now() };
 }
 
 function createComfyProfiles(options = {}) {
@@ -22,7 +35,7 @@ function createComfyProfiles(options = {}) {
   const persisted = read(STORAGE_KEY, options.initial?.comfy?.profiles || null);
   let items = [];
   let activeProfileId = '';
-  if (object(persisted) && persisted.version === PROFILE_VERSION && Array.isArray(persisted.items)) {
+  if (object(persisted) && [1, PROFILE_VERSION].includes(persisted.version) && Array.isArray(persisted.items)) {
     items = persisted.items.filter(object).map((row, index) => normaliseProfile(row, index === 0 ? 'profile-default' : `profile-${index + 1}`));
     activeProfileId = profileId(persisted.activeProfileId);
   }
@@ -33,7 +46,7 @@ function createComfyProfiles(options = {}) {
   function get(id) { return clone(items.find(row => row.id === profileId(id)) || null); }
   function active() { return get(activeProfileId) || get(items[0].id); }
   function save(value) {
-    const source = normaliseProfile(value, `profile-${Date.now()}`);
+    const source = normaliseProfile({ ...value, updatedAt: Date.now() }, `profile-${Date.now()}`);
     const index = items.findIndex(row => row.id === source.id);
     if (index >= 0) items[index] = source; else items.push(source);
     persist(); return clone(source);
@@ -49,4 +62,4 @@ function createComfyProfiles(options = {}) {
   return Object.freeze({ list, get, active, save, remove, setActive, snapshot, storageKey: STORAGE_KEY });
 }
 
-module.exports = { STORAGE_KEY, PROFILE_VERSION, DEFAULT_OVERRIDES, normaliseProfile, createComfyProfiles };
+module.exports = { STORAGE_KEY, PROFILE_VERSION, DEFAULT_OVERRIDES, DEFAULT_CAPABILITIES, REFERENCE_BINDINGS, normaliseCapabilities, normaliseProfile, createComfyProfiles };

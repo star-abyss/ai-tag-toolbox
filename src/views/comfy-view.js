@@ -97,6 +97,19 @@
       }
       const analysis = q('#comfyAnalysisSummary');
       if (analysis && active?.analysis) { analysis.hidden = false; analysis.textContent = `兼容等级：${active.analysis.level || 'manual'} · 节点 ${active.analysis.nodeCount || 0}`; }
+      if (analysis && active) {
+        const capabilities = active.capabilities || { txt2img: true, img2img: false, controlImage: false, mask: false };
+        const capabilityRow = doc.createElement('div'); capabilityRow.className = 'comfy-capabilities';
+        const capabilityTitle = doc.createElement('strong'); capabilityTitle.textContent = '工作流能力'; capabilityRow.appendChild(capabilityTitle);
+        const capabilityNames = { txt2img: '文生图', img2img: '图生图', controlImage: 'Control 参考图', mask: '蒙版' };
+        for (const [key, label] of Object.entries(capabilityNames)) {
+          const item = doc.createElement('label'); item.className = 'opt';
+          const input = doc.createElement('input'); input.type = 'checkbox'; input.className = 'comfy-capability'; input.dataset.capability = key; input.checked = capabilities[key] === true;
+          input.addEventListener('change', () => { const latest = comfy?.profiles?.active?.(); if (latest) comfy?.profiles?.save?.({ ...latest, capabilities: { ...latest.capabilities, [key]: input.checked } }); });
+          item.append(input, doc.createTextNode(` ${label}`)); capabilityRow.appendChild(item);
+        }
+        analysis.appendChild(capabilityRow);
+      }
       const overrides = q('#comfyOverrides');
       if (overrides && active?.overrides) {
         overrides.hidden = false; overrides.replaceChildren();
@@ -115,7 +128,26 @@
           select.addEventListener('change', () => { const report = comfy?.analyze?.(active.workflow, { samplerId: select.value }); if (report) comfy?.profiles?.save?.({ ...comfy.profiles.active(), analysis: report, bindings: report.suggestedBindings || active.bindings }); }); bindings.appendChild(select);
         } else if (samplerRows[0]) { const summary = doc.createElement('span'); summary.className = 'hint'; summary.textContent = `${samplerRows[0].title} · 节点 ${samplerRows[0].nodeId}`; bindings.appendChild(summary); }
         const suggested = active.bindings || {};
-        const hint = doc.createElement('div'); hint.className = 'hint'; hint.textContent = `正向：${suggested.positive?.[0]?.nodeId || '未绑定'} · 负向：${suggested.negative?.[0]?.nodeId || '未绑定'} · 输出：${(suggested.outputs || []).join(', ') || '未选择'}`; bindings.appendChild(hint);
+        const addBindingSelect = (key, label, rows) => {
+          const wrapper = doc.createElement('label'); wrapper.className = 'comfy-binding-field';
+          const caption = doc.createElement('span'); caption.textContent = label;
+          const select = doc.createElement('select'); select.className = 'wbselect comfy-binding-select'; select.dataset.binding = key;
+          const none = doc.createElement('option'); none.value = ''; none.textContent = '不绑定'; select.appendChild(none);
+          for (const row of rows || []) {
+            const option = doc.createElement('option'); option.value = `${row.nodeId}::${row.input}`; option.textContent = `${row.title || row.classType} · 节点 ${row.nodeId} · ${row.input}`; select.appendChild(option);
+          }
+          const current = suggested[key]; select.value = current?.nodeId && current?.input ? `${current.nodeId}::${current.input}` : '';
+          select.addEventListener('change', () => {
+            const latest = comfy?.profiles?.active?.(); if (!latest) return;
+            const [nodeId, input] = select.value.split('::');
+            comfy?.profiles?.save?.({ ...latest, bindings: { ...latest.bindings, [key]: nodeId && input ? { nodeId, input } : null } });
+          });
+          wrapper.append(caption, select); bindings.appendChild(wrapper);
+        };
+        addBindingSelect('sourceImage', '参考原图节点', active.analysis.sourceImageCandidates || []);
+        addBindingSelect('denoise', 'Denoise 节点', active.analysis.referenceFieldCandidates?.denoise || []);
+        addBindingSelect('controlStrength', 'Control 强度节点', active.analysis.referenceFieldCandidates?.controlStrength || []);
+        const hint = doc.createElement('div'); hint.className = 'hint'; hint.textContent = `正向：${suggested.positive?.[0]?.nodeId || '未绑定'} · 负向：${suggested.negative?.[0]?.nodeId || '未绑定'} · 参考图：${suggested.sourceImage?.nodeId || '未绑定'} · 输出：${(suggested.outputs || []).join(', ') || '未选择'}`; bindings.appendChild(hint);
       }
       return value;
     }

@@ -16,6 +16,10 @@ test('legacy workflow migrates into one profile with prompt-only defaults', () =
   assert.equal(current.overrides.negative, true);
   assert.equal(current.overrides.width, false);
   assert.equal(current.overrides.steps, false);
+  assert.deepEqual(current.capabilities, { txt2img: true, img2img: false, controlImage: false, mask: false });
+  assert.equal(current.bindings.sourceImage, null);
+  assert.equal(current.bindings.denoise, null);
+  assert.equal(current.bindings.controlStrength, null);
 });
 
 test('profiles save, activate and delete deterministically', () => {
@@ -34,4 +38,23 @@ test('persisted profiles win over legacy workflow and invalid entries are ignore
   assert.equal(profiles.active().id, 'saved');
   assert.equal(profiles.active().overrides.negative, false);
   assert.equal(profiles.list().length, 1);
+  assert.equal(profiles.snapshot().version, 2);
+});
+
+test('capabilities and reference bindings round-trip in profile v2', () => {
+  const profiles = createComfyProfiles({ initial: { comfy: { workflow } } });
+  const current = profiles.active();
+  const saved = profiles.save({
+    ...current,
+    capabilities: { txt2img: true, img2img: true, controlImage: true, mask: false },
+    bindings: {
+      ...current.bindings,
+      sourceImage: { nodeId: '12', input: 'image' },
+      denoise: { nodeId: '42', input: 'denoise' },
+      controlStrength: { nodeId: '13', input: 'strength' }
+    }
+  });
+  assert.equal(saved.capabilities.img2img, true);
+  assert.deepEqual(saved.bindings.sourceImage, { nodeId: '12', input: 'image' });
+  assert.equal(profiles.snapshot().version, 2);
 });
