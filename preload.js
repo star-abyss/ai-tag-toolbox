@@ -332,6 +332,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     setBase: value => assistant?.setSettings?.({ comfyBase: value }),
     setWorkflow: value => assistant?.setSettings?.({ comfyWorkflow: value }),
     importApiWorkflow: comfy.importApiWorkflow,
+    analyze: comfy.analyze,
     profiles: comfy.profiles
   } : null,
   locales: localePacks,

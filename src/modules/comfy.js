@@ -8,6 +8,7 @@
  */
 
 const fs = require('node:fs');
+const workflowBindings = require('./comfy-workflow');
 
 function asText(value, fallback = '') {
   const result = value == null ? '' : String(value).trim();
@@ -535,6 +536,7 @@ function createComfy(options = {}) {
     if (current && typeof profiles.save === 'function') profiles.save({ ...current, workflow });
     return workflow;
   }
+  function analyze(value, options = {}) { return workflowBindings.analyzeWorkflow(value, options); }
   function url(pathname) {
     return `${base}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
   }
@@ -558,6 +560,11 @@ function createComfy(options = {}) {
     parsed = resolveWorkflowPlaceholders(parsed, params);
     const validation = validateApiWorkflow(parsed);
     if (!validation.ready) throw new Error(validation.error);
+    const profile = activeProfile();
+    if (profile?.bindings && Object.keys(profile.bindings).length) {
+      const values = { positive: params.prompt, negative: params.negative, width: params.width ?? params.w, height: params.height ?? params.h, steps: params.steps, cfg: params.cfg, seed: params.seed, sampler: params.sampler, scheduler: params.scheduler, batchCount: params.batchCount, ckpt: params.ckpt ?? params.model };
+      return workflowBindings.applyExplicitBindings(validation.workflow, profile.bindings, values, profile.overrides, { profileName: profile.name });
+    }
     return applyWorkflowOverrides(validation.workflow, params).workflow;
   }
   function workflowStatus(value = workflow) {
@@ -810,7 +817,8 @@ function createComfy(options = {}) {
     cancel,
     buildWorkflow,
     parseWorkflow,
-    importApiWorkflow
+    importApiWorkflow,
+    analyze
     ,profiles: profiles ? Object.freeze({ list: profiles.list, active: profiles.active, save: profiles.save, remove: profiles.remove, setActive: profiles.setActive, snapshot: profiles.snapshot }) : null
   };
 }

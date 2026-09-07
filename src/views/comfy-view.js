@@ -81,6 +81,10 @@
       const active = comfy?.profiles?.active?.();
       const profileLabel = q('#comfyProfileSelector');
       if (profileLabel && active) { profileLabel.hidden = false; profileLabel.textContent = `当前工作流：${active.name}`; }
+      const analysis = q('#comfyAnalysisSummary');
+      if (analysis && active?.analysis) { analysis.hidden = false; analysis.textContent = `兼容等级：${active.analysis.level || 'manual'} · 节点 ${active.analysis.nodeCount || 0}`; }
+      const overrides = q('#comfyOverrides');
+      if (overrides && active?.overrides) { overrides.hidden = false; overrides.textContent = `提示词覆盖：${active.overrides.positive && active.overrides.negative ? '已启用' : '部分启用'}；其他参数默认由工作流决定`; }
       return value;
     }
     async function refresh() {
