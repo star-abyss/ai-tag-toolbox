@@ -37,5 +37,7 @@ test('medium desktop header centers every navigation row on one axis', () => {
   assert.match(override, /\.header-trailing\s*\{[\s\S]*?justify-content\s*:\s*center/);
   assert.match(override, /header\s+\.header-workspace\s*\{[\s\S]*?grid-row\s*:\s*2[\s\S]*?justify-self\s*:\s*center/);
   assert.match(override, /header\s+\.header-workspace\s+#aiCfgBtns\s*\{[\s\S]*?justify-content\s*:\s*center/);
+  assert.match(override, /\.header-left\s*\{[\s\S]*?position\s*:\s*absolute[\s\S]*?left\s*:\s*0/);
+  assert.match(override, /\.header-leading\s*\{[\s\S]*?margin-inline\s*:\s*auto/);
   assert.match(css, /@media\s*\(min-width:1501px\)/, 'wide desktop rules should remain separate');
 });

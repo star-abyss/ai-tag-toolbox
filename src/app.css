@@ -1887,3 +1887,17 @@ body.dark #tabTalk .message-action:hover{background:rgba(126,166,255,.20);color:
     flex-wrap:wrap;
   }
 }
+
+/* V1.4.211：非最大化窗口品牌左对齐。
+ * 第一行仅保留品牌在左侧，功能按钮仍以窗口中心为轴；搜索和下方
+ * 功能切换行继续沿用 V1.4.210 的居中布局。 */
+@media (min-width:861px) and (max-width:1500px){
+  .header-side-left{position:relative}
+  .header-left{
+    position:absolute;
+    left:0;
+    top:50%;
+    transform:translateY(-50%);
+  }
+  .header-leading{margin-inline:auto}
+}
