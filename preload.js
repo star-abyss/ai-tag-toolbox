@@ -329,6 +329,8 @@ contextBridge.exposeInMainWorld('AppModules', {
   } : null,
   comfy: comfy ? {
     check: async () => Boolean((await runtime?.callTool?.('comfy.status', {}, { caller: 'ui' }))?.data?.connected),
+    status: comfy.status,
+    objectInfo: comfy.objectInfo,
     setBase: value => assistant?.setSettings?.({ comfyBase: value }),
     setWorkflow: value => assistant?.setSettings?.({ comfyWorkflow: value }),
     importApiWorkflow: comfy.importApiWorkflow,

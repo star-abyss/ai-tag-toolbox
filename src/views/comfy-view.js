@@ -82,8 +82,16 @@
       const profileLabel = q('#comfyProfileSelector');
       if (profileLabel && active) {
         profileLabel.hidden = false;
+        profileLabel.className = 'comfy-profile-row';
         let select = profileLabel.querySelector('select');
-        if (!select) { select = doc.createElement('select'); select.className = 'wbselect'; profileLabel.replaceChildren(select); select.addEventListener('change', () => { comfy?.profiles?.setActive?.(select.value); render(read()); }); }
+        if (!select) {
+          profileLabel.replaceChildren();
+          select = doc.createElement('select'); select.className = 'wbselect'; select.addEventListener('change', () => { comfy?.profiles?.setActive?.(select.value); render(read()); }); profileLabel.appendChild(select);
+          const addButton = (label, handler) => { const button = doc.createElement('button'); button.type = 'button'; button.className = 'abtn btn btn-secondary'; button.textContent = label; button.addEventListener('click', handler); profileLabel.appendChild(button); };
+          addButton('新建', () => { const name = globalThis.prompt?.('工作流名称', '新工作流'); if (!name) return; const saved = comfy?.profiles?.save?.({ name, base: collect().comfyBase, workflow: '', overrides: active.overrides }); comfy?.profiles?.setActive?.(saved?.id); render(read()); });
+          addButton('复制', () => { const saved = comfy?.profiles?.save?.({ ...active, id: `${active.id}-copy-${Date.now()}`, name: `${active.name} 副本` }); comfy?.profiles?.setActive?.(saved?.id); render(read()); });
+          addButton('删除', () => { if (comfy?.profiles?.remove?.(active.id)) render(read()); });
+        }
         select.replaceChildren();
         for (const item of comfy?.profiles?.list?.() || [active]) { const option = doc.createElement('option'); option.value = item.id; option.textContent = item.name; option.selected = item.id === active.id; select.appendChild(option); }
       }
@@ -115,11 +123,13 @@
       const status = q('#comfyConfigStatus');
       if (!status) return null;
       try {
-        const result = await (comfy?.status?.() || comfy?.check?.());
+        const result = await (comfy?.status?.({ enabled: true, workflow: snapshot().comfyWorkflow }) || comfy?.check?.());
         const workflow = comfy?.workflowStatus?.(snapshot().comfyWorkflow);
         const connected = result === true || result?.connected === true || result?.ok === true;
         const ready = workflow?.ready === true;
-        status.textContent = connected ? (ready ? 'ComfyUI 已连接，工作流已就绪' : 'ComfyUI 已连接，等待工作流') : 'ComfyUI 未连接';
+        const version = result?.version ? ` · ${result.version}` : '';
+        const queue = result?.queue ? ` · 队列 ${result.queue.running + result.queue.pending}` : '';
+        status.textContent = connected ? (ready ? `ComfyUI 已连接${version}${queue}，工作流已就绪` : `ComfyUI 已连接${version}${queue}，等待工作流`) : 'ComfyUI 未连接';
         return { result, workflow };
       } catch (error) {
         status.textContent = error?.message || 'ComfyUI 状态不可用';
