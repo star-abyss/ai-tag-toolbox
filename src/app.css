@@ -1837,3 +1837,53 @@ body.dark #tabTalk .message-action:hover{background:rgba(126,166,255,.20);color:
 #tabTalk .cmsg.user .md-table{background:color-mix(in srgb,var(--user-bubble-bg) 45%,var(--card))}
 #tabTalk .cmsg.user .md-table th{background:color-mix(in srgb,var(--user-bubble-border) 35%,var(--user-bubble-bg))}
 #tabTalk .cmsg.user .codeblock{background:color-mix(in srgb,var(--user-bubble-bg) 55%,var(--code-bg))}
+
+/* V1.4.210：非最大化窗口导航居中。
+ * 中等桌面宽度采用三行单列布局，让品牌区、搜索/AI 切换区和功能区
+ * 共享同一条中心轴；宽屏和移动端继续使用各自原有布局。 */
+@media (min-width:861px) and (max-width:1500px){
+  header{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    grid-template-rows:auto auto auto;
+    justify-items:center;
+    gap:8px;
+  }
+  .header-side-left{
+    grid-column:1;
+    grid-row:1;
+    width:100%;
+    justify-content:center;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .header-leading{margin-left:0}
+  header .header-workspace{
+    grid-column:1;
+    grid-row:2;
+    width:100%;
+    min-width:300px;
+    max-width:none;
+    justify-self:center;
+    justify-content:center;
+  }
+  header .header-workspace .search{
+    width:min(100%,640px);
+    margin-inline:auto;
+  }
+  header .header-workspace #aiCfgBtns{
+    width:min(100%,420px);
+    margin-inline:auto;
+    justify-content:center;
+  }
+  .header-trailing{
+    grid-column:1;
+    grid-row:3;
+    width:100%;
+    justify-self:center;
+    justify-content:center;
+    gap:6px;
+    margin-left:0;
+    flex-wrap:wrap;
+  }
+}

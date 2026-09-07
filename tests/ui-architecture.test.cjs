@@ -25,3 +25,17 @@ test('the app composes views and has no old prompt modes or renderer persistence
   assert.match(app, /viewFactories\.prompt/);
   assert.match(app, /viewFactories\.agentStatus/);
 });
+
+test('medium desktop header centers every navigation row on one axis', () => {
+  const css = fs.readFileSync(path.join(root, 'src', 'app.css'), 'utf8');
+  const marker = '/* V1.4.210：非最大化窗口导航居中。';
+  const start = css.lastIndexOf(marker);
+  assert.ok(start >= 0, 'the non-maximized navigation override should be present');
+  const override = css.slice(start);
+  assert.match(override, /@media\s*\(min-width:861px\)\s*and\s*\(max-width:1500px\)\s*\{[\s\S]*?header\s*\{[\s\S]*?grid-template-columns\s*:\s*minmax\(0,1fr\)/);
+  assert.match(override, /\.header-side-left\s*\{[\s\S]*?justify-content\s*:\s*center/);
+  assert.match(override, /\.header-trailing\s*\{[\s\S]*?justify-content\s*:\s*center/);
+  assert.match(override, /header\s+\.header-workspace\s*\{[\s\S]*?grid-row\s*:\s*2[\s\S]*?justify-self\s*:\s*center/);
+  assert.match(override, /header\s+\.header-workspace\s+#aiCfgBtns\s*\{[\s\S]*?justify-content\s*:\s*center/);
+  assert.match(css, /@media\s*\(min-width:1501px\)/, 'wide desktop rules should remain separate');
+});
