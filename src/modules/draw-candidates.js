@@ -25,6 +25,11 @@ function clone(value) {
   return output;
 }
 
+function tags(value) {
+  const rows = Array.isArray(value) ? value : String(value == null ? '' : value).split(/[,，\n]+/);
+  return [...new Set(rows.map(item => text(item)).filter(Boolean))].slice(0, 256);
+}
+
 function normaliseCandidate(value = {}, index = 0) {
   const source = value && typeof value === 'object' ? value : {};
   const iteration = Math.max(1, Number(source.iteration) || index + 1);
@@ -32,12 +37,20 @@ function normaliseCandidate(value = {}, index = 0) {
   const artifact = source.artifact && typeof source.artifact === 'object'
     ? clone(source.artifact)
     : null;
+  const positiveTags = tags(source.positiveTags || source.prompt);
+  const negativeTags = tags(source.negativeTags || source.negative);
   return {
     id,
     iteration,
     imageId: text(source.imageId || artifact?.id),
-    prompt: text(source.prompt),
-    negative: text(source.negative),
+    prompt: text(source.prompt, positiveTags.join(', ')),
+    negative: text(source.negative, negativeTags.join(', ')),
+    positiveTags,
+    negativeTags,
+    parameters: source.parameters && typeof source.parameters === 'object' ? clone(source.parameters) : {},
+    workflowProfileId: text(source.workflowProfileId),
+    workflowRevision: text(source.workflowRevision),
+    recreationMode: text(source.recreationMode),
     previewUrl: text(source.previewUrl),
     artifact,
     evaluation: source.evaluation && typeof source.evaluation === 'object'
@@ -63,7 +76,7 @@ function markRecommended(list, candidateId) {
   const id = text(candidateId);
   return rows.map(item => ({
     ...item,
-    evaluation: { ...(item.evaluation || {}), recommended: Boolean(id && item.id === id) }
+    evaluation: { ...(item.evaluation || {}), recommended: Boolean(id && (item.id === id || item.imageId === id)) }
   }));
 }
 
@@ -71,8 +84,16 @@ function evaluateCandidate(list, candidateId, summary, status = 'reviewed') {
   const rows = Array.isArray(list) ? list.map((item, index) => normaliseCandidate(item, index)) : [];
   const id = text(candidateId);
   const note = text(summary);
-  return rows.map(item => item.id === id
+  return rows.map(item => item.id === id || item.imageId === id
     ? { ...item, evaluation: { ...(item.evaluation || {}), status: note ? status : (item.evaluation?.status || 'pending'), summary: note || item.evaluation?.summary || '' } }
+    : item);
+}
+
+function setCandidateEvaluation(list, candidateId, evaluation = {}) {
+  const rows = Array.isArray(list) ? list.map((item, index) => normaliseCandidate(item, index)) : [];
+  const id = text(candidateId);
+  return rows.map(item => item.id === id || item.imageId === id
+    ? { ...item, evaluation: { ...clone(evaluation), status: text(evaluation.status, 'reviewed'), recommended: evaluation.recommended === true } }
     : item);
 }
 
@@ -93,14 +114,14 @@ function selectCandidate(list, candidateId, source = 'user') {
   const id = text(candidateId);
   return rows.map(item => ({
     ...item,
-    selected: Boolean(id && item.id === id),
-    selectionSource: id && item.id === id ? text(source, 'user') : ''
+    selected: Boolean(id && (item.id === id || item.imageId === id)),
+    selectionSource: id && (item.id === id || item.imageId === id) ? text(source, 'user') : ''
   }));
 }
 
 function finalCandidate(list, selectedId = '') {
   const rows = Array.isArray(list) ? list.map((item, index) => normaliseCandidate(item, index)) : [];
-  const explicit = rows.find(item => item.id === text(selectedId));
+  const explicit = rows.find(item => item.id === text(selectedId) || item.imageId === text(selectedId));
   const selected = explicit || rows.find(item => item.selected) || rows.find(item => item.evaluation?.recommended);
   if (!selected) return null;
   return {
@@ -108,6 +129,12 @@ function finalCandidate(list, selectedId = '') {
     finalImageId: selected.imageId,
     finalPrompt: selected.prompt,
     finalNegative: selected.negative,
+    positiveTags: selected.positiveTags.slice(),
+    negativeTags: selected.negativeTags.slice(),
+    parameters: clone(selected.parameters),
+    workflowProfileId: selected.workflowProfileId,
+    workflowRevision: selected.workflowRevision,
+    recreationMode: selected.recreationMode,
     selectionSource: text(selected.selectionSource, selected.evaluation?.recommended ? 'ai' : 'user')
   };
 }
@@ -120,4 +147,4 @@ function snapshot(list) {
   });
 }
 
-module.exports = { normaliseCandidate, addCandidate, markRecommended, evaluateCandidate, recommendedId, stripRecommendation, selectCandidate, finalCandidate, snapshot };
+module.exports = { normaliseCandidate, addCandidate, markRecommended, evaluateCandidate, setCandidateEvaluation, recommendedId, stripRecommendation, selectCandidate, finalCandidate, snapshot };

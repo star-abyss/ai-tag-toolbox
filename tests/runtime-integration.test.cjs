@@ -93,6 +93,28 @@ test('generated tags use Vision AI, live prompt and controlled image and never e
   assert.equal(messagesSeen[2][1].content[1].image_url.url, 'data:image/png;base64,AQ=='); assert.equal(resolved[0].sessionId, 's1');
 });
 
+test('generateTags compile returns full Tags and revise returns a bounded patch', async () => {
+  const messagesSeen = [];
+  const replies = [
+    '{"positiveTags":["1girl","blue hair"],"negativeTags":["lowres"]}',
+    '{"add":["from side"],"remove":["front view"],"preserve":["blue hair"],"negativeAdd":["bad anatomy"],"negativeRemove":[]}'
+  ];
+  const { runtime } = stack({
+    getSettings: () => ({ ...baseSettings, generateNegativeTags: true }),
+    visionAI: { complete: async messages => { messagesSeen.push(messages); return { text: replies.shift() }; } }
+  });
+  const compiled = await runtime.runSubAgent('generateTags', { input: { operation: 'compile', requirements: 'blue-haired girl' } });
+  assert.deepEqual(compiled.data.positiveTags, ['1girl', 'blue hair']);
+  assert.deepEqual(compiled.data.negativeTags, ['lowres']);
+  const revised = await runtime.runSubAgent('generateTags', { input: {
+    operation: 'revise', requirements: 'blue-haired girl', positiveTags: compiled.data.positiveTags,
+    negativeTags: compiled.data.negativeTags, evaluation: { score: 70, suggestedChanges: ['侧身'] }
+  } });
+  assert.deepEqual(revised.data, { add: ['from side'], remove: ['front view'], preserve: ['blue hair'], negativeAdd: ['bad anatomy'], negativeRemove: [] });
+  assert.match(messagesSeen[1][0].content, /add.*remove.*preserve/s);
+  assert.match(messagesSeen[1][1].content[0].text, /上一版正向 Tag.*blue hair/s);
+});
+
 test('schema rejects extra input fields and malformed/empty child outputs', async () => {
   const { runtime, tools } = stack({ visionAI: { complete: async () => ({ text: 'not json' }) } });
   for (const args of [{ positiveTags: ['girl'], width: 1 }, { positiveTags: [42] }, { positiveTags: [] }, { positiveTags: ['girl'], seed: 0 }]) assert.equal((await tools.call('comfy.render', args)).error.code, 'INVALID_INPUT');

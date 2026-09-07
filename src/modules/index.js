@@ -22,6 +22,7 @@ module.exports = {
   ...require('./agent-runtime'),
   ...require('./fixed-subagents'),
   ...require('./candidate-evaluator'),
+  ...require('./generation-orchestrator'),
   ...require('./primary-tools'),
   ...require('./settings'),
   ...require('./ai-client'),
