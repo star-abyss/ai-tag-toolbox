@@ -66,6 +66,8 @@ test('stored primary prompt receives the character contract without modifying th
   assert.match(primary.getPrompt(), /attachedData/);
   assert.match(primary.getPrompt(), /generation\.execute/);
   assert.match(primary.getPrompt(), /优先于上方.*不要调用.*comfy\.render/s);
+  assert.match(primary.getPrompt(), /绘图.*禁止.*vision\.processOne/s);
+  assert.match(primary.getPrompt(), /用户原始要求.*原样/);
   assert(primary.getPrompt().lastIndexOf('generation.execute') > primary.getPrompt().indexOf('comfy.render'));
   assert.equal(prompts.composePrimary(), '我的自定义提示词：请调用 comfy.render');
 });

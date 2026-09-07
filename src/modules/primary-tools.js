@@ -3,6 +3,7 @@
 const { SCHEMAS, OUTPUT_SCHEMAS } = require('./fixed-subagents');
 const { assertValid } = require('./schema');
 const { errorShape, resultOk, resultError } = require('./error-manager');
+const { compactVisionResult } = require('./vision-payload');
 const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render', 'generation.execute', 'generation.resume']);
 const PRIMARY_TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'comfy.status', 'generation.execute', 'generation.resume']);
 const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
@@ -24,7 +25,7 @@ const workflowSchema = schema({ ready: { type: 'boolean' }, error: string }, ['r
 const capabilitiesSchema = schema({ txt2img: { type: 'boolean' }, img2img: { type: 'boolean' }, controlImage: { type: 'boolean' }, mask: { type: 'boolean' } });
 const statusSchema = schema({ enabled: { type: 'boolean' }, connected: { type: 'boolean' }, workflowReady: { type: 'boolean' }, render: { type: 'boolean' }, error: string, workflowProfileId: string, workflowRevision: string, capabilities: capabilitiesSchema }, ['enabled', 'connected', 'workflowReady', 'render', 'error']);
 const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty }, prompt: string, negative: string, positiveTags: tagArray, negativeTags: tagArray, parameters: { type: 'object' }, workflowProfileId: string, workflowRevision: string, workflowHash: string, changedBindings: { type: 'array', items: string }, recreationMode: { type: 'string', enum: ['', 'reference_image', 'text_approximation'] } }, ['artifacts', 'imageIds']);
-const generationExecuteSchema = schema({ requirements: { type: 'string', minLength: 1, maxLength: 16000 }, mode: { type: 'string', enum: ['create', 'recreate', 'auto'] }, sourceImageId: nonempty, sourceSlot: { type: 'integer', minimum: 1, maximum: 10000 }, characterQueries: { type: 'array', maxItems: 8, items: nonempty }, characterIds: { type: 'array', maxItems: 8, items: nonempty }, strategy: { type: 'string', enum: ['quick', 'auto', 'fixed3'] }, autoSelect: { type: 'boolean' }, workflowProfileId: nonempty }, ['requirements']);
+const generationExecuteSchema = schema({ originalRequirements: { type: 'string', minLength: 1, maxLength: 16000 }, requirements: { type: 'string', minLength: 1, maxLength: 16000 }, mode: { type: 'string', enum: ['create', 'recreate', 'auto'] }, sourceImageId: nonempty, sourceSlot: { type: 'integer', minimum: 1, maximum: 10000 }, characterQueries: { type: 'array', maxItems: 8, items: nonempty }, characterIds: { type: 'array', maxItems: 8, items: nonempty }, strategy: { type: 'string', enum: ['quick', 'auto', 'fixed3'] }, autoSelect: { type: 'boolean' }, workflowProfileId: nonempty });
 const generationResumeSchema = schema({ jobId: nonempty, sourceImageId: nonempty, characterIds: { type: 'array', maxItems: 8, items: nonempty }, workflowProfileId: nonempty, strategy: { type: 'string', enum: ['quick', 'auto', 'fixed3'] }, autoSelect: { type: 'boolean' } }, ['jobId']);
 const DEFINITIONS = Object.freeze({
   'tags.search': { description: '查询本站标签及释义；Tag 含义、拼写或是否属于本站词库不确定时调用。命中角色名时附带角色出处和外貌 Tag。', parameters: schema({ query: { type: 'string', maxLength: 1000 }, category: string, includeAdult: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }, ['query']), outputSchema: schema({ items: { type: 'array', maxItems: 200, items: tagSchema } }, ['items']) },
@@ -154,7 +155,7 @@ function createPrimaryTools(options = {}) {
       if (!Array.isArray(value?.items)) throw failure('OUTPUT_INVALID', '会话图片返回格式无效');
       return { items: value.items.map(publicImage), pendingIds: Array.isArray(value.pendingIds) ? value.pendingIds.filter(id => typeof id === 'string') : [] };
     },
-    'vision.processOne': (args, context) => subagent('vision', args, context),
+    'vision.processOne': async (args, context) => compactVisionResult({ ...unwrap(await subagent('vision', args, context)), imageId: args.imageId, mode: args.mode }),
     'translation.translate': (args, context) => subagent('translation', args, context),
     'agent.generateTags': (args, context) => {
       if (args.characterIds?.length) {

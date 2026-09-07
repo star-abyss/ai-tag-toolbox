@@ -41,12 +41,12 @@
 - Generation stores immutable `originalRequirements` and structured `visualBlueprint`.
 - Public `vision.processOne` omits metadata and embedded workflow data.
 
-- [ ] **Step 1:** Add failing tests for fenced/raw Vision JSON, plain-text fallback, immutable requirements, compact public Vision output and no main-AI pre-inspection instruction.
-- [ ] **Step 2:** Run the focused tests and verify nested JSON/metadata failures.
-- [ ] **Step 3:** Implement parser normalization and use it in Vision AI mode and generation preparation.
-- [ ] **Step 4:** Update primary prompt contracts to pass original text and source/character IDs without pre-inspection.
-- [ ] **Step 5:** Run focused tests and `npm run check`.
-- [ ] **Step 6:** Commit `V1.4.221：修正复刻原始要求与识图结构`.
+- [x] **Step 1:** Add failing tests for fenced/raw Vision JSON, plain-text fallback, immutable requirements, compact public Vision output and no main-AI pre-inspection instruction.
+- [x] **Step 2:** Run the focused tests and verify nested JSON/metadata failures.
+- [x] **Step 3:** Implement parser normalization and use it in Vision AI mode and generation preparation.
+- [x] **Step 4:** Update primary prompt contracts to pass original text and source/character IDs without pre-inspection.
+- [x] **Step 5:** Run focused tests and `npm run check`.
+- [x] **Step 6:** Commit `V1.4.221：修正复刻原始要求与识图结构`.
 
 ### Task 2: Safe Prompt Patch Engine
 
@@ -218,4 +218,3 @@
 - [ ] **Step 6:** Run packaged Electron smoke at 1100x800 and 1500x950 against local AI/ComfyUI fixtures, including manual continuation and in-flight final selection.
 - [ ] **Step 7:** Record evidence, mark every plan item complete, commit, rebuild once and verify desktop uniqueness/hash/HEAD.
 - [ ] **Step 8:** Do not push or publish; stop for user manual testing.
-

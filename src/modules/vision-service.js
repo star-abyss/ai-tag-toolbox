@@ -9,6 +9,7 @@
  */
 
 const { promptToTags } = require('./images');
+const { BLUEPRINT_FIELDS, parseVisionPayload } = require('./vision-payload');
 
 const MODES = Object.freeze(['metadata', 'local', 'ai']);
 const DEFAULT_AI_PROMPT = '只根据图片中可见内容进行详细、客观的绘图提示词描述；覆盖主体/人物外观、服装、姿势表情、构图镜头、场景物体、光影色彩与画风，优先输出精炼英文 Tag；可见 NSFW 内容如实描述，不回避；只输出结果，不输出思维过程。';
@@ -410,9 +411,10 @@ function createVisionService(options = {}) {
       return errorResult(imageId, 'ai', result.code || 'VISION_AI_FAILED', message, { data: clone(result.data) });
     }
     const output = responseText(result);
+    const parsed = parseVisionPayload(output);
     // 即使服务商忽略关闭推理参数，也不要把 reasoning 回传到识图结果。
     const reasoning = '';
-    const tags = normaliseTags(promptToTags(output), 'ai');
+    const tags = normaliseTags(parsed.tags.length ? parsed.tags : promptToTags(parsed.description), 'ai');
     const model = text(result?.model || visionAI.getConfig?.().model);
     return {
       ok: true,
@@ -426,7 +428,10 @@ function createVisionService(options = {}) {
         negativeTags: [],
         builtinTags: normaliseTags(image?.metadata?.builtinTags, 'metadata'),
         builtinNegativeTags: normaliseTags(image?.metadata?.builtinNegativeTags, 'metadata'),
-        text: output,
+        text: parsed.description,
+        description: parsed.description,
+        parseMode: parsed.parseMode,
+        ...Object.fromEntries(BLUEPRINT_FIELDS.filter(key => parsed[key] !== undefined).map(key => [key, clone(parsed[key])])),
         reasoning,
         model,
         instruction

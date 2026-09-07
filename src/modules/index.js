@@ -11,6 +11,7 @@ module.exports = {
   ...require('./prompts'),
   ...require('./vision'),
   ...require('./vision-service'),
+  ...require('./vision-payload'),
   ...require('./storage'),
   ...require('./comfy'),
   ...require('./comfy-workflow'),

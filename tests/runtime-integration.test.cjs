@@ -277,3 +277,15 @@ test('runtime leaves comfyCalls unchanged when the internal render fails', async
   assert.equal(succeeded.ok, true, JSON.stringify(succeeded.error));
   assert.equal(succeeded.usage.comfyCalls, 1);
 });
+
+test('primary Vision tool returns a compact result without metadata', async () => {
+  let tools;
+  const runtime = createAgentRuntime({ tools: () => tools });
+  tools = createPrimaryTools({ runtime: { runSubAgent: async () => ({ ok: true, data: { imageId: 'img-1', mode: 'ai', model: 'vision', text: '{"tags":["church"],"description":"church scene"}', metadata: { workflow: { huge: 'x'.repeat(20000) } }, builtinTags: [{ tag: '1girl' }] } }) } });
+  const result = await tools.call('vision.processOne', { imageId: 'img-1', mode: 'ai' }, { sessionId: 's1' });
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.equal(result.data.description, 'church scene');
+  assert.equal(result.data.metadata, undefined);
+  assert.equal(result.data.workflow, undefined);
+  assert(Buffer.byteLength(JSON.stringify(result.data)) < 1000);
+});

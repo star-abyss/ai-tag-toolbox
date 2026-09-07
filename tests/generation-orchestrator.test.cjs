@@ -175,3 +175,22 @@ test('restored running jobs become interrupted and manual selection controls exa
   assert.equal(chosen.positiveTags.join(', '), chosen.candidates[0].prompt);
   assert.equal(chosen.candidates[0].selectionSource, 'user');
 });
+
+test('recreate keeps original user wording and parses Vision JSON before Tag compilation', async () => {
+  const calls = [];
+  const app = harness({ runSubAgent: async (name, request) => {
+    calls.push({ name, input: structuredClone(request.input) });
+    if (name === 'vision') return ok({ text: '{"tags":["church","from below"],"description":"教堂低视角构图","scene":"church","pose":"sitting"}', metadata: { workflow: { huge: true } } });
+    if (name === 'generateTags') return request.input.operation === 'revise' ? ok({ add: [], remove: [], preserve: [] }) : ok({ positiveTags: ['1girl', 'church'] });
+    if (name === 'evaluateImages' && request.input.operation === 'review') return ok({ operation: 'review', evaluations: [{ candidateId: request.input.candidateImageIds[0], score: 95, verdict: 'accept', hardErrors: [], issues: [], summary: 'ok' }] });
+    if (name === 'evaluateImages') return ok({ operation: 'compare', recommendedCandidateId: request.input.candidateImageIds[0], ranking: request.input.candidateImageIds.map((candidateId, index) => ({ candidateId, rank: index + 1, score: 95 - index, reason: 'ok' })), reason: 'ok' });
+    throw new Error(name);
+  }, reviewScores: [95] });
+  const original = '只替换角色，保持原图姿势、构图与教堂场景不变';
+  const result = await app.orchestrator.execute({ originalRequirements: original, mode: 'recreate', sourceImageId: 'source-1', strategy: 'quick' }, app.context);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.originalRequirements, original);
+  const compile = calls.find(call => call.name === 'generateTags' && call.input.operation === 'compile');
+  assert.equal(compile.input.requirements, original);
+  assert.deepEqual(JSON.parse(compile.input.description), { description: '教堂低视角构图', tags: ['church', 'from below'], pose: 'sitting', scene: 'church', parseMode: 'json' });
+});

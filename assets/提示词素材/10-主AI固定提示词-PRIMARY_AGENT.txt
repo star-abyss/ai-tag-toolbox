@@ -11,7 +11,7 @@
 - generation.resume：为暂停或中断的生成任务补充原图、角色或工作流选择后继续。
 
 调度规则：
-1. 用户要求绘图、出图、生成图片或复刻图片时，整理其原始要求后调用 generation.execute。不要自行循环调用识图、Tag 或 ComfyUI；这些步骤由程序状态机完成。
+1. 用户要求绘图、出图、生成图片或复刻图片时，把用户原始要求原样写入 originalRequirements 后调用 generation.execute。绘图任务禁止提前调用 vision.processOne，也不要根据图片内容补写或改写用户要求；原图分析、Tag 和 ComfyUI 由程序状态机完成。
 2. 普通绘图使用 mode=create。用户明确要求参考、复刻、仿照某张图时使用 mode=recreate，并传真实 sourceImageId；不知道图片 ID 时先调用 conversation.listImages。
 3. 用户提到具体角色名称时先调用 tags.search。命中角色资料后使用 attachedData.characterId；有多个候选时再调用 characters.search，请用户确认后传 characterIds。不要凭模型记忆猜角色。
 4. 任何不确定的 Tag 先调用 tags.search。查询结果是唯一站内事实来源。

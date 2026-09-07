@@ -9,6 +9,7 @@ const {
   finalCandidate,
   snapshot: candidateSnapshot
 } = require('./draw-candidates');
+const { parseVisionPayload } = require('./vision-payload');
 
 const JOB_STATES = Object.freeze([
   'preparing', 'compiling', 'rendering', 'evaluating', 'revising', 'selecting',
@@ -88,14 +89,7 @@ function promptSnapshot(value) {
   return { setId: text(source.setId || source.activeSetId), revision: Number(source.revision) || 0, items };
 }
 function compactBlueprint(value) {
-  const source = object(value) ? value : {};
-  const fields = ['people', 'characters', 'appearance', 'pose', 'viewpoint', 'composition', 'clothing', 'scene', 'lighting', 'style', 'mustPreserve'];
-  const result = {};
-  for (const key of fields) if (source[key] !== undefined) result[key] = Array.isArray(source[key]) ? strings(source[key], 64) : text(source[key]).slice(0, 3000);
-  const description = text(source.description || source.text || source.summary).slice(0, 12000);
-  if (description) result.description = description;
-  if (Array.isArray(source.tags)) result.tags = strings(source.tags, 256);
-  return result;
+  return parseVisionPayload(value);
 }
 function blueprintText(value) {
   if (!object(value) || !Object.keys(value).length) return '';
@@ -176,7 +170,8 @@ function createGenerationOrchestrator(options = {}) {
       sessionId: text(source.sessionId),
       mode: source.mode === 'recreate' ? 'recreate' : 'create',
       status,
-      requirements: text(source.requirements),
+      originalRequirements: text(source.originalRequirements || source.requirements),
+      requirements: text(source.originalRequirements || source.requirements),
       sourceImageId: text(source.sourceImageId),
       sourceSlot: Number.isInteger(source.sourceSlot) ? source.sourceSlot : null,
       characterQueries: strings(source.characterQueries, 8),
@@ -239,7 +234,8 @@ function createGenerationOrchestrator(options = {}) {
       jobId: job.jobId,
       sessionId: job.sessionId,
       mode: job.mode,
-      requirements: job.requirements,
+      requirements: job.originalRequirements,
+      originalRequirements: job.originalRequirements,
       sourceImageId: job.sourceImageId,
       recreationMode: job.recreationMode || '',
       needsInput: job.needsInput || null,
@@ -369,7 +365,7 @@ function createGenerationOrchestrator(options = {}) {
     }
     job.brief = {
       mode: job.mode,
-      requirements: job.requirements,
+      requirements: job.originalRequirements,
       sourceImageId: job.sourceImageId,
       characterIds: job.characterIds.slice(),
       visualBlueprint: clone(job.visualBlueprint || {})
@@ -445,7 +441,7 @@ function createGenerationOrchestrator(options = {}) {
     try {
       const patch = await callAgent(job, context, 'generateTags', {
         operation: 'revise',
-        requirements: job.requirements,
+        requirements: job.originalRequirements,
         description: blueprintText(job.visualBlueprint),
         positiveTags: job.positiveTags,
         negativeTags: job.negativeTags,
@@ -613,8 +609,8 @@ function createGenerationOrchestrator(options = {}) {
     }
   }
   async function execute(input = {}, context = {}) {
-    const requirements = text(input.requirements);
-    if (!requirements) throw failure('INVALID_INPUT', '生成任务缺少 requirements');
+    const originalRequirements = text(input.originalRequirements || input.requirements);
+    if (!originalRequirements) throw failure('INVALID_INPUT', '生成任务缺少 originalRequirements');
     let mode = ['create', 'recreate'].includes(input.mode) ? input.mode : 'auto';
     if (mode === 'auto') mode = input.sourceImageId || Number.isInteger(input.sourceSlot) ? 'recreate' : 'create';
     const policy = policyFrom({ strategy: input.strategy, autoSelect: input.autoSelect }, getSettings());
@@ -624,7 +620,8 @@ function createGenerationOrchestrator(options = {}) {
       sessionId: text(context.sessionId),
       mode,
       status: 'preparing',
-      requirements,
+      originalRequirements,
+      requirements: originalRequirements,
       sourceImageId: text(input.sourceImageId),
       sourceSlot: Number.isInteger(input.sourceSlot) ? input.sourceSlot : null,
       characterQueries: strings(input.characterQueries, 8),
