@@ -25,8 +25,9 @@
     "command": "npm run check",
     "testsPassed": 80,
     "testsFailed": 0,
-    "slowUiSmokeRun": false,
-    "staticLocalBrowserPreview": "DOM regression verified; desktop appearance awaits user testing"
+    "slowUiSmokeRun": true,
+    "desktopSmoke": "Packaged Electron V1.4.213 connected through CDP at 1100x800; local fixture reproduced invalid Tag output and verified toolbar, monitor, export and persistence",
+    "screenshotVerification": true
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",

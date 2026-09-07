@@ -69,13 +69,13 @@
 
 - [x] Raise the version to the final internal version and update the package metadata.
 - [x] Run `npm run check` after the version update.
-- [ ] Move the previous desktop test directory to `F:\codex\desktop-backups`.
-- [ ] Generate and verify the desktop package, including `app.asar`, native dependencies, runtime, and executable.
+- [x] Move the previous desktop test directory to `F:\codex\desktop-backups`.
+- [x] Generate and verify the desktop package, including `app.asar`, native dependencies, runtime, and executable.
 
 ## 实施结果（2026-09-08）
 
 - 运行时记录：897a4ee；界面与状态栏：ede6221；脱敏补充：79a10b8。
 - 原始 API 记录由统一 ai-client 边界捕获，固定子代理业务代码无需改变。
 - 监视器日志独立于 assistant 会话存储，采用最近 200 条 / 12 MiB 上限。
-- npm run check：80 项通过。Electron 自动启动失败，未完成桌面截图检查。
+- npm run check：80 项通过。打包后的 Electron 已在 1100×800 窗口完成状态栏、监视器、导出、持久化和脱敏烟雾检查，并保存截图证据。
 - 最终使用说明见仓库根目录《交付说明-V1.4.213.md》。
