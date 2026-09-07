@@ -521,6 +521,7 @@ function createComfy(options = {}) {
   const fetchImpl = options.fetch || globalThis.fetch;
   const clientId = asText(options.clientId, `aitag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   let workflow = options.workflow || '';
+  const objectInfoCache = new Map();
   const profiles = options.profiles || null;
   function activeProfile() { return profiles?.active?.() || null; }
 
@@ -607,12 +608,19 @@ function createComfy(options = {}) {
     const workflowInfo = workflowStatus(selectedWorkflow);
     let connected = false;
     if (typeof fetchImpl === 'function') connected = await check();
+    let system = null;
+    if (connected) { try { system = await (await request('/system_stats', { signal: options2.signal })).json(); } catch { system = null; } }
+    let queue = null;
+    if (connected) { try { queue = await (await request('/queue', { signal: options2.signal })).json(); } catch { queue = null; } }
     return {
       enabled,
       connected,
       workflowReady: Boolean(workflowInfo.ready),
       render: Boolean(enabled && connected && workflowInfo.ready),
       workflow: workflowInfo.workflow || null,
+      version: system?.system?.comfyui_version || '',
+      device: system?.devices?.[0]?.name || '',
+      queue: { running: Array.isArray(queue?.queue_running) ? queue.queue_running.length : 0, pending: Array.isArray(queue?.queue_pending) ? queue.queue_pending.length : 0 },
       error: !connected
         ? 'ComfyUI 未连接 · 请确认 ComfyUI 已启动，并检查「API 设置 → ComfyUI 地址」'
         : !workflowInfo.ready
@@ -757,8 +765,16 @@ function createComfy(options = {}) {
 
   /** 读取 ComfyUI 节点定义；classPattern 为可选正则片段过滤。 */
   async function objectInfo(classPattern = '', signal) {
+    const cacheKey = `${base}|object_info`;
+    const cached = objectInfoCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      const info = cached.info; const pattern = asText(classPattern); if (!pattern) return { classes: Object.keys(info || {}), nodes: info || {} };
+      let regex; try { regex = new RegExp(pattern, 'i'); } catch (error) { throw new Error(`节点类筛选表达式无效：${error.message || error}`); }
+      const filtered = Object.fromEntries(Object.entries(info || {}).filter(([key]) => regex.test(key))); return { classes: Object.keys(filtered), nodes: filtered };
+    }
     const response = await request('/object_info', { signal });
     const info = await response.json();
+    objectInfoCache.set(cacheKey, { info, expiresAt: Date.now() + 5 * 60 * 1000 });
     const pattern = asText(classPattern);
     if (!pattern) return { classes: Object.keys(info || {}), nodes: info || {} };
     let regex;
