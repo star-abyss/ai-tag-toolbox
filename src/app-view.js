@@ -127,6 +127,7 @@
       conversation: viewFactories.conversation?.createConversationView?.({ document: doc, api: assistant, runtime, repository: imageRepository, images, notify, preferences, autoBind: false, bindControls: false }),
       gallery: viewFactories.gallery?.createGalleryView?.({ document: doc, repository: imageRepository, images, preferences, notify, autoBind: false, bindToolbar: false, onVision: item => { if (item?.imageId) { visionTempStore?.setLibraryReference?.(item.imageId); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true); } }, onConversation: () => route("ai") }),
       settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, autoBind: false }),
+      comfy: viewFactories.comfy?.createComfyView?.({ document: doc, comfy, assistant, notify, openExternal: url => global.open(url), autoBind: false }),
       prompt: viewFactories.prompt?.createPromptView?.({ document: doc, prompts, notify, download, autoBind: false }),
       agentStatus: viewFactories.agentStatus?.createAgentStatusView?.({ document: doc, runtime, api: assistant, notify, autoBind: false }),
       characters: viewFactories.characters?.createCharactersView?.({ document: doc, characters, onChange: () => renderSelection(), copy: value => copy(value), notify, getLocale: () => ui.locale }),
@@ -841,29 +842,8 @@
             Number($("#aiTimeoutSec")?.value) || Number(s.timeoutSec) || 300,
           ),
         ),
-        comfyBase: formValue("#comfyBase", s.comfyBase).replace(/\/+$/, ""),
-        comfyWorkflow: formValue("#comfyWf", s.comfyWorkflow),
-        comfyOn: $("#comfyOn") ? $("#comfyOn").checked : s.comfyOn === true,
-        batchCount: Math.max(
-          1,
-          Math.min(8, Number($("#batchCount")?.value) || Number(s.batchCount) || 1),
-        ),
-        maxComfyCalls: Math.max(1, Math.min(20, Number($("#maxComfyCalls")?.value) || Number(s.maxComfyCalls) || 3)),
-        comfyPos: formValue("#comfyPos", s.comfyPos),
-        comfyNeg: formValue("#comfyNeg", s.comfyNeg),
-        comfyW: Number($("#comfyW")?.value) || Number(s.comfyW) || 768,
-        comfyH: Number($("#comfyH")?.value) || Number(s.comfyH) || 1024,
-        comfySteps:
-          Number($("#comfySteps")?.value) || Number(s.comfySteps) || 25,
-        comfyCfg: Number($("#comfyCfg")?.value) || Number(s.comfyCfg) || 7,
-        seed: $("#comfySeed") ? ($("#comfySeed").value === "" ? undefined : Number($("#comfySeed").value)) : s.seed,
-        sampler: formValue("#comfySampler", s.sampler || s.comfySampler || "euler"),
-        scheduler: formValue("#comfyScheduler", s.scheduler || s.comfyScheduler || "normal"),
-        generateNegativeTags: $("#generateNegativeTags") ? $("#generateNegativeTags").checked : s.generateNegativeTags === true,
       };
       assistant?.setSettings?.(patch);
-      comfy?.setBase?.(patch.comfyBase);
-      comfy?.setWorkflow?.(patch.comfyWorkflow);
       assistant?.calls?.invalidateCapabilities?.();
       scheduleCapabilitiesStatus();
       return patch;
@@ -929,24 +909,6 @@
         $("#aiTimeoutSec").value = Number(s.timeoutSec) || 300;
         $("#aiTimeoutSec").disabled = !s.timeoutEnabled;
       }
-      if ($("#comfyBase"))
-        $("#comfyBase").value = s.comfyBase || "http://127.0.0.1:8188";
-      if ($("#comfyOn")) $("#comfyOn").checked = s.comfyOn === true;
-      if ($("#comfySeed")) $("#comfySeed").value = s.seed ?? "";
-      if ($("#comfySampler")) $("#comfySampler").value = s.sampler || s.comfySampler || "euler";
-      if ($("#comfyScheduler")) $("#comfyScheduler").value = s.scheduler || s.comfyScheduler || "normal";
-      if ($("#generateNegativeTags")) $("#generateNegativeTags").checked = s.generateNegativeTags === true;
-      if ($("#batchCount")) $("#batchCount").value = Number(s.batchCount) || 1;
-      if ($("#maxComfyCalls")) $("#maxComfyCalls").value = Number(s.maxComfyCalls) || 3;
-      if ($("#comfyWf")) $("#comfyWf").value = workflowText(s.comfyWorkflow);
-      if ($("#comfyPos")) $("#comfyPos").value = s.comfyPos || "";
-      if ($("#comfyNeg")) $("#comfyNeg").value = s.comfyNeg || "";
-      ["comfyW", "comfyH", "comfySteps", "comfyCfg"].forEach((key) => {
-        if ($("#" + key))
-          $("#" + key).value = Number(s[key]) || $("#" + key).value;
-      });
-      comfy?.setBase?.(s.comfyBase || "http://127.0.0.1:8188");
-      comfy?.setWorkflow?.(workflowText(s.comfyWorkflow));
       populateModels({ ...options, selectedModel: s.model });
       populateVisionModels({ ...options, selectedModel: s.visionInheritPrimary !== false ? s.model : s.visionModel });
       refreshCapabilitiesStatus({ force: true });
@@ -1400,7 +1362,7 @@
           if (!parsed) {
             const raw = typeof value === "string" ? value : JSON.stringify(value, null, 2);
             $("#comfyWf").value = raw;
-            configFromView();
+            views.comfy?.save?.();
             return { found: false, text: raw };
           }
           $("#comfyWf").value = parsed.text;
@@ -1410,7 +1372,7 @@
           if (parsed.height !== "" && $("#comfyH")) $("#comfyH").value = parsed.height;
           if (parsed.steps !== "" && $("#comfySteps")) $("#comfySteps").value = parsed.steps;
           if (parsed.cfg !== "" && $("#comfyCfg")) $("#comfyCfg").value = parsed.cfg;
-          configFromView();
+          views.comfy?.save?.();
           return parsed;
         };
         if (file.type === "application/json" || /\.json$/i.test(file.name || "")) {
@@ -2923,20 +2885,23 @@
         "talk",
         "prompt",
         "api",
+        "comfy",
         "mgr",
       ].includes(tab)
         ? tab
         : "talk";
       if (ui.aiTab === "api" && nextTab !== "api") flushSettingsSave();
+      if (ui.aiTab === "comfy" && nextTab !== "comfy") views.comfy?.flush?.();
       ui.aiTab = nextTab;
-      const views = {
+      const panelSelectors = {
         talk: "#tabTalk",
         prompt: "#tabPrompt",
         api: "#tabApi",
+        comfy: "#tabComfy",
         mgr: "#tabMgr",
       };
-      Object.values(views).forEach((selector) => show(selector, false));
-      show(views[ui.aiTab], true);
+      Object.values(panelSelectors).forEach((selector) => show(selector, false));
+      show(panelSelectors[ui.aiTab], true);
       $$(".ai-module-tab").forEach((button) => {
         const active = button.dataset.panel === ui.aiTab;
         button.classList.toggle("on", active);
@@ -2950,6 +2915,7 @@
       }
       if (ui.aiTab === "prompt") renderPrompt();
       if (ui.aiTab === "api") loadSettings();
+      if (ui.aiTab === "comfy") { views.comfy?.render(settings()); views.comfy?.refresh?.(); }
       if (ui.aiTab === "mgr") renderManager();
       ensureVisionPanePlacement();
     }
@@ -2968,6 +2934,7 @@
     }
     function route(route) {
       if (ui.route === "ai" && ui.aiTab === "api" && route !== "ai") flushSettingsSave();
+      if (ui.route === "ai" && ui.aiTab === "comfy" && route !== "ai") views.comfy?.flush?.();
       if (ui.route !== route) {
         clearTimeout(ui.searchTimer);
         const input = $("#q");
@@ -3392,13 +3359,7 @@
       global.addEventListener("resize", () => {
         syncVisionPaneOffset();
       });
-      const persistedComfyFields = ["#comfyBase", "#comfyPos", "#comfyNeg", "#comfyW", "#comfyH", "#comfySteps", "#comfyCfg", "#comfySeed", "#comfySampler", "#comfyScheduler", "#comfyOn", "#generateNegativeTags", "#batchCount", "#maxComfyCalls", "#comfyWf"];
-      persistedComfyFields.forEach(selector => $(selector)?.addEventListener("change", () => {
-        configFromView();
-      }));
-      ["#comfyBase", "#comfyPos", "#comfyNeg", "#comfyWf"].forEach(selector =>
-        $(selector)?.addEventListener("input", scheduleSettingsSave),
-      );
+      views.comfy?.bind?.();
       $("#talkConv")?.addEventListener("scroll", event => {
         const host = event.currentTarget;
         ui.comfyFollow["#talkConv"] = host.scrollHeight - host.scrollTop - host.clientHeight < 40;
@@ -3489,7 +3450,7 @@
       });
       $("#tpDescribe")?.addEventListener("click", () => describe());
       $("#talkComfyOn")?.addEventListener("change", event => { assistant?.setSettings?.({ comfyOn: event.target.checked }); refreshCapabilitiesStatus({ force: true }); });
-      $("#talkComfyDebug")?.addEventListener("click", () => { const state = ui.comfyCapabilities?.comfy || {}; notify(`ComfyUI：${state.connected ? "已连接" : "未连接"}；工作流：${state.workflowReady ? "已就绪" : "未就绪"}`); });
+      $("#talkComfyDebug")?.addEventListener("click", () => showAi("comfy"));
       $("#tpStop")?.addEventListener("click", () => {
         if (!ui.visionBusy) return;
         cancelVisionRequest(true);
@@ -3634,7 +3595,7 @@
         ),
       );
       $("#comfyTest")?.addEventListener("click", async () => {
-        configFromView();
+        views.comfy?.save?.();
         try {
           const connected = await comfy?.check?.();
           notify(connected
@@ -3648,7 +3609,7 @@
       });
       $("#comfyWfClear")?.addEventListener("click", () => {
         if ($("#comfyWf")) $("#comfyWf").value = "";
-        configFromView();
+        views.comfy?.save?.();
       });
       $("#comfyClearCfg")?.addEventListener("click", () => {
         assistant?.setSettings?.({
@@ -3662,14 +3623,8 @@
           comfyH: 1024,
           comfySteps: 25,
           comfyCfg: 7,
-          visionInheritPrimary: true,
-          visionBase: "",
-          visionModel: "",
-          visionKey: "",
-          visionTemperature: 0.2,
-          visionTimeoutMs: 120000,
         });
-        loadSettings();
+        views.comfy?.render(settings());
       });
       $("#comfyWfJson")?.addEventListener("click", () =>
         $("#comfyWfJsonFile")?.click(),
@@ -3694,10 +3649,11 @@
       $("#comfyWfSync")?.addEventListener("click", () =>
         notify("请在 ComfyUI 中复制 API 工作流后粘贴回这里"),
       );
-      $("#tabApi")?.addEventListener("dragover", (event) => {
+      $("#comfyBack")?.addEventListener("click", () => showAi("talk"));
+      $("#tabComfy")?.addEventListener("dragover", (event) => {
         if ([...(event.dataTransfer?.files || [])].some((file) => /\.json$|\.png$/i.test(file.name || ""))) event.preventDefault();
       });
-      $("#tabApi")?.addEventListener("drop", (event) => {
+      $("#tabComfy")?.addEventListener("drop", (event) => {
         const file = [...(event.dataTransfer?.files || [])].find((item) => /\.json$|\.png$/i.test(item.name || ""));
         if (!file) return;
         event.preventDefault();

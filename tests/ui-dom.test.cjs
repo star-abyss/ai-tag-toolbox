@@ -36,10 +36,11 @@ function boot(options = {}) {
     listConversation: () => ({ items: conversationItems.slice() }),
     clearConversationImages: sessionId => { options.clearConversationImages?.(sessionId); conversationItems = []; return { removed: 1, deletedImages: 1 }; }
   };
+  let settings = { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', comfyBase: 'http://127.0.0.1:8188', comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, batchCount: 1, maxComfyCalls: 3 };
   const assistant = {
     sessions: () => [session], currentSession: () => session, newSession: () => session,
-    getSettings: () => ({ base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', comfyBase: 'http://127.0.0.1:8188', comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, batchCount: 1, maxComfyCalls: 3 }),
-    setSettings: () => {}, listModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }), listVisionModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }),
+    getSettings: () => settings,
+    setSettings: patch => { settings = { ...settings, ...patch }; return settings; }, listModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }), listVisionModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }),
     refreshCapabilities: async () => ({ comfy: { enabled: false, connected: false }, vision: { local: false, ai: false } }),
     calls: { refreshCapabilities: async () => ({ comfy: { enabled: false, connected: false }, vision: { local: false, ai: false } }) },
     run: async input => { runCount += 1; session.messages.push({ id: `m${runCount}`, role: 'user', text: input.text, imageIds: input.imageIds || [], status: 'done' }); return { ok: true, text: '完成', requestId: input.requestId }; },
@@ -73,7 +74,7 @@ function boot(options = {}) {
   };
   const modules = { assistant, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy: { setBase: () => {}, setWorkflow: () => {}, check: async () => false }, locales: { 'zh-CN': {} }, version: '1.4.194' };
 
-  for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'app-view.js']) window.eval(source(file));
+  for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'app-view.js']) window.eval(source(file));
   const view = window.AppView.create(modules, window.document);
   view.start();
   return { dom, window, view, assistant, repository, gallery, getRunCount: () => runCount };
@@ -101,6 +102,25 @@ test('gallery factory owns card action rendering and rename path', () => {
   assert.ok(card);
   card.querySelector('[data-action="rename"]').click();
   assert.equal(app.gallery[0].displayName, '新名称');
+  app.dom.window.close();
+});
+
+test('ComfyUI gets a dedicated AI tab and the conversation debug button opens it', () => {
+  const app = boot();
+  app.view.route('ai');
+  app.view.showAi('comfy');
+  assert.equal(app.window.document.querySelector('#tabComfy')?.style.display, '');
+  assert.equal(app.window.document.querySelector('#tabApi')?.style.display, 'none');
+  assert.equal(app.window.document.querySelector('#tabApi #comfyBase'), null);
+  assert.equal(app.window.document.querySelector('#tabApi #comfyWf'), null);
+  const workflow = app.window.document.querySelector('#comfyWf');
+  workflow.value = '{"3":{"class_type":"KSampler"}}';
+  workflow.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  app.view.showAi('api');
+  app.view.showAi('comfy');
+  assert.equal(app.window.document.querySelector('#comfyWf').value, '{"3":{"class_type":"KSampler"}}');
+  app.window.document.querySelector('#talkComfyDebug').click();
+  assert.equal(app.window.document.querySelector('#tabComfy')?.style.display, '');
   app.dom.window.close();
 });
 

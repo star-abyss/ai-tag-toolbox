@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
-    <title>AI 绘画 Tag 工具箱 V1.4.203 · Danbooru 标签选择器</title>
+    <title>AI 绘画 Tag 工具箱 V1.4.204 · Danbooru 标签选择器</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
@@ -111,6 +111,14 @@
             role="tab"
             aria-selected="false"
             data-i18n="ui.header.apiPage"
+          ></button>
+          <button
+            class="ai-module-tab btn btn-segment"
+            id="aiModuleComfy"
+            data-panel="comfy"
+            role="tab"
+            aria-selected="false"
+            data-i18n="ui.header.comfyPage"
           ></button>
         </div>
       </div>
@@ -490,90 +498,55 @@
                 <div class="hint">主 AI 只使用固定工具，页面不开放外部 Agent 写权限。</div>
                 <div class="secret-status" id="agentStatus">固定工具就绪</div>
               </details>
-              <div class="clhead comfyhead" data-i18n="ui.settings.comfyTitle"></div>
-              <div class="opts runtime-options">
-                <label class="opt"><input id="comfyOn" type="checkbox" /> 启用 ComfyUI 工具</label>
-                <label class="opt"><input id="generateNegativeTags" type="checkbox" /> 生成负面 Tag</label>
+            </div>
+          </div>
+        </div>
+        <div id="tabComfy" data-comfy-view="true" style="display: none">
+          <div class="aitop slim2">
+            <button class="abtn ghost backbtn btn btn-ghost" id="comfyBack" data-i18n="ui.settings.comfyBack"></button>
+            <span style="font-weight: 700; font-size: 14px" data-i18n="ui.settings.comfyWorkspaceTitle"></span>
+          </div>
+          <div class="comfy-workspace">
+            <div class="form">
+              <div class="comfy-status-row">
+                <div class="hint" id="comfyConfigStatus" role="status">ComfyUI 状态检查中…</div>
+                <button class="abtn btn btn-secondary" id="comfyTest" data-i18n="ui.settings.comfyTest"></button>
               </div>
-              <label
-                ><span data-i18n="ui.settings.comfyAddress"></span>
-                <input id="comfyBase" placeholder="http://127.0.0.1:8188" />
-              </label>
-              <details class="aiset" style="border: none">
-                <summary>🎛 工作流（上传 / 拖入 / 粘贴，参数改动交给用户）</summary>
-                <div class="row">
-                  <button class="abtn btn btn-secondary" id="comfyWfJson" data-i18n="ui.settings.workflowUpload"></button>
-                  <button class="abtn btn btn-secondary" id="comfyWfPng" data-i18n="ui.settings.workflowPng"></button>
-                  <button class="abtn btn btn-secondary" id="comfyWfCopy" data-i18n="ui.settings.workflowCopy"></button>
-                  <button class="abtn btn btn-secondary" id="comfyWfOpen" data-i18n="ui.settings.workflowOpen"></button>
-                  <button class="abtn btn btn-secondary" id="comfyWfSync" data-i18n="ui.settings.workflowSync"></button>
-                </div>
-                <input type="file" id="comfyWfJsonFile" accept=".json,application/json" hidden />
-                <input type="file" id="comfyWfPngFile" accept="image/png" hidden />
-                <label
-                  >正向提示词（对应工作流 {{prompt}}，AI 渲染指令可进一步覆盖）
-                  <textarea
-                    id="comfyPos"
-                    rows="2"
-                    class="wfarea"
-                    style="min-height: 44px"
-                    placeholder="1girl, silver hair, ..."
-                  ></textarea>
-                </label>
-                <div class="hint" id="comfyCapabilityHint">ComfyUI 状态检查中…</div>
-                <label
-                  >负面提示词（{{negative}}）
-                  <textarea
-                    id="comfyNeg"
-                    rows="2"
-                    class="wfarea"
-                    style="min-height: 44px"
-                    placeholder="lowres, bad hands, ..."
-                  ></textarea>
-                </label>
-                <div class="opts">
-                  <label class="opt"
-                    >尺寸 <input id="comfyW" type="number" value="768" style="width: 64px" /> ×
-                    <input id="comfyH" type="number" value="1024" style="width: 64px"
-                  /></label>
-                  <label class="opt">步数 <input id="comfySteps" type="number" value="25" style="width: 64px" /></label>
-                  <label class="opt"
-                    >CFG <input id="comfyCfg" type="number" step="0.1" value="7" style="width: 64px"
-                  /></label>
-                  <label class="opt">批量数量 <input id="batchCount" type="number" min="1" max="8" value="1" style="width: 64px" /></label>
-                  <label class="opt">最大 ComfyUI 调用 <input id="maxComfyCalls" type="number" min="1" max="20" value="3" style="width: 64px" /></label>
-                  <label class="opt">Seed <input id="comfySeed" type="number" min="0" placeholder="随机" style="width: 110px" /></label>
-                  <label class="opt">Sampler <input id="comfySampler" type="text" value="euler" style="width: 100px" /></label>
-                  <label class="opt">Scheduler <input id="comfyScheduler" type="text" value="normal" style="width: 100px" /></label>
-                </div>
-                <div class="hint">
-                  上传 / 拖入工作流（JSON 或含工作流的 PNG）后：自动识别标准采样器 / 提示词节点并注入
-                  <code>{{prompt}}</code
-                  >/<code>{{negative}}</code>/<code>{{width}}</code>/<code>{{height}}</code>/<code>{{steps}}</code>/<code>{{cfg}}</code>/<code
-                    >{{seed}}</code
-                  >
-                  占位符，上方表单即这些参数。模型（Checkpoint/UNet/CLIP/VAE/LoRA…）全部由工作流决定，无需单独选择。占位符：<code
-                    >{{prompt}}</code
-                  >
-                  <code>{{negative}}</code> <code>{{seed}}</code> <code>{{width}}</code> <code>{{height}}</code>
-                  <code>{{steps}}</code> <code>{{cfg}}</code> <code>{{ckpt}}</code> <code>{{sampler}}</code>
-                  <code>{{scheduler}}</code>。
-                </div>
-                <label
-                  >工作流 JSON（API 格式，可编辑；留空则不能迭代）
-                  <textarea id="comfyWf" class="wfarea" placeholder="粘贴/上传 ComfyUI API 格式工作流 JSON"></textarea>
-                </label>
-                <div class="row">
-                  <button class="abtn btn btn-secondary" id="comfyTest">🔌 测试连接</button>
-                  <button class="abtn ghost danger btn btn-danger" id="comfyWfClear">清空工作流</button>
-                  <button class="abtn ghost danger btn btn-danger" id="comfyClearCfg">恢复默认</button>
-                </div>
-                <div class="hint">
-                  · ComfyUI 需在本机运行（默认 http://127.0.0.1:8188）；返图由本工具自动抓取并经视觉模型分析。<br />·
-                  「🌐 打开 ComfyUI 页面」在应用内窗口打开 ComfyUI 并自动载入工作流、把正/负提示词写进提示词节点；改完在
-                  ComfyUI 里 Run 后点「🔄 同步工作流设置」读回。
-                </div>
-              </details>
+              <div id="comfyProfileSelector" hidden></div>
+              <div id="comfyAnalysisSummary" hidden></div>
+              <div id="comfyBindings" hidden></div>
+              <div id="comfyOverrides" hidden></div>
+              <div class="opts runtime-options">
+                <label class="opt"><input id="comfyOn" type="checkbox" /> <span data-i18n="ui.settings.comfyEnable"></span></label>
+                <label class="opt"><input id="generateNegativeTags" type="checkbox" /> <span data-i18n="ui.settings.comfyNegativeTags"></span></label>
+              </div>
+              <label><span data-i18n="ui.settings.comfyAddress"></span><input id="comfyBase" placeholder="http://127.0.0.1:8188" /></label>
+              <div class="row" id="comfyImportActions">
+                <button class="abtn btn btn-secondary" id="comfyWfJson" data-i18n="ui.settings.workflowUpload"></button>
+                <button class="abtn btn btn-secondary" id="comfyWfPng" data-i18n="ui.settings.workflowPng"></button>
+                <button class="abtn btn btn-secondary" id="comfyWfCopy" data-i18n="ui.settings.workflowCopy"></button>
+                <button class="abtn btn btn-secondary" id="comfyWfOpen" data-i18n="ui.settings.workflowOpen"></button>
+                <button class="abtn btn btn-secondary" id="comfyWfSync" data-i18n="ui.settings.workflowSync"></button>
+              </div>
+              <input type="file" id="comfyWfJsonFile" accept=".json,application/json" hidden />
+              <input type="file" id="comfyWfPngFile" accept="image/png" hidden />
+              <label><span data-i18n="ui.settings.comfyPositivePrompt"></span><textarea id="comfyPos" rows="2" class="wfarea" placeholder="1girl, silver hair, ..."></textarea></label>
+              <label><span data-i18n="ui.settings.comfyNegativePrompt"></span><textarea id="comfyNeg" rows="2" class="wfarea" placeholder="lowres, bad hands, ..."></textarea></label>
+              <div class="opts">
+                <label class="opt">尺寸 <input id="comfyW" type="number" value="768" /> × <input id="comfyH" type="number" value="1024" /></label>
+                <label class="opt">步数 <input id="comfySteps" type="number" value="25" /></label>
+                <label class="opt">CFG <input id="comfyCfg" type="number" step="0.1" value="7" /></label>
+                <label class="opt">批量数量 <input id="batchCount" type="number" min="1" max="8" value="1" /></label>
+                <label class="opt">最大 ComfyUI 调用 <input id="maxComfyCalls" type="number" min="1" max="20" value="3" /></label>
+                <label class="opt">Seed <input id="comfySeed" type="number" min="0" placeholder="随机" /></label>
+                <label class="opt">Sampler <input id="comfySampler" type="text" value="euler" /></label>
+                <label class="opt">Scheduler <input id="comfyScheduler" type="text" value="normal" /></label>
+              </div>
+              <label><span data-i18n="ui.settings.comfyWorkflowAdvanced"></span><textarea id="comfyWf" class="wfarea" placeholder="Paste or upload a ComfyUI API workflow JSON"></textarea></label>
+              <div class="row">
+                <button class="abtn ghost danger btn btn-danger" id="comfyWfClear" data-i18n="ui.settings.workflowClear"></button>
+                <button class="abtn ghost danger btn btn-danger" id="comfyClearCfg" data-i18n="ui.settings.comfyRestoreDefault"></button>
+              </div>
             </div>
           </div>
         </div>
@@ -787,6 +760,7 @@
     <script src="views/conversation-view.js"></script>
     <script src="views/gallery-view.js"></script>
     <script src="views/settings-view.js"></script>
+    <script src="views/comfy-view.js"></script>
     <script src="views/prompt-view.js"></script>
     <script src="views/agent-status-view.js"></script>
     <script src="views/characters-view.js"></script>

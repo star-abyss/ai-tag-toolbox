@@ -292,6 +292,11 @@ body.vision-open #sidebar{z-index:45}
 .cstatus{font-size:12px;color:var(--muted);min-height:16px;margin:0 0 6px}
 .wfarea{width:100%;padding:9px 11px;border-radius:9px;border:1px solid var(--border2);background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:130px;font-family:ui-monospace,Consolas,'Courier New',monospace;font-size:12px;line-height:1.5}
 .wfarea:focus{border-color:var(--pri)}
+.comfy-workspace{min-height:0;overflow:auto;padding:20px;overscroll-behavior:contain}
+.comfy-workspace>.form{max-width:980px;margin:0 auto;padding-bottom:28px}
+.comfy-status-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.comfy-status-row .hint{margin:0}
+@media (max-width:640px){.comfy-workspace{padding:14px}.comfy-status-row{align-items:flex-start;flex-direction:column}.comfy-workspace .opts{gap:10px}.comfy-workspace .opts .opt{width:100%}}
 .gmsg{max-width:94%;padding:10px 12px;border-radius:12px;font-size:13.5px;min-width:0}
 .gmsg.user{align-self:flex-end;background:var(--pri-btn);color:#fff;white-space:pre-wrap;word-break:break-word;position:relative;padding-right:32px;box-shadow:var(--shadow)}
 .gmsg.user .gedit{position:absolute;top:6px;right:8px;opacity:.9;font-size:12px;color:inherit}
