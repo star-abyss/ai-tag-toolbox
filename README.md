@@ -1,4 +1,4 @@
-# AI 绘画 Tag 工具箱 V1.4.235
+# AI 绘画 Tag 工具箱 V1.4.237
 
 本地 Electron 工具，提供普通 Tag、34,122 个离线角色、单图识图、对话/图库、翻译和 ComfyUI 绘图。
 
@@ -19,6 +19,7 @@
 | `src/modules/images.js` / `image-repository.js` / `vision-temp-store.js` | 图片资源、引用关系及单图工作区 |
 | `src/modules/comfy*.js` | ComfyUI 配置档、节点绑定、API 导入、HTTP 生成与取消 |
 | `src/modules/translation.js` / `vision-service.js` | 本地翻译/Tag 参考、单图识图 |
+| `src/views/translation-view.js` / `src/modules/translation-alignment.js` | 翻译请求状态、双向高亮与对照协议校验 |
 | `src/modules/prompts.js` / `settings.js` / `storage.js` | 提示词组、规范配置与持久化 |
 | `src/modules/call-monitor.js` | 脱敏调用输入输出、事件及用量 |
 
@@ -31,11 +32,12 @@
 - 图片保持同轮横排、轮次间上下分组。用户选择最终图会终止后续工作。
 - 无参考图节点绑定时标明“文本近似复刻”；匹配原图尺寸需要可写的尺寸绑定。
 - V1.4.235 修复 AI 翻译按钮在空输入、切页后无法恢复的问题，并拒绝过期翻译结果回写。
+- V1.4.237 新增 AI 翻译双向对照：悬停、选中文字或点击片段高亮对应内容，Esc 取消；复制仍为纯译文。原文保持可编辑，重复词按出现位置区分，长文本按分句或块对照。缺少有效对应关系时显示普通译文，不额外请求 AI 重试。
 
 ## 运行与验证
 
-桌面包中双击 `AI绘画Tag工具箱V1.4.235.exe`。开发模式 `npm run dev` 需要可用的 Electron；根 package.json 不包含完整独立安装依赖清单，打包使用现有运行时模板及本地依赖。
+桌面包中双击 `AI绘画Tag工具箱V1.4.237.exe`。开发模式 `npm run dev` 需要可用的 Electron；根 package.json 不包含完整独立安装依赖清单，打包使用现有运行时模板及本地依赖。
 
-`npm run check` 执行快速护栏、行为单元测试和 jsdom 页面测试。本轮 156 项通过；按项目规则不额外运行启动应用的慢测试。用户配置与图片保存在 `%APPDATA%\ai-tag-toolbox-rewrite`，桌面版本目录只是程序包。
+`npm run check` 执行快速护栏、行为单元测试和 jsdom 页面测试。本轮 165 项通过；按项目规则不额外运行启动应用的慢测试。用户配置与图片保存在 `%APPDATA%\ai-tag-toolbox-rewrite`，桌面版本目录只是程序包。对照精度由所配置 AI 决定，长文本会增加返回量；本地翻译继续使用普通译文模式。
 
-本轮详情见 [V1.4.235 交付说明](交付说明-V1.4.235.md)。
+本轮详情见 [V1.4.237 交付说明](交付说明-V1.4.237.md)。

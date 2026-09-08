@@ -1,11 +1,11 @@
 {
-  "version": "1.4.235",
+  "version": "1.4.237",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.235",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.237",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.234-before235",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.235-before237",
   "oldDesktopSourceBackupMoved": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.192-source-backup-20260905-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
@@ -24,16 +24,27 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 156,
+    "testsPassed": 165,
     "testsFailed": 0,
     "slowUiSmokeRun": false,
-    "desktopSmoke": "Skipped per project policy: documentation and translation page state only; no real AI or ComfyUI calls",
+    "desktopSmoke": "Skipped per project policy: translation alignment and page interaction use fast checks; no real AI or ComfyUI calls",
     "translationDomRegression": [
       "empty input and reopen",
       "duplicate clicks and failure recovery",
       "leave and reopen",
       "edit/clear while pending",
-      "direction change and stale local result"
+      "direction change and stale local result",
+      "optional alignment and plain-text fallback",
+      "bidirectional source and target selection",
+      "reordered duplicate words and plain-text copy",
+      "model markup is inert and editing invalidates alignment"
+    ],
+    "translationAlignmentProtocol": [
+      "stable IDs with Tag weights and duplicate occurrences",
+      "long text coarsens without truncation",
+      "many-to-many mapping and exact whitespace preservation",
+      "malformed alignment retains full translated text",
+      "explicit direction and optional alignment through runtime"
     ],
     "architectureLocalLinksVerified": 7
   },
@@ -43,6 +54,8 @@
     "Character-specific terms stay out of ordinary tag search and are returned only through character data.",
     "The existing ordinary-tag favorites format does not persist character selections.",
     "Reference-image reproduction requires an explicitly configured source-image binding; otherwise the result is labeled text_approximation.",
-    "Source aspect-ratio matching requires explicit writable width and height bindings; otherwise the workflow dimensions remain fixed."
+    "Source aspect-ratio matching requires explicit writable width and height bindings; otherwise the workflow dimensions remain fixed.",
+    "Translation alignment is optional and depends on the configured AI; unavailable mappings fall back to plain translated text without another AI call.",
+    "Local translation stays plain text; long AI translation inputs use sentence or block alignment and may cost more tokens."
   ]
 }

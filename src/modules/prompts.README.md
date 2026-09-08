@@ -65,7 +65,7 @@ const evaluationPrompt = prompts.composeEvaluation();
 - 文生图 Tag 子代理：当前组 `generateTags` + 当前组 `artistQuality` + 需求 + 可选图片/已有 Tag/参考 Tag。
 - 识图子代理：当前组 `vision` + 参考 Tag + 图片。
 - 候选图评估子代理：当前组 `candidateEvaluation` + 用户要求 + 候选图；复刻模式还包含参考图。
-- 翻译子代理：当前组 `translation` + 待翻译文本。
+- 翻译子代理：当前组 `translation` + 待翻译文本。AI 翻译页启用 `includeAlignment` 时，程序在当前提示词后追加对照协议，并提供完整原文、方向与稳定 `sourceUnits`；要求返回完整译文及关联 ID 的 `targetSegments`。该协议也适用于用户已保存的旧提示词组，对照无效时保留普通译文。
 
 ## 包格式
 

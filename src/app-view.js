@@ -14,7 +14,6 @@
     const characters = modules.characters || null;
     const images = modules.images;
     const imageStore = modules.imageStore || null;
-    const translation = modules.translation;
     const assistant = modules.assistant;
     const imageRepository = modules.imageRepository || assistant?.imageRepository || null;
     const visionTempStore = modules.visionTempStore || assistant?.visionTempStore || null;
@@ -37,10 +36,6 @@
       visible: 400,
       subcategory: "",
       locale: "zh-CN",
-      translateTimer: null,
-      translateRefsTimer: null,
-      translateRequestId: 0,
-      translateJob: null,
       searchTimer: null,
       searchPrecision: "standard",
       tagPageCache: new Map(),
@@ -126,6 +121,7 @@
     }
     const viewFactories = global.AppViews || {};
     const views = {
+      translation: viewFactories.translation?.createTranslationView?.({ document: doc, runtime, translation: modules.translation, notify, copy: value => copy(value), localized, onTagSelected: id => { tags?.select?.(id, true); renderTags(); renderSelection(); } }),
       conversation: viewFactories.conversation?.createConversationView?.({ document: doc, api: assistant, runtime, repository: imageRepository, images, notify, preferences, autoBind: false, bindControls: false }),
       gallery: viewFactories.gallery?.createGalleryView?.({ document: doc, repository: imageRepository, images, preferences, notify, autoBind: false, bindToolbar: false, onVision: item => { if (item?.imageId) { visionTempStore?.setLibraryReference?.(item.imageId); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true); } }, onConversation: () => route("ai") }),
       settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, onChange: value => { views.comfy?.render?.(value); syncGenerationControls(); }, autoBind: false }),
@@ -3214,7 +3210,7 @@
     function route(route) {
       if (ui.route === "ai" && ui.aiTab === "api" && route !== "ai") flushSettingsSave();
       if (ui.route === "ai" && ui.aiTab === "comfy" && route !== "ai") views.comfy?.flush?.();
-      if (ui.route === "translation" && route !== "translation") cancelTranslationRequest();
+      if (ui.route === "translation" && route !== "translation") views.translation?.leave?.();
       if (ui.route !== route) {
         clearTimeout(ui.searchTimer);
         const input = $("#q");
@@ -3269,7 +3265,7 @@
         const active = route === "translation";
         tv.hidden = !active;
         tv.style.display = active ? "" : "none";
-        if (active) syncTranslationControls();
+        if (active) views.translation?.enter?.();
       }
       doc.body.classList.toggle("aiview", ai);
       doc.body.classList.toggle("translation-mode", route === "translation");
@@ -3831,36 +3827,6 @@
       });
       $("#cfmNo")?.addEventListener("click", () => { ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); });
       $("#cfmYes")?.addEventListener("click", () => { const action = ui.confirmAction; const retain = Boolean($("#cfmRetainImages")?.checked); ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); action?.(retain); });
-      $("#translateDirection")?.addEventListener("change", () => {
-        cancelTranslationRequest();
-        clearTimeout(ui.translateRefsTimer);
-        ui.translateRefsTimer = setTimeout(renderTranslationRefs, 80);
-        if ($("#translateInput")?.value) translate(false);
-      });
-      $("#translateInput")?.addEventListener("input", () => {
-        const input = $("#translateInput")?.value || "";
-        cancelTranslationRequest();
-        clearTimeout(ui.translateRefsTimer);
-        ui.translateRefsTimer = setTimeout(renderTranslationRefs, 100);
-        clearTimeout(ui.translateTimer);
-        if (input.trim()) ui.translateTimer = setTimeout(() => translate(false), 500);
-      });
-      $("#translateAi")?.addEventListener("click", () => translate(true));
-      $("#translateClear")?.addEventListener("click", () => {
-        clearTimeout(ui.translateRefsTimer);
-        $("#translateInput").value = "";
-        $("#translateOutput").value = "";
-        cancelTranslationRequest();
-        renderTranslationRefs();
-      });
-      $("#translateCopy")?.addEventListener("click", () =>
-        copy($("#translateOutput")?.value),
-      );
-      $("#translateCopyTags")?.addEventListener("click", () =>
-        copy(
-          ($$(".translate-tag") || []).map((el) => el.textContent).join(", "),
-        ),
-      );
       $("#comfyTest")?.addEventListener("click", async () => {
         views.comfy?.save?.();
         try {
@@ -4052,111 +4018,6 @@
         }
       });
     }
-    function renderTranslationRefs() {
-      const host = $("#translateTags");
-      if (!host) return;
-      const input = $("#translateInput")?.value || "";
-      const refs =
-        translation?.findReferences?.(
-          input,
-          $("#translateDirection")?.value || "auto",
-        ) || [];
-      host.replaceChildren();
-      put("#translateTagCount", `${refs.length} 个`);
-      refs.slice(0, 60).forEach((ref) => {
-        const button = doc.createElement("button");
-        button.className = "translate-tag btn btn-chip";
-        button.textContent = `${ref.en || ref.tag?.en || ""}${ref.zhPrimary ? ` · ${ref.zhPrimary}` : ""}`;
-        if (ref.matchType) button.title = `匹配方式：${ref.matchType}`;
-        button.onclick = () => {
-          const id = ref.tag?.id || ref.en;
-          tags?.select?.(id, true);
-          renderTags();
-          renderSelection();
-        };
-        host.appendChild(button);
-      });
-    }
-    function setTranslationThinking(visible, text, done = false) {
-      const box = $("#translateThinking");
-      const body = $("#translateThinkingBody");
-      const title = $("#translateThinkingTitle");
-      if (!box) return;
-      const wasHidden = box.hidden;
-      box.hidden = !visible;
-      if (body && text != null) body.textContent = text;
-      if (title) title.textContent = localized(done ? "ui.translation.aiThinkingDone" : "ui.translation.aiThinkingNow", done ? "💭 AI 思考完成" : "💭 AI 正在思考…");
-      // Initialize a new thinking panel as collapsed, but never overwrite the
-      // user's toggle while streaming new reasoning chunks into it.
-      if (visible && !done && wasHidden) box.open = false;
-    }
-    function syncTranslationControls() {
-      const input = String($("#translateInput")?.value || "");
-      const button = $("#translateAi");
-      if (button) {
-        const busy = ui.translateJob?.useAi === true;
-        button.disabled = busy || !input.trim();
-        button.setAttribute("aria-busy", String(busy));
-      }
-      put("#translateInputCount", `${input.length} 字`);
-    }
-    function cancelTranslationRequest() {
-      clearTimeout(ui.translateTimer);
-      ui.translateTimer = null;
-      ui.translateRequestId += 1;
-      const previous = ui.translateJob;
-      ui.translateJob = null;
-      // Invalidate first: a late completion must not unlock a newer request.
-      if (previous) {
-        try { runtime?.cancel?.(previous.runtimeId); } catch { /* stale results are still ignored */ }
-      }
-      setTranslationThinking(false);
-      put("#translateStatus", str($("#translateInput")?.value) ? "等待翻译" : localized("ui.translation.statusIdle", "输入内容后自动本地翻译"));
-      syncTranslationControls();
-    }
-    async function translate(useAi) {
-      const input = str($("#translateInput")?.value);
-      if (!input) { syncTranslationControls(); return notify("请输入要翻译的内容"); }
-      if (ui.translateJob?.useAi) return;
-      cancelTranslationRequest();
-      const job = { runtimeId: `translation-${useAi ? 'ai' : 'local'}-${ui.translateRequestId}`, useAi: Boolean(useAi) };
-      ui.translateJob = job;
-      syncTranslationControls();
-      const direction = $("#translateDirection")?.value || "auto";
-      let reasoning = "";
-      if (useAi) setTranslationThinking(true, "AI 正在思考…");
-      put("#translateStatus", useAi ? "AI 翻译中…" : "本地翻译中…");
-      try {
-        let result;
-        try {
-          if (typeof runtime?.runSubAgent !== "function") throw new Error("翻译服务不可用，请重启应用");
-          const envelope = await runtime.runSubAgent('translation', {
-            input: { text: input, direction, source: useAi ? 'ai' : 'local' },
-            requestId: job.runtimeId,
-            onEvent: event => {
-              if (!useAi || ui.translateJob !== job || !event?.reasoning) return;
-              reasoning += String(event.reasoning);
-              setTranslationThinking(true, reasoning);
-            }
-          });
-          result = envelope?.ok === false
-            ? { ok: false, error: envelope.error?.message || envelope.error || '翻译失败' }
-            : { ok: true, ...(envelope?.data || {}) };
-        } catch (error) {
-          result = { ok: false, error: error.message || String(error) };
-        }
-        if (ui.translateJob !== job) return result;
-        if (useAi) setTranslationThinking(true, reasoning || (result.ok ? "AI 已完成翻译。" : result.error), true);
-        if ($("#translateOutput")) $("#translateOutput").value = result?.text || result?.error || "";
-        put("#translateStatus", result?.ok === false ? "翻译失败" : "完成");
-        return result;
-      } finally {
-        if (ui.translateJob === job) {
-          ui.translateJob = null;
-          syncTranslationControls();
-        }
-      }
-    }
     function start() {
       if (ui.started) return;
       ui.started = true;
@@ -4176,6 +4037,7 @@
       views.prompt?.bind?.();
       views.agentStatus?.bind?.();
       views.callMonitor?.bind?.();
+      views.translation?.bind?.();
       views.prompt?.render();
       bind();
       resizeTalkInput();

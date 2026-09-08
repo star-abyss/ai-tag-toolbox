@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
-    <title>AI 绘画 Tag 工具箱 V1.4.236 · Danbooru 标签选择器</title>
+    <title>AI 绘画 Tag 工具箱 V1.4.237 · Danbooru 标签选择器</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
@@ -217,12 +217,16 @@
               <div class="translate-pane-head">
                 <span data-i18n="ui.translation.input"></span><span id="translateInputCount">0 字</span>
               </div>
+              <div class="translation-input-wrap">
+              <div id="translateSourceMirror" class="translation-source-mirror" aria-hidden="true" hidden></div>
               <textarea
                 id="translateInput"
                 class="translate-input"
                 spellcheck="false"
+                aria-label="原文"
                 data-i18n-placeholder="ui.translation.inputPlaceholder"
               ></textarea>
+              </div>
             </section>
             <section class="translate-pane">
               <div class="translate-pane-head">
@@ -242,8 +246,10 @@
                 readonly
                 data-i18n-placeholder="ui.translation.outputPlaceholder"
               ></textarea>
+              <div id="translateAlignedOutput" class="translate-output translation-alignment-output" hidden tabindex="0" role="textbox" aria-readonly="true" aria-label="译文对照"></div>
             </section>
           </div>
+          <p id="translateAlignmentHint" class="translation-alignment-hint" role="status" hidden></p>
           <section class="translate-tags">
             <div class="translate-tags-head">
               <span data-i18n="ui.translation.matched"></span><span id="translateTagCount">0 个</span
@@ -806,6 +812,8 @@
     <script src="views/agent-status-view.js"></script>
     <script src="views/call-monitor-view.js"></script>
     <script src="views/characters-view.js"></script>
+    <script src="modules/translation-alignment.js"></script>
+    <script src="views/translation-view.js"></script>
     <script src="app-view.js"></script>
     <script src="app.js"></script>
   </body>

@@ -28,7 +28,7 @@ test('translation module keeps exact references and reports the match source', (
 });
 
 test('translation reference buttons expose the conservative match source', () => {
-  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'app-view.js'), 'utf8');
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'views', 'translation-view.js'), 'utf8');
   assert.match(source, /ref\.matchType/);
   assert.doesNotMatch(source, /中文命中/);
 });
