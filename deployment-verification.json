@@ -28,7 +28,7 @@
     "testsFailed": 0,
     "slowUiSmokeRun": true,
     "desktopSmoke": "Packaged Electron V1.4.230 connected through CDP; local AI and ComfyUI fixtures completed two automatic 2-image rounds, reference-image recreation, manual feedback continuation, in-flight final selection, interruption, cancellation and duplicate-prompt blocking",
-    "desktopSmokeCounts": { "apiCalls": 42, "submittedPrompts": 9, "sourceUploads": 2, "monitorRecords": 59, "createCandidates": 4, "recreateCandidates": 4, "manualCandidates": 4, "finalSelectionInterrupts": 1, "duplicatePromptBlocked": true },
+    "desktopSmokeCounts": { "apiCalls": 49, "submittedPrompts": 10, "sourceUploads": 2, "monitorRecords": 68, "createCandidates": 4, "recreateCandidates": 4, "manualCandidates": 4, "finalSelectionInterrupts": 1, "duplicatePromptBlocked": true },
     "viewports": ["1100x800", "1500x950"],
     "screenshotVerification": true
   },
