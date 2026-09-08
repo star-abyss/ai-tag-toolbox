@@ -12,9 +12,9 @@ function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function ok(value, message) { assert.equal(Boolean(value), true, message); }
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-assert.equal(packageJson.version, '1.4.231', 'package version must be 1.4.231');
-assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.231/);
-assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.231/);
+assert.equal(packageJson.version, '1.4.232', 'package version must be 1.4.232');
+assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.232/);
+assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.232/);
 
 for (const name of ['createAgentRuntime', 'createRequestManager', 'createStatusManager', 'createCallMonitor', 'createFixedSubagents', 'createPrimaryTools']) {
   assert.equal(typeof modules[name], 'function', `${name} export missing`);

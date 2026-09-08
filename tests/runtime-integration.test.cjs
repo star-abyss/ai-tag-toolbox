@@ -24,6 +24,23 @@ function stack(options = {}) {
   return { runtime, tools };
 }
 
+test('primary yields character selection immediately without another model call or rewriting the job ID', async () => {
+  let modelCalls = 0;
+  const paused = { jobId: 'job_29813f0a-a73a-47a8-8b3d-2d95cece9a4a', status: 'needs_input', needsInput: { kind: 'character', query: 'Alice', message: '请选择角色', options: [{ id: 'alice-a', name: 'Alice A', series: 'Story' }] } };
+  const { runtime } = stack({ generation: { execute: async () => paused }, primaryClient: { complete: async () => {
+    modelCalls += 1;
+    if (modelCalls > 1) throw new Error('主 AI 不应继续猜测角色或重写任务编号');
+    return { toolCalls: [{ id: 'choose-role', name: 'generation_execute', arguments: { requirements: '画 Alice', characterQueries: ['Alice'] } }] };
+  } } });
+  const result = await runtime.runPrimary({ requestId: 'role-pause', input: { text: '画 Alice' } });
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.equal(modelCalls, 1);
+  assert.equal(result.data.jobId, paused.jobId);
+  assert.equal(result.data.needsInput.options[0].id, 'alice-a');
+  assert.equal(result.data.transcript.at(-1).role, 'tool');
+  assert.equal(JSON.parse(result.data.transcript.find(row => row.role === 'tool').content).jobId, paused.jobId);
+});
+
 test('native tools run a real translation child without cancelling the primary and keep the native call id', async () => {
   const translation = createTranslation({ dictionary: { 'zh-en': { '蓝发': 'blue hair' } } });
   const requests = []; let count = 0;

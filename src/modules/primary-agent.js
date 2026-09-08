@@ -39,9 +39,9 @@ function createPrimaryAgent(options = {}) {
   const prompts = options.prompts;
   function getPrompt(request = {}) {
     const prompt = typeof prompts?.composePrimary === 'function' ? prompts.composePrimary(userText(request)) : prompts?.getEffective?.('primary') || prompts?.get?.('primary') || DEFAULT_PRIMARY_PROMPT;
-    const generationContract = '【系统强制调度协议｜优先于上方可编辑内容】绘图、出图和图片复刻只调用 generation.execute；暂停任务只调用 generation.resume。绘图任务禁止提前调用 vision.processOne，禁止根据识图结果改写源图事实；把用户原始要求原样放入 originalRequirements，只附加真实 sourceImageId 和已确认 characterIds。不要调用或要求调用 agent.generateTags、comfy.validateWorkflow、comfy.render，这些是程序内部工具。程序负责识图、Tag 编译、ComfyUI、候选评价、修订和选择。交付时服从 outcome 与 recreationMode：best_available 必须说明是达到上限后的最佳候选，text_approximation 必须说明原图未进入工作流、仅为文本近似复刻，禁止声称完全一致或保持不变；user_selected_with_issues 必须说明用户已选择且仍有已知问题。不要输出逐步进度，直接根据高层工具结果与用户对话。';
+    const generationContract = '【系统强制调度协议｜优先于上方可编辑内容】绘图、出图和图片复刻只调用 generation.execute；暂停任务只调用 generation.resume。绘图任务禁止提前调用 vision.processOne，禁止根据识图结果改写源图事实；把用户原始要求原样放入 originalRequirements，只附加真实 sourceImageId 和已确认 characterIds。若生成工具返回 needs_input 且 needsInput.kind=character，等待用户在角色选择卡片中确认；程序用原 jobId 恢复。不要调用或要求调用 agent.generateTags、comfy.validateWorkflow、comfy.render，这些是程序内部工具。程序负责识图、Tag 编译、ComfyUI、候选评价、修订和选择。交付时服从 outcome 与 recreationMode：best_available 必须说明是达到上限后的最佳候选，text_approximation 必须说明原图未进入工作流、仅为文本近似复刻，禁止声称完全一致或保持不变；user_selected_with_issues 必须说明用户已选择且仍有已知问题。不要输出逐步进度，直接根据高层工具结果与用户对话。';
     const characterContract = options.charactersEnabled
-      ? '角色调度补充：用户提到角色名称时先调用 tags.search；命中角色时读取 attachedData，其中包含姓名、作品身份 Tag 和外貌 Tag；有多个候选时再调用 characters.search 确认。任何不确定的 Tag 先调用 tags.search。绘图时把已确认的 characterIds 与用户要求一并传给 generation.execute，程序会交给文生图 Tag 子代理筛选，主 AI 不自行筛选角色外貌。'
+      ? '角色调度补充：用户提到角色名称时先调用 tags.search；命中角色时读取 attachedData，其中包含姓名、作品身份 Tag 和外貌 Tag；有多个候选时再调用 characters.search；仍不明确时将角色原名放入 generation.execute 的 characterQueries，程序会展示选择卡片。任何不确定的 Tag 先调用 tags.search。作品名不要放入 characterQueries。绘图时把已确认的 characterIds 与用户要求一并传给 generation.execute，程序会交给文生图 Tag 子代理筛选，主 AI 不自行筛选角色外貌。'
       : '';
     return [prompt, generationContract, characterContract].filter(Boolean).join('\n\n');
   }

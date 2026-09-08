@@ -54,6 +54,9 @@ function strings(value, limit = 256) {
   const rows = Array.isArray(value) ? value : String(value == null ? '' : value).split(/[,，、;；|\n]+/);
   return [...new Set(rows.map(item => text(item)).filter(Boolean))].slice(0, limit);
 }
+function characterKey(value) {
+  return text(value).normalize('NFKC').toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ');
+}
 function failure(code, message) { return Object.assign(new Error(message), { code }); }
 function errorValue(error) {
   if (error?.error && typeof error.error === 'object') return errorValue(error.error);
@@ -415,19 +418,54 @@ function createGenerationOrchestrator(options = {}) {
     if (Array.isArray(source?.items)) return source.items;
     return object(source) && source.id ? [source] : [];
   }
+  function characterOption(item) {
+    return {
+      id: text(item?.id),
+      name: text(item?.nameZh || item?.name),
+      series: text(item?.seriesName || item?.series || item?.seriesId),
+      trigger: text(item?.trigger || item?.identityTags?.[0])
+    };
+  }
+  function queryMatchesSelectedCharacter(query, selected) {
+    const needle = characterKey(query);
+    if (!needle) return false;
+    return selected.some(item => {
+      const fields = [
+        item?.id, item?.name, item?.nameZh, item?.seriesId, item?.seriesName, item?.series,
+        item?.trigger, ...strings(item?.aliases), ...strings(item?.identityTags)
+      ];
+      return fields.some(value => characterKey(value) === needle);
+    });
+  }
   async function resolveCharacters(job, context) {
     if (!resolveCharacter) return true;
     const selected = [];
+    const append = item => {
+      const id = text(item?.id);
+      if (id && !selected.some(row => text(row?.id) === id)) selected.push(item);
+    };
+    // characterIds are already-confirmed identities. Resolve them first so a
+    // model's redundant name or series query cannot override that decision.
+    for (const characterId of job.characterIds) {
+      guard(job, context);
+      const rows = characterRows(await resolveCharacter(characterId, { ...context, mode: 'id' }));
+      if (rows.length !== 1) {
+        return needsInput(job, context, {
+          kind: 'character', query: characterId,
+          message: '没有找到已确认的角色，请重新选择具体角色',
+          requestedCharacterId: characterId, options: []
+        });
+      }
+      append(rows[0]);
+    }
     for (const query of job.characterQueries) {
       guard(job, context);
+      if (queryMatchesSelectedCharacter(query, selected)) continue;
       const rows = characterRows(await resolveCharacter(query, { ...context, mode: 'query' }));
-      if (rows.length !== 1) return needsInput(job, context, { kind: 'character', query, message: rows.length ? '角色名称有多个匹配项，请选择具体角色' : '没有找到角色，请补充名称或直接选择角色', options: rows.slice(0, 10).map(item => ({ id: text(item?.id), name: text(item?.nameZh || item?.name), series: text(item?.seriesName || item?.series) })) });
-      selected.push(rows[0]);
-    }
-    for (const characterId of job.characterIds) {
-      if (selected.some(item => text(item?.id) === characterId)) continue;
-      const rows = characterRows(await resolveCharacter(characterId, { ...context, mode: 'id' }));
-      if (rows.length === 1) selected.push(rows[0]);
+      if (rows.length !== 1) return needsInput(job, context, { kind: 'character', query, message: rows.length ? '角色名称有多个匹配项，请选择具体角色' : '没有找到角色，请补充名称或直接选择角色', options: rows.slice(0, 10).map(characterOption) });
+      const details = characterRows(await resolveCharacter(text(rows[0]?.id), { ...context, mode: 'id' }));
+      if (details.length !== 1) return needsInput(job, context, { kind: 'character', query, message: '角色资料不可用，请重新搜索后选择', options: [] });
+      append(details[0]);
     }
     job.characterReferences = selected.slice(0, 8).map(item => ({
       id: text(item?.id), name: text(item?.nameZh || item?.name), series: text(item?.seriesName || item?.series),
@@ -818,6 +856,7 @@ function createGenerationOrchestrator(options = {}) {
   async function resume(input = {}, context = {}) {
     const job = jobs.get(text(input.jobId));
     if (!job) throw failure('JOB_NOT_FOUND', '没有找到生成任务');
+    if (job.sessionId && context.sessionId && text(context.sessionId) !== job.sessionId) throw failure('SESSION_UNAVAILABLE', '当前会话无权恢复这个生成任务');
     if (TERMINAL_STATES.has(job.status)) return result(job);
     if (active.has(job.jobId)) throw failure('JOB_BUSY', '生成任务仍在执行中');
     if (job.status === 'awaiting_feedback') {
@@ -826,6 +865,27 @@ function createGenerationOrchestrator(options = {}) {
       const baseCandidateId = text(input.baseCandidateId);
       if (!feedback || !baseCandidateId) throw failure('INVALID_INPUT', '继续优化需要基础候选和用户反馈');
       job.pendingFeedback = { baseCandidateId, feedback };
+    }
+    if (input.characterSelection !== undefined) {
+      const selection = object(input.characterSelection) ? input.characterSelection : {};
+      const pending = job.needsInput;
+      const query = text(selection.query);
+      const characterId = text(selection.characterId);
+      if (job.status !== 'needs_input' || pending?.kind !== 'character' || query !== text(pending.query)) throw failure('INPUT_EXPIRED', '角色选择已过期，请按当前提示重新选择');
+      if (!characterId) throw failure('INVALID_INPUT', '请选择一个角色');
+      const rows = resolveCharacter ? characterRows(await resolveCharacter(characterId, { ...context, mode: 'id' })) : [];
+      if (rows.length !== 1 || text(rows[0]?.id) !== characterId) throw failure('CHARACTER_NOT_FOUND', '没有找到所选角色，请重新搜索后选择');
+      if (context.signal?.aborted) throw context.signal.reason || failure('CANCELLED', '请求已取消');
+      // A second click or cancellation may have arrived while resolving data.
+      if (job.needsInput !== pending || job.status !== 'needs_input' || active.has(job.jobId)) throw failure('INPUT_EXPIRED', '角色选择已过期，请按当前提示重新选择');
+      job.characterIds = strings([...job.characterIds.filter(id => id !== pending.requestedCharacterId), characterId], 8);
+      let consumed = false;
+      job.characterQueries = job.characterQueries.filter(item => {
+        if (!consumed && text(item) === query) { consumed = true; return false; }
+        return true;
+      });
+      job.characterReferences = [];
+      job.needsInput = null;
     }
     if (input.sourceImageId !== undefined) job.sourceImageId = text(input.sourceImageId);
     if (input.characterIds !== undefined) {

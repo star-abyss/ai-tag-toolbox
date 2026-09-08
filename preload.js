@@ -100,7 +100,7 @@ try {
   primaryTools = assistant.primaryTools || null;
 } catch (error) {
   // 标签模块加载失败时仍让页面打开，便于人工看到错误并继续迭代。
-  console.warn('[V1.4.231] 业务模块加载失败：', error && error.message ? error.message : error);
+  console.warn('[V1.4.232] 业务模块加载失败：', error && error.message ? error.message : error);
 }
 
 function safeImageId(value) {
@@ -268,6 +268,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     selectCandidate: assistant.selectCandidate,
     selectGenerationFinal: assistant.selectGenerationFinal,
     continueGeneration: assistant.continueGeneration,
+    selectGenerationCharacter: assistant.selectGenerationCharacter,
     // 业务状态统一由 Assistant 持有，页面只通过这些薄方法读取或更新。
     getSettings: assistant.getSettings,
     setSettings: assistant.setSettings,
@@ -347,7 +348,7 @@ contextBridge.exposeInMainWorld('AppModules', {
     profiles: comfy.profiles
   } : null,
   locales: localePacks,
-  version: '1.4.231'
+  version: '1.4.232'
 });
 
 

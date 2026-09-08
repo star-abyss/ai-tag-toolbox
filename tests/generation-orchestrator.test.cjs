@@ -141,6 +141,59 @@ test('ambiguous character query pauses before compilation', async () => {
   assert.equal(compile.input.characterReferences[0].id, 'alice-a');
 });
 
+test('confirmed character IDs take priority over redundant series queries and carry appearance into compilation', async () => {
+  const role = { id: 'hinanawi_tenshi', nameZh: '比那名居天子', seriesName: 'touhou', identityTags: ['hinanawi_tenshi', 'touhou'], generalTags: [{ en: 'blue hair' }], specificTags: [{ en: 'tenshi hat' }] };
+  const app = harness({ resolveCharacter: async (value, context) => context.mode === 'id' && value === role.id ? role : { items: [{ id: 'hakurei_reimu' }, { id: 'kirisame_marisa' }] } });
+  const result = await app.orchestrator.execute({ originalRequirements: '把图1里面的角色换成东方里面的天子', mode: 'recreate', sourceImageId: 'source-1', characterIds: [role.id], characterQueries: ['比那名居天子', 'hinanawi_tenshi', 'touhou'], strategy: 'quick' }, app.context);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.sourceImageId, 'source-1');
+  const compile = app.subagentCalls.find(call => call.name === 'generateTags');
+  assert.deepEqual(compile.input.characterReferences, [{ id: role.id, name: '比那名居天子', series: 'touhou', identityTags: ['hinanawi_tenshi', 'touhou'], generalTags: ['blue hair'], specificTags: ['tenshi hat'] }]);
+});
+
+test('invalid confirmed character IDs pause instead of silently generating without the character', async () => {
+  const app = harness({ resolveCharacter: async value => value === 'valid' ? { id: 'valid', identityTags: ['valid'] } : null });
+  const result = await app.orchestrator.execute({ requirements: '画天子', characterIds: ['missing'] }, app.context);
+  assert.equal(result.status, 'needs_input');
+  assert.equal(result.needsInput.kind, 'character');
+  assert.equal(app.renders.length, 0);
+  assert.equal(app.subagentCalls.length, 0);
+  const resumed = await app.orchestrator.resume({ jobId: result.jobId, characterSelection: { query: 'missing', characterId: 'valid' } }, app.context);
+  assert.equal(resumed.status, 'completed');
+  assert.deepEqual(app.subagentCalls.find(call => call.name === 'generateTags').input.characterReferences.map(role => role.id), ['valid']);
+});
+
+test('a unique name match loads the full character appearance before compiling Tags', async () => {
+  const app = harness({ resolveCharacter: async (value, context) => context.mode === 'id'
+    ? { id: value, name: 'Tenshi', identityTags: ['hinanawi tenshi', 'touhou'], generalTags: [{ en: 'blue hair' }], specificTags: [{ en: 'peach hat' }] }
+    : { items: [{ id: 'hinanawi_tenshi', name: 'Tenshi', seriesName: 'touhou' }] } });
+  const result = await app.orchestrator.execute({ requirements: 'draw Tenshi', characterQueries: ['Tenshi'], strategy: 'quick' }, app.context);
+  assert.equal(result.status, 'completed');
+  const reference = app.subagentCalls.find(call => call.name === 'generateTags').input.characterReferences[0];
+  assert.deepEqual(reference.generalTags, ['blue hair']);
+  assert.deepEqual(reference.identityTags, ['hinanawi tenshi', 'touhou']);
+});
+
+test('character choices resume the original job across pauses and reject stale choices and foreign sessions', async () => {
+  const roles = Object.fromEntries(['alice-a', 'alice-b', 'bob-a', 'bob-b'].map(id => [id, { id, name: id, identityTags: [id], generalTags: [{ en: 'blue hair' }] }]));
+  const resolveCharacter = async (query, context) => context.mode === 'id' ? roles[query] : { items: Object.values(roles).filter(role => role.id.startsWith(query)) };
+  const app = harness({ resolveCharacter });
+  const paused = await app.orchestrator.execute({ requirements: '画 alice 与 bob', characterQueries: ['alice', 'bob'], strategy: 'quick' }, app.context);
+  await assert.rejects(app.orchestrator.resume({ jobId: paused.jobId, characterSelection: { query: 'alice', characterId: 'alice-a' } }, { ...app.context, sessionId: 'other-session' }), { code: 'SESSION_UNAVAILABLE' });
+  await assert.rejects(app.orchestrator.resume({ jobId: paused.jobId, characterSelection: { query: 'alice', characterId: 'missing' } }, app.context), { code: 'CHARACTER_NOT_FOUND' });
+  const second = await app.orchestrator.resume({ jobId: paused.jobId, characterSelection: { query: 'alice', characterId: 'alice-b' } }, app.context);
+  assert.equal(second.status, 'needs_input');
+  assert.equal(second.needsInput.query, 'bob');
+  assert.equal(app.renders.length, 0);
+  await assert.rejects(app.orchestrator.resume({ jobId: paused.jobId, characterSelection: { query: 'alice', characterId: 'alice-a' } }, app.context), { code: 'INPUT_EXPIRED' });
+  const reloaded = harness({ storage: app.storage, resolveCharacter });
+  const result = await reloaded.orchestrator.resume({ jobId: paused.jobId, characterSelection: { query: 'bob', characterId: 'bob-a' } }, app.context);
+  assert.equal(result.jobId, paused.jobId);
+  assert.equal(result.status, 'completed');
+  const compile = reloaded.subagentCalls.find(call => call.name === 'generateTags');
+  assert.deepEqual(compile.input.characterReferences.map(role => role.id), ['alice-b', 'bob-a']);
+});
+
 test('cancel aborts an active job and preserves a cancelled snapshot', async () => {
   let rendering;
   const started = new Promise(resolve => { rendering = resolve; });

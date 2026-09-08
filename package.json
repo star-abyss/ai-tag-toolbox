@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
-    "version":  "1.4.231",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.231 统一生成限制与候选防重",
+    "version":  "1.4.232",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.232 角色选择与原任务续跑",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",

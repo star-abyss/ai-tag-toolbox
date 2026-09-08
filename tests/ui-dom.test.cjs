@@ -65,6 +65,7 @@ function boot(options = {}) {
     },
     selectGenerationFinal: async (messageId, candidateId) => assistant.chooseCandidate(messageId, candidateId, 'user'),
     continueGeneration: async (messageId, candidateId, feedback) => { continuationCalls.push({ messageId, candidateId, feedback }); return { ok: true }; },
+    selectGenerationCharacter: options.selectGenerationCharacter,
     clearConversationImages: sessionId => repository.clearConversationImages?.(sessionId),
     deleteSession: (sessionId, value) => { options.deleteSession?.(sessionId, value); return true; },
     imageRepository: repository
@@ -102,7 +103,7 @@ function boot(options = {}) {
     save: value => { comfyProfile = structuredClone(value); return structuredClone(comfyProfile); },
     setActive: () => structuredClone(comfyProfile), remove: () => false
   };
-  const modules = { assistant, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy, locales: { 'zh-CN': {} }, version: '1.4.194' };
+  const modules = { assistant, characters: options.characters, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy, locales: { 'zh-CN': {} }, version: '1.4.194' };
 
   for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'views/call-monitor-view.js', 'app-view.js']) window.eval(source(file));
   const view = window.AppView.create(modules, window.document);
@@ -322,6 +323,47 @@ test('needs-input generation result is shown as an actionable conversation notic
   app.view.route('ai'); app.view.showAi('talk'); app.view.renderTalk();
   assert.match(app.window.document.querySelector('.generation-needs-input').textContent, /参考原图/);
   app.dom.window.close();
+});
+
+test('character question shows names, works and tags, submits one choice and recovers from a failed resume', async () => {
+  let release;
+  const choices = [];
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', status: 'done', result: { status: 'needs_input', jobId: 'job-1', needsInput: { kind: 'character', query: '天子', message: '请选择角色', options: [{ id: 'hinanawi_tenshi', name: '比那名居天子', series: 'touhou', trigger: 'hinanawi_tenshi' }, { id: 'tenshi-2', name: '天子', series: '其他作品' }] } } }], selectGenerationCharacter: (...args) => { choices.push(args.slice(0, 2)); return new Promise(resolve => { release = resolve; }); } });
+  try {
+    const doc = app.window.document;
+    const buttons = [...doc.querySelectorAll('.generation-character-choice')];
+    assert.equal(buttons.length, 2);
+    assert.match(buttons[0].textContent, /比那名居天子/);
+    assert.match(buttons[0].textContent, /touhou/);
+    assert.match(buttons[0].textContent, /hinanawi_tenshi/);
+    buttons[0].click(); buttons[1].click();
+    assert.deepEqual(choices, [['a1', 'hinanawi_tenshi']]);
+    release({ ok: false, error: { code: 'JOB_NOT_FOUND', message: '任务不可用' } });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(doc.querySelector('#talkSendBtn').disabled, false);
+    assert.equal(doc.querySelector('.generation-character-choice').disabled, false);
+    assert.equal(app.getRunCount(), 0);
+  } finally { app.dom.window.close(); }
+});
+
+test('empty character choices can be searched locally and selected without sending another chat', async () => {
+  const searches = [];
+  const choices = [];
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', status: 'done', result: { status: 'needs_input', jobId: 'job-1', needsInput: { kind: 'character', query: 'touhou', message: '请选择角色', options: [] } } }], characters: { page: async value => { searches.push(value); return { items: [{ id: 'hinanawi_tenshi', nameZh: '比那名居天子', seriesName: 'touhou', trigger: 'hinanawi_tenshi' }] }; } }, selectGenerationCharacter: async (...args) => { choices.push(args.slice(0, 2)); return { ok: true }; } });
+  try {
+    const doc = app.window.document;
+    const input = doc.querySelector('.generation-character-search');
+    assert.ok(input);
+    input.value = '比那名居天子';
+    doc.querySelector('.generation-character-search-button').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(searches[0].query, '比那名居天子');
+    assert.match(doc.querySelector('.generation-character-choice').textContent, /比那名居天子/);
+    doc.querySelector('.generation-character-choice').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(choices, [['a1', 'hinanawi_tenshi']]);
+    assert.equal(app.getRunCount(), 0);
+  } finally { app.dom.window.close(); }
 });
 
 test('conversation image clear button confirms and clears only current conversation images', () => {

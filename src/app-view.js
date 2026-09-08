@@ -48,6 +48,7 @@
       thinkingOpen: Object.create(null),
       thinkingScroll: Object.create(null),
       candidatePreviews: Object.create(null),
+      characterSelectionBusy: false,
       imgViewer: null,
       gallerySelected: new Set(),
       sendDrafts: [],
@@ -2202,6 +2203,119 @@
       renderTalk();
       put("#talkStatus", result?.ok === false ? compactTalkStatus(result, "重新生成失败") : "完成");
     }
+    function generationCharacterChoice(option, onChoose) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "generation-character-choice";
+      button.dataset.characterId = str(option?.id);
+      const name = doc.createElement("strong");
+      name.textContent = str(option?.name || option?.nameZh, str(option?.id));
+      const detail = doc.createElement("span");
+      const series = str(option?.series || option?.seriesName);
+      const trigger = str(option?.trigger, str(option?.id));
+      detail.textContent = [series, trigger].filter(Boolean).join(" · ");
+      button.append(name, detail);
+      button.onclick = () => onChoose({ ...option, id: button.dataset.characterId });
+      return button;
+    }
+    function generationNeedsInput(message) {
+      const pending = message.result?.needsInput;
+      const notice = doc.createElement("section");
+      notice.className = "generation-needs-input";
+      const messageText = doc.createElement("p");
+      messageText.textContent = pending?.message || "生成任务需要补充信息后继续";
+      notice.appendChild(messageText);
+      if (pending?.kind !== "character") return notice;
+      const hint = doc.createElement("p");
+      hint.className = "muted";
+      hint.textContent = `待确认：${str(pending.query)}。点击角色后继续原任务；没有合适的可重新搜索。`;
+      notice.appendChild(hint);
+      const choices = doc.createElement("div");
+      choices.className = "generation-character-choices";
+      const searchResults = doc.createElement("div");
+      searchResults.className = "generation-character-search-results";
+      let selecting = false;
+      const setDisabled = disabled => {
+        $$("button", notice).forEach(button => { button.disabled = disabled; });
+        $$("input", notice).forEach(input => { input.disabled = disabled; });
+      };
+      const choose = async option => {
+        if (selecting || ui.characterSelectionBusy) return;
+        if (assistant?.snapshot?.().busy) return notify("当前请求仍在处理中");
+        if (!assistant?.selectGenerationCharacter) return notify("当前版本不支持直接选择角色，请重新发送任务");
+        const selectedId = str(option?.id);
+        if (!selectedId) return notify("该角色缺少可用标识");
+        selecting = true;
+        ui.characterSelectionBusy = true;
+        setDisabled(true);
+        const label = $("#talkSendBtn")?.textContent || "📤 发送";
+        setTalkBusy(true, label);
+        put("#talkStatus", "正在确认角色并恢复原任务…");
+        let result;
+        try {
+          result = await assistant.selectGenerationCharacter(message.id, selectedId, { onStart: renderTalk, onEvent: handleTalkToolEvent, selectedCharacter: option });
+        } catch (error) {
+          result = { ok: false, error: { message: error?.message || "角色选择失败" } };
+        } finally {
+          setTalkBusy(false, label);
+          selecting = false;
+          ui.characterSelectionBusy = false;
+        }
+        renderTalk();
+        if (result?.ok === false) {
+          notify(result.error?.message || "角色选择失败");
+          put("#talkStatus", compactTalkStatus(result, "角色选择失败"));
+          return;
+        }
+        const status = result?.data?.status;
+        put("#talkStatus", status === "needs_input" ? "等待补充信息" : status === "awaiting_feedback" ? "本轮完成，等待点评" : "完成");
+      };
+      const appendChoices = (host, rows) => {
+        host.replaceChildren();
+        for (const option of Array.isArray(rows) ? rows : []) {
+          if (!str(option?.id)) continue;
+          host.appendChild(generationCharacterChoice(option, choose));
+        }
+      };
+      appendChoices(choices, pending.options);
+      notice.appendChild(choices);
+      if (characters?.page) {
+        const search = doc.createElement("div");
+        search.className = "generation-character-search-row";
+        const input = doc.createElement("input");
+        input.className = "generation-character-search";
+        input.type = "search";
+        input.setAttribute("aria-label", "重新搜索角色");
+        input.placeholder = "搜索角色名或作品名";
+        input.value = str(pending.query);
+        const button = doc.createElement("button");
+        button.type = "button";
+        button.className = "generation-character-search-button btn btn-secondary";
+        button.textContent = "搜索";
+        const searchCharacters = async () => {
+          const query = str(input.value);
+          if (!query || selecting) return;
+          button.disabled = true;
+          try {
+            const result = await Promise.resolve(characters.page({ query, precision: "standard", limit: 10, includeAdult: tags?.stateSnapshot?.().includeAdult === true }));
+            if (!notice.isConnected || selecting || ui.characterSelectionBusy) return;
+            const rows = Array.isArray(result?.items) ? result.items.map(item => ({ id: str(item?.id), name: str(item?.nameZh || item?.name), series: str(item?.seriesName || item?.series), trigger: str(item?.trigger, str(item?.id)) })) : [];
+            appendChoices(searchResults, rows);
+            if (!searchResults.childElementCount) searchResults.textContent = "没有找到可选角色";
+          } catch (error) {
+            searchResults.textContent = error?.message || "角色搜索失败";
+          } finally {
+            button.disabled = selecting;
+          }
+        };
+        button.onclick = searchCharacters;
+        input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); searchCharacters(); } });
+        search.append(input, button);
+        notice.append(search, searchResults);
+      }
+      if (ui.characterSelectionBusy || message.status === "streaming" || assistant?.snapshot?.().busy) setDisabled(true);
+      return notice;
+    }
     function renderTalk() {
       const host = $("#talkConv");
       if (!host) return;
@@ -2235,12 +2349,7 @@
           if (!bodyText && message.status === "done" && candidateRows.length && !drawPrompt)
             body.textContent = "请选择一张候选图作为最终结果";
           row.appendChild(body);
-          if (message.result?.status === "needs_input" && message.result?.needsInput) {
-            const notice = doc.createElement("div");
-            notice.className = "generation-needs-input";
-            notice.textContent = message.result.needsInput.message || "生成任务需要补充信息后继续";
-            row.appendChild(notice);
-          }
+          if (message.result?.status === "needs_input" && message.result?.needsInput) row.appendChild(generationNeedsInput(message));
           const reasoning = message.reasoning || parsedDraw?.thinking || "";
           if (reasoning) {
             const details = doc.createElement("details");
@@ -2988,7 +3097,7 @@
         renderConversationRepository();
       }
       renderTalk();
-      put("#talkStatus", result?.ok === false ? compactTalkStatus(result, "发送失败") : result?.status === "awaiting_feedback" ? "本轮完成，等待点评" : "完成");
+      put("#talkStatus", result?.ok === false ? compactTalkStatus(result, "发送失败") : result?.data?.status === "needs_input" ? "等待补充信息" : result?.data?.status === "awaiting_feedback" ? "本轮完成，等待点评" : "完成");
       setTalkBusy(false, label);
     }
     function renderManager() {

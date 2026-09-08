@@ -198,6 +198,44 @@ async function testManualContinuationBypassesPrimaryAndReleasesConversation() {
   assistant.destroy();
 }
 
+async function testCharacterChoiceResumesStoredJobWithoutPrimary() {
+  let primaryCalls = 0;
+  let release;
+  const calls = [];
+  const paused = { status: 'needs_input', jobId: 'job_29813f0a-a73a-47a8-8b3d-2d95cece9a4a', needsInput: { kind: 'character', query: '天子', options: [{ id: 'hinanawi_tenshi', name: '比那名居天子', series: 'touhou' }] }, candidates: [] };
+  let current = structuredClone(paused);
+  const generation = {
+    get: () => structuredClone(current),
+    resume: async input => {
+      calls.push(input);
+      await new Promise(resolve => { release = resolve; });
+      current = { ...paused, status: 'awaiting_feedback', needsInput: null, successfulRounds: 1 };
+      return current;
+    }
+  };
+  const assistant = modules.createAssistant({ storage: modules.createStorage({ prefix: `character-choice-${Date.now()}` }), generation, primaryGateway: { complete: async () => { primaryCalls++; return { text: 'ok' }; } } });
+  assistant.importSessions({ format: 'ai-tag-sessions', version: 1, sessions: [{ id: 's1', messages: [{ id: 'a1', role: 'assistant', text: '请确认角色', status: 'done', result: paused }] }] }, true);
+  assert.equal(typeof assistant.selectGenerationCharacter, 'function');
+  const pending = assistant.selectGenerationCharacter('a1', 'hinanawi_tenshi');
+  while (!release) await new Promise(resolve => setImmediate(resolve));
+  assert.equal((await assistant.selectGenerationCharacter('a1', 'hinanawi_tenshi')).error.code, 'BUSY');
+  release();
+  const result = await pending;
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.equal(primaryCalls, 0);
+  assert.deepEqual(calls, [{ jobId: 'job_29813f0a-a73a-47a8-8b3d-2d95cece9a4a', characterSelection: { query: '天子', characterId: 'hinanawi_tenshi' } }]);
+  const messages = assistant.currentSession().messages;
+  assert.match(messages.at(-2).text, /比那名居天子/);
+  assert.equal(messages.at(-1).result.status, 'awaiting_feedback');
+  assert.equal(messages[0].result.needsInput, null);
+  const recorded = JSON.parse(messages.at(-1).transcript.find(item => item.role === 'tool').content);
+  assert.equal(recorded.jobId, paused.jobId);
+  assert.equal((await assistant.selectGenerationCharacter('a1', 'hinanawi_tenshi')).error.code, 'INPUT_EXPIRED');
+  assert.equal(calls.length, 1);
+  assert.equal(assistant.snapshot().busy, false);
+  assistant.destroy();
+}
+
 (async () => {
   await testConversationTranscriptAndImageScope();
   await testCancellationAndBusyGuard();
@@ -206,5 +244,6 @@ async function testManualContinuationBypassesPrimaryAndReleasesConversation() {
   await testSessionFormatAndImport();
   await testHighLevelGenerationPersistsCandidatesAndSelection();
   await testManualContinuationBypassesPrimaryAndReleasesConversation();
+  await testCharacterChoiceResumesStoredJobWithoutPrimary();
   console.log('assistant-flow: ok');
 })().catch(error => { console.error(error); process.exitCode = 1; });
