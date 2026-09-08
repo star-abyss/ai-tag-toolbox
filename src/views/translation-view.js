@@ -22,7 +22,20 @@
     function syncControls() {
       const busy = job?.useAi === true;
       const button = q('#translateAi');
-      if (button) { button.disabled = busy || !input?.value.trim(); button.setAttribute('aria-busy', String(busy)); }
+      if (button) {
+        button.disabled = busy || !input?.value.trim();
+        button.setAttribute('aria-busy', String(busy));
+        button.classList.toggle('is-loading', busy);
+        button.replaceChildren();
+        if (busy) {
+          const spinner = doc.createElement('span');
+          spinner.className = 'translate-loading-spinner';
+          spinner.setAttribute('aria-hidden', 'true');
+          button.append(spinner, doc.createTextNode(label('aiWorking', 'AI 翻译中…')));
+        } else {
+          button.append(doc.createTextNode(label('aiTranslate', '🤖 AI 翻译')));
+        }
+      }
       put('#translateInputCount', `${input?.value.length || 0} ${label('charactersUnit', '字')}`);
     }
     function highlight() {

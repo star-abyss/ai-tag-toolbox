@@ -351,10 +351,18 @@ test('AI translation blocks duplicate clicks while running and releases after AP
     assert.equal(request.name, 'translation');
     assert.equal(request.input.source, 'ai');
     assert.equal(app.button.disabled, true);
+    assert.equal(app.button.classList.contains('is-loading'), true);
+    assert.equal(app.button.getAttribute('aria-busy'), 'true');
+    assert.equal(app.button.querySelector('.translate-loading-spinner') !== null, true);
+    assert.match(app.button.textContent, /翻译中/);
     if (outcome === 'exception') request.reject(new Error('断线'));
     else request.resolve(outcome === 'error' ? { ok: false, error: { code: 'TIMEOUT', message: '超时' } } : { ok: true, data: { text: '蓝发' } });
     await app.settle();
     assert.equal(app.button.disabled, false);
+    assert.equal(app.button.classList.contains('is-loading'), false);
+    assert.equal(app.button.getAttribute('aria-busy'), 'false');
+    assert.equal(app.button.querySelector('.translate-loading-spinner'), null);
+    assert.match(app.button.textContent, /AI 翻译/);
     assert.equal(app.output.value, outcome === 'success' ? '蓝发' : outcome === 'error' ? '超时' : '断线');
   }
 });

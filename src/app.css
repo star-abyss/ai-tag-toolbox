@@ -870,6 +870,9 @@ body.aiview #catList,body.aiview #addTagBtn{display:none}
 .translate-actions{display:flex;align-items:center;gap:7px;margin-left:auto}
 .translate-actions .abtn{padding:6px 10px;font-size:12px}
 .translate-actions .abtn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.translate-actions #translateAi.is-loading{display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:wait;opacity:.9}
+.translate-loading-spinner{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:translate-spin .7s linear infinite;vertical-align:-2px}
+@keyframes translate-spin{to{transform:rotate(360deg)}}
 .translate-input,.translate-output{display:block;flex:1;min-height:220px;width:100%;resize:vertical;padding:12px 13px;border:1px solid var(--input-border);border-radius:10px;background:var(--input-bg);color:var(--text);outline:none;font:inherit;font-size:14px;line-height:1.7}
 .translate-input:focus{border-color:var(--pri);box-shadow:0 0 0 3px var(--pri-bg)}
 .translate-output{cursor:text}
