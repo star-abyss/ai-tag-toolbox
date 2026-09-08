@@ -38,8 +38,8 @@
         base: text(readField('base', current.base), current.base || 'https://api.openai.com/v1').replace(/\/+$/, ''),
         model: text(readField('model', current.model), current.model || 'gpt-4o-mini'), key: text(readField('key', current.key), current.key),
         visionInheritPrimary: inherit, visionBase: text(readField('visionBase', current.visionBase), current.visionBase), visionModel: text(readField('visionModel', current.visionModel), current.visionModel), visionKey: text(readField('visionKey', current.visionKey), current.visionKey),
-        imagesPerRound: number(readField('imagesPerRound', current.imagesPerRound), Number(current.imagesPerRound) || 1, 1, 8),
-        maxAutoRounds: number(readField('maxAutoRounds', current.maxAutoRounds), Number(current.maxAutoRounds) || 3, 1, 3),
+        imagesPerRound: number(readField('imagesPerRound', current.imagesPerRound), Number(current.imagesPerRound) || 1, 1, 10),
+        maxAutoRounds: number(readField('maxAutoRounds', current.maxAutoRounds), Number(current.maxAutoRounds) || 3, 1, 10),
         generationAutoRun: Boolean(readField('generationAutoRun', current.generationAutoRun !== false)),
         temperature: number(current.temperature, 0.7, 0, 2)
       };

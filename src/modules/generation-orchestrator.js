@@ -70,11 +70,11 @@ function policyFrom(value = {}, settings = {}) {
   const strategy = GENERATION_STRATEGIES.includes(source.strategy) ? source.strategy : GENERATION_STRATEGIES.includes(source.legacyStrategy) ? source.legacyStrategy : '';
   const autoRun = source.autoRun !== false;
   const explicitMaxRounds = overrides.maxAutoRounds ?? configured.maxAutoRounds;
-  const maxAutoRounds = Math.round(number(explicitMaxRounds, strategy === 'quick' ? 1 : 3, 1, 3));
+  const maxAutoRounds = Math.round(number(explicitMaxRounds, strategy === 'quick' ? 1 : 3, 1, 10));
   return {
     autoRun,
     autoSelect: source.autoSelect !== false,
-    imagesPerRound: Math.round(number(source.imagesPerRound ?? settings?.comfy?.batchCount, 1, 1, 8)),
+    imagesPerRound: Math.round(number(source.imagesPerRound ?? settings?.comfy?.batchCount, 1, 1, 10)),
     maxAutoRounds,
     forceMaxRounds: source.forceMaxRounds === true || strategy === 'fixed3',
     legacyStrategy: strategy,

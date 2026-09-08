@@ -203,6 +203,12 @@ test('conversation generation controls persist batch and auto/manual mode', () =
   assert.equal(master.checked, true);
   assert.equal(batch.value, '1');
   assert.equal(rounds.value, '3');
+  assert.equal(batch.options.length, 10);
+  assert.equal(batch.options[9].value, '10');
+  assert.equal(rounds.options.length, 10);
+  assert.equal(rounds.options[9].value, '10');
+  assert.equal(app.window.document.querySelector('#batchCount').max, '10');
+  assert.equal(app.window.document.querySelector('#maxComfyCalls').max, '10');
   assert.equal(autoRun.checked, true);
   assert.match(gear.textContent, /⚙/);
   batch.value = '4'; batch.dispatchEvent(new app.window.Event('change', { bubbles: true }));

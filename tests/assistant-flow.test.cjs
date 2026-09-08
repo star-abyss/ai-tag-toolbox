@@ -51,24 +51,38 @@ async function testCancellationAndBusyGuard() {
 
 async function testSettingsCanonicalAndIndependentVision() {
   const { assistant, storage } = setup({ complete: async () => ({ ok: true, text: 'ok' }) }, `settings-flow-${Date.now()}`);
-  const form = assistant.setSettings({ key: '', temperature: 0, comfyCfg: 0, comfySeed: '', batchCount: 4, maxComfyCalls: 0, generationStrategy: 'fixed3', generationAutoSelect: false, visionInheritPrimary: false, visionBase: 'https://vision.test/v1', visionModel: 'vision-model', visionKey: '' });
+  const form = assistant.setSettings({ key: '', temperature: 0, comfyCfg: 0, comfySeed: '', batchCount: 10, maxComfyCalls: 10, generationStrategy: 'fixed3', generationAutoSelect: false, visionInheritPrimary: false, visionBase: 'https://vision.test/v1', visionModel: 'vision-model', visionKey: '' });
   assert.equal(form.key, '');
   assert.equal(form.temperature, 0);
   assert.equal(form.comfyCfg, 0);
   assert.equal(form.comfySeed, null);
-  assert.equal(form.batchCount, 4);
-  assert.equal(form.maxComfyCalls, 0);
+  assert.equal(form.batchCount, 10);
+  assert.equal(form.imagesPerRound, 10);
+  assert.equal(form.maxComfyCalls, 10);
+  assert.equal(form.maxAutoRounds, 10);
   assert.equal(form.generationStrategy, 'fixed3');
   assert.equal(form.generationAutoSelect, false);
   assert.equal(form.visionBase, 'https://vision.test/v1');
   const persisted = storage.get('settings');
   assert.deepEqual(Object.keys(persisted).sort(), ['comfy', 'generateNegativeTags', 'generation', 'limits', 'primaryApi', 'visionApi'].sort());
   assert.equal(persisted.primaryApi.temperature, 0);
-  assert.equal(persisted.comfy.batchCount, 4);
-  assert.equal(persisted.limits.maxComfyCalls, 0);
+  assert.equal(persisted.comfy.batchCount, 10);
+  assert.equal(persisted.generation.imagesPerRound, 10);
+  assert.equal(persisted.limits.maxComfyCalls, 10);
+  assert.equal(persisted.generation.maxAutoRounds, 10);
   assert.equal(persisted.generation.strategy, 'fixed3');
   assert.equal(persisted.generation.autoSelect, false);
   assert.equal(Object.prototype.hasOwnProperty.call(persisted, 'base'), false);
+  const fromConversation = assistant.setSettings({ imagesPerRound: 7, maxAutoRounds: 6 });
+  assert.equal(fromConversation.batchCount, 7);
+  assert.equal(fromConversation.imagesPerRound, 7);
+  assert.equal(fromConversation.maxComfyCalls, 6);
+  assert.equal(fromConversation.maxAutoRounds, 6);
+  const clamped = assistant.setSettings({ batchCount: 99, maxComfyCalls: 99 });
+  assert.equal(clamped.batchCount, 10);
+  assert.equal(clamped.imagesPerRound, 10);
+  assert.equal(clamped.maxComfyCalls, 10);
+  assert.equal(clamped.maxAutoRounds, 10);
 }
 
 async function testSessionFormatAndImport() {

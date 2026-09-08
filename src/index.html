@@ -537,8 +537,8 @@
                 <label class="opt">尺寸 <input id="comfyW" type="number" value="768" /> × <input id="comfyH" type="number" value="1024" /></label>
                 <label class="opt">步数 <input id="comfySteps" type="number" value="25" /></label>
                 <label class="opt">CFG <input id="comfyCfg" type="number" step="0.1" value="7" /></label>
-                <label class="opt">批量数量 <input id="batchCount" type="number" min="1" max="8" value="1" /></label>
-                <label class="opt">最大 ComfyUI 调用 <input id="maxComfyCalls" type="number" min="1" max="20" value="3" /></label>
+                <label class="opt">批量数量 <input id="batchCount" type="number" min="1" max="10" value="1" /></label>
+                <label class="opt">最大 ComfyUI 调用 <input id="maxComfyCalls" type="number" min="1" max="10" value="3" /></label>
                 <label class="opt">Seed <input id="comfySeed" type="number" min="0" placeholder="随机" /></label>
                 <label class="opt">Sampler <input id="comfySampler" type="text" value="euler" /></label>
                 <label class="opt">Scheduler <input id="comfyScheduler" type="text" value="normal" /></label>
@@ -566,8 +566,9 @@
                       <select id="imagesPerRound" data-i18n-title="ui.ai.imagesPerRound" aria-label="每轮生成张数">
                         <option value="1">每轮 1 张</option><option value="2">每轮 2 张</option><option value="3">每轮 3 张</option><option value="4">每轮 4 张</option>
                         <option value="5">每轮 5 张</option><option value="6">每轮 6 张</option><option value="7">每轮 7 张</option><option value="8">每轮 8 张</option>
+                        <option value="9">每轮 9 张</option><option value="10">每轮 10 张</option>
                       </select>
-                      <select id="maxAutoRounds" data-i18n-title="ui.ai.maxAutoRounds" aria-label="自动最多迭代轮数"><option value="1">最多 1 轮</option><option value="2">最多 2 轮</option><option value="3">最多 3 轮</option></select>
+                      <select id="maxAutoRounds" data-i18n-title="ui.ai.maxAutoRounds" aria-label="自动最多迭代轮数"><option value="1">最多 1 轮</option><option value="2">最多 2 轮</option><option value="3">最多 3 轮</option><option value="4">最多 4 轮</option><option value="5">最多 5 轮</option><option value="6">最多 6 轮</option><option value="7">最多 7 轮</option><option value="8">最多 8 轮</option><option value="9">最多 9 轮</option><option value="10">最多 10 轮</option></select>
                       <label class="opt generation-auto-select"><input id="generationAutoRun" type="checkbox" checked /> <span data-i18n="ui.ai.generationAutoRun">自动执行</span></label>
                       <span id="generationWorkflowName" class="generation-workflow-name" title="当前工作流"></span>
                     </div>

@@ -126,8 +126,8 @@
     const views = {
       conversation: viewFactories.conversation?.createConversationView?.({ document: doc, api: assistant, runtime, repository: imageRepository, images, notify, preferences, autoBind: false, bindControls: false }),
       gallery: viewFactories.gallery?.createGalleryView?.({ document: doc, repository: imageRepository, images, preferences, notify, autoBind: false, bindToolbar: false, onVision: item => { if (item?.imageId) { visionTempStore?.setLibraryReference?.(item.imageId); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true); } }, onConversation: () => route("ai") }),
-      settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, onChange: () => syncGenerationControls(), autoBind: false }),
-      comfy: viewFactories.comfy?.createComfyView?.({ document: doc, comfy, assistant, notify, openExternal: url => global.open(url), autoBind: false }),
+      settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, onChange: value => { views.comfy?.render?.(value); syncGenerationControls(); }, autoBind: false }),
+      comfy: viewFactories.comfy?.createComfyView?.({ document: doc, comfy, assistant, notify, openExternal: url => global.open(url), onChange: value => { views.settings?.render?.(value); syncGenerationControls(); }, autoBind: false }),
       prompt: viewFactories.prompt?.createPromptView?.({ document: doc, prompts, notify, download, autoBind: false }),
       agentStatus: viewFactories.agentStatus?.createAgentStatusView?.({ document: doc, runtime, api: assistant, notify, autoBind: false }),
       callMonitor: viewFactories.callMonitor?.createCallMonitorView?.({ document: doc, runtime, assistant, notify, download, confirm, autoBind: false }),
@@ -750,8 +750,8 @@
       const batch = $("#imagesPerRound");
       const rounds = $("#maxAutoRounds");
       const automatic = $("#generationAutoRun");
-      if (batch) { batch.value = String(Math.max(1, Math.min(8, Number(current.imagesPerRound || current.batchCount) || 1))); batch.disabled = !enabled; }
-      if (rounds) { rounds.value = String(Math.max(1, Math.min(3, Number(current.maxAutoRounds) || 3))); rounds.disabled = !enabled || !autoRun; }
+      if (batch) { batch.value = String(Math.max(1, Math.min(10, Number(current.imagesPerRound || current.batchCount) || 1))); batch.disabled = !enabled; }
+      if (rounds) { rounds.value = String(Math.max(1, Math.min(10, Number(current.maxAutoRounds || current.maxComfyCalls) || 3))); rounds.disabled = !enabled || !autoRun; }
       if (automatic) { automatic.checked = autoRun; automatic.disabled = !enabled; }
     }
     async function refreshCapabilitiesStatus(options = {}) {

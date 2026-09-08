@@ -49,8 +49,10 @@ function normaliseSettings(value = {}) {
   const limits = object(source.limits) ? source.limits : {};
   const generation = object(source.generation) ? source.generation : {};
   const legacyStrategy = ['quick', 'auto', 'fixed3'].includes(generation.strategy) ? generation.strategy : '';
-  const imagesPerRound = number(generation.imagesPerRound, number(comfy.batchCount, DEFAULT_SETTINGS.generation.imagesPerRound, 1, 8, true), 1, 8, true);
-  const maxAutoRounds = number(generation.maxAutoRounds, legacyStrategy === 'quick' ? 1 : DEFAULT_SETTINGS.generation.maxAutoRounds, 1, 3, true);
+  const imagesPerRoundSource = own(generation, 'imagesPerRound') ? generation.imagesPerRound : comfy.batchCount;
+  const maxAutoRoundsSource = own(generation, 'maxAutoRounds') ? generation.maxAutoRounds : own(limits, 'maxComfyCalls') ? limits.maxComfyCalls : undefined;
+  const imagesPerRound = number(imagesPerRoundSource, DEFAULT_SETTINGS.generation.imagesPerRound, 1, 10, true);
+  const maxAutoRounds = number(maxAutoRoundsSource, legacyStrategy === 'quick' ? 1 : DEFAULT_SETTINGS.generation.maxAutoRounds, 1, 10, true);
   const defaults = DEFAULT_SETTINGS.comfy;
   const tagText = item => Array.isArray(item) ? item.map(value2 => string(value2)).filter(Boolean).join(', ') : string(item);
   return {
@@ -68,7 +70,7 @@ function normaliseSettings(value = {}) {
       batchCount: imagesPerRound
     },
     limits: {
-      maxComfyCalls: number(limits.maxComfyCalls, DEFAULT_SETTINGS.limits.maxComfyCalls, 0, 128, true),
+      maxComfyCalls: maxAutoRounds,
       maxToolRounds: number(limits.maxToolRounds, DEFAULT_SETTINGS.limits.maxToolRounds, 1, 128, true),
       maxToolCalls: number(limits.maxToolCalls, DEFAULT_SETTINGS.limits.maxToolCalls, 0, 512, true),
       primaryTimeoutMs: number(limits.primaryTimeoutMs, DEFAULT_SETTINGS.limits.primaryTimeoutMs, 1000, 3600000, true)
@@ -93,7 +95,13 @@ function applySettingsPatch(current, patch = {}, form = false) {
   if (form) for (const [key, [group, name]] of Object.entries(FORM_FIELDS)) if (own(source, key)) next[group][name] = clone(source[key]);
   if (form && own(source, 'batchCount') && !own(source, 'imagesPerRound')) next.generation.imagesPerRound = clone(source.batchCount);
   if (form && own(source, 'imagesPerRound')) next.comfy.batchCount = clone(source.imagesPerRound);
+  if (form && own(source, 'maxComfyCalls') && !own(source, 'maxAutoRounds')) next.generation.maxAutoRounds = clone(source.maxComfyCalls);
+  if (form && own(source, 'maxAutoRounds')) next.limits.maxComfyCalls = clone(source.maxAutoRounds);
   for (const group of GROUPS) if (object(source[group])) Object.assign(next[group], clone(source[group]));
+  if (object(source.generation) && own(source.generation, 'imagesPerRound')) next.comfy.batchCount = clone(source.generation.imagesPerRound);
+  else if (object(source.comfy) && own(source.comfy, 'batchCount')) next.generation.imagesPerRound = clone(source.comfy.batchCount);
+  if (object(source.generation) && own(source.generation, 'maxAutoRounds')) next.limits.maxComfyCalls = clone(source.generation.maxAutoRounds);
+  else if (object(source.limits) && own(source.limits, 'maxComfyCalls')) next.generation.maxAutoRounds = clone(source.limits.maxComfyCalls);
   if (own(source, 'generateNegativeTags')) next.generateNegativeTags = source.generateNegativeTags;
   return normaliseSettings(next);
 }

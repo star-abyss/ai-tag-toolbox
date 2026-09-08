@@ -27,7 +27,7 @@
     try { return JSON.stringify(value, null, 2); } catch { return ''; }
   };
 
-  function createComfyView({ document, comfy, assistant, notify, openExternal, autoBind = true } = {}) {
+  function createComfyView({ document, comfy, assistant, notify, openExternal, onChange, autoBind = true } = {}) {
     const doc = document || (typeof globalThis !== 'undefined' ? globalThis.document : null);
     const q = selector => doc?.querySelector?.(selector);
     const read = () => { try { return assistant?.getSettings?.() || {}; } catch { return {}; } };
@@ -46,17 +46,18 @@
         comfySeed: value('comfySeed')?.value === '' ? undefined : number(value('comfySeed')?.value, current.comfySeed, 0, 2147483647),
         comfySampler: text(value('comfySampler')?.value, current.comfySampler || 'euler'),
         comfyScheduler: text(value('comfyScheduler')?.value, current.comfyScheduler || 'normal'),
-        batchCount: number(value('batchCount')?.value, Number(current.batchCount) || 1, 1, 8),
-        maxComfyCalls: number(value('maxComfyCalls')?.value, Number(current.maxComfyCalls) || 3, 1, 20),
+        batchCount: number(value('batchCount')?.value, Number(current.batchCount) || 1, 1, 10),
+        maxComfyCalls: number(value('maxComfyCalls')?.value, Number(current.maxComfyCalls) || 3, 1, 10),
         generateNegativeTags: value('generateNegativeTags') ? Boolean(value('generateNegativeTags').checked) : current.generateNegativeTags === true
       };
     }
     function save() {
       const patch = collect();
-      assistant?.setSettings?.(patch);
+      const saved = assistant?.setSettings?.(patch) || patch;
       comfy?.setBase?.(patch.comfyBase);
       comfy?.setWorkflow?.(patch.comfyWorkflow);
-      return patch;
+      onChange?.(saved);
+      return saved;
     }
     function scheduleSave() {
       clearTimeout(saveTimer);
