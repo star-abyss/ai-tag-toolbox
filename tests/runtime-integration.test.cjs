@@ -212,12 +212,18 @@ test('evaluateImages shares the Vision client and monitor redacts all image payl
 test('primary uses one high-level generation tool and rejects hidden low-level calls', async () => {
   let round = 0;
   const generationCalls = [];
+  const primaryMessages = [];
+  const fullGeneration = { status: 'completed', jobId: 'job-1', selectedCandidateId: 'candidate-2', selectedImageId: 'img-2', positiveTags: ['1girl'], negativeTags: [], candidates: [{ id: 'candidate-2', imageId: 'img-2', prompt: '1girl', evaluation: { summary: 'full local review' } }], artifacts: [{ imageId: 'img-2' }], imageIds: ['img-2'] };
+  const compactGeneration = { status: 'completed', jobId: 'job-1', outcome: 'accepted', recreationMode: '', selected: { candidateId: 'candidate-2', imageId: 'img-2', prompt: '1girl', negative: '', positiveTags: ['1girl'], negativeTags: [], parameters: {} }, candidates: [{ candidateId: 'candidate-2', imageId: 'img-2', score: 94, verdict: 'accept', hardErrorCount: 0, summary: 'ok' }], residualIssues: [], nextAction: '' };
   const { runtime, tools } = stack({
     generation: {
-      execute: async (input, context) => { generationCalls.push({ input, requestId: context.requestId }); return { status: 'completed', jobId: 'job-1', selectedCandidateId: 'candidate-2', selectedImageId: 'img-2', positiveTags: ['1girl'], negativeTags: [], candidates: [{ id: 'candidate-2', imageId: 'img-2', prompt: '1girl' }], artifacts: [{ imageId: 'img-2' }], imageIds: ['img-2'] }; },
-      resume: async () => ({ status: 'completed', jobId: 'job-1' })
+      execute: async (input, context) => { generationCalls.push({ input, requestId: context.requestId }); return fullGeneration; },
+      resume: async () => fullGeneration,
+      publicResult: () => compactGeneration,
+      uiSnapshot: () => fullGeneration
     },
-    primaryClient: { complete: async (_messages, config) => {
+    primaryClient: { complete: async (messages, config) => {
+      primaryMessages.push(structuredClone(messages));
       const names = config.tools.map(item => item.function.name);
       assert(names.includes('generation_execute'));
       assert(names.includes('generation_resume'));
@@ -230,13 +236,28 @@ test('primary uses one high-level generation tool and rejects hidden low-level c
   const result = await runtime.runPrimary({ requestId: 'high-level-root', input: { text: '画蓝发女孩' } });
   assert.equal(result.ok, true, JSON.stringify(result.error));
   assert.equal(generationCalls.length, 1);
-  assert.equal(result.data.artifacts[0].imageId, 'img-2');
+  assert.equal(result.data.selected.imageId, 'img-2');
+  const publicToolPayload = JSON.parse(primaryMessages[1].find(message => message.role === 'tool').content);
+  assert.deepEqual(publicToolPayload, compactGeneration);
+  assert.equal(publicToolPayload.artifacts, undefined);
   assert.equal(result.usage.toolCalls, 1);
 
   const hidden = stack({ primaryClient: { complete: async () => ({ toolCalls: [{ id: 'hidden', name: 'comfy_render', arguments: { positiveTags: ['1girl'] } }] }) } });
   const rejected = await hidden.runtime.runPrimary({ requestId: 'hidden-root', input: { text: '绕过高层工具' } });
   assert.equal(rejected.ok, false);
   assert.equal(rejected.error.code, 'TOOL_UNAVAILABLE');
+});
+
+test('failed evaluation provider responses still count toward root usage', async () => {
+  const subagents = createFixedSubagents({
+    visionAI: { complete: async () => ({ ok: false, code: 'VISION_FAILED', error: 'provider rejected request', usage: { total_tokens: 12 } }) },
+    resolveImage: async id => ({ id, dataUrl: 'data:image/png;base64,AA==' })
+  });
+  const runtime = createAgentRuntime({ subagents });
+  const result = await runtime.runSubAgent('evaluateImages', { input: { operation: 'review', mode: 'create', brief: {}, candidateImageIds: ['img-1'] } });
+  assert.equal(result.ok, false);
+  assert.equal(result.usage.total_tokens, 12);
+  assert.deepEqual(result.usage.byKind, { evaluateImages: 12 });
 });
 
 test('request deadline extension and successful-only Comfy accounting are deterministic', async () => {

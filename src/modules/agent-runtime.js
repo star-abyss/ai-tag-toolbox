@@ -169,9 +169,11 @@ function createAgentRuntime(options = {}) {
       if (typeof run !== 'function') throw reject('SUBAGENT_UNAVAILABLE', '子代理执行器不可用');
       limiter.consume(context.rootRequestId, 'subagent');
       emit(context, 'subagent.start', { name });
-      const value = await run(input, { requestId: context.requestId, parentRequestId: context.parentRequestId, rootRequestId: context.rootRequestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: event => emit(context, event?.type || 'event', event || {}) });
+      let usageReported = false;
+      const value = await run(input, { requestId: context.requestId, parentRequestId: context.parentRequestId, rootRequestId: context.rootRequestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onUsage: usage => { if (usage && typeof usage === 'object') { usageReported = true; limiter.add(context.rootRequestId, usage, name); } }, onEvent: event => emit(context, event?.type || 'event', event || {}) });
       const data = unwrap(value); assertSchema(entry.outputSchema || { type: 'object' }, data, 'OUTPUT_INVALID');
-      limiter.add(context.rootRequestId, value?.usage); emit(context, 'subagent.complete', { name }); return data;
+      if (!usageReported) limiter.add(context.rootRequestId, value?.usage, name);
+      emit(context, 'subagent.complete', { name }); return data;
     });
   }
   async function callTool(rawName, args = {}, request = {}) {
@@ -233,7 +235,7 @@ function createAgentRuntime(options = {}) {
         const primaryConfig = { ...publicConfig(settings.primaryApi), ...publicConfig(request.config), signal: context.signal, tools: primarySchemas, tool_choice: 'auto', onDelta: (delta, reasoning = '') => { deltaBuffer.text += typeof delta === 'string' ? delta : ''; deltaBuffer.reasoning += typeof reasoning === 'string' ? reasoning : ''; const accumulated = deltaBuffer.text.length + deltaBuffer.reasoning.length; if (accumulated >= 8 && Date.now() - deltaBuffer.emittedAt >= 200) flushDelta(); if (!context.signal.aborted) { try { request.onDelta?.(delta, reasoning); } catch {} } }, onEvent: event => { if (typeof event?.type === 'string' && event.type && !isNoiseEvent(event)) emit(context, event.type, event || {}); } /* 只接受带类型名的有意义事件；无类型名的流式分片（正文/推理/工具参数碎片）一律不产生任务事件，真正的调用由 tool.start/tool.complete 记录。 */ };
         context.captureInput({ messages, config: primaryConfig });
         const response = await race(() => client.complete(messages, primaryConfig), context.signal);
-        unwrap(response); limiter.add(context.rootRequestId, response?.usage); const calls = responseCalls(response).slice(0, 1).map(call => normalizeCall(call, usedIds, allowedPrimaryNames));
+        unwrap(response); limiter.add(context.rootRequestId, response?.usage, 'primary'); const calls = responseCalls(response).slice(0, 1).map(call => normalizeCall(call, usedIds, allowedPrimaryNames));
         const responseText = outputText(response);
         if (!calls.length) {
           if (!responseText.trim()) throw reject('OUTPUT_INVALID', '主 AI 返回为空');

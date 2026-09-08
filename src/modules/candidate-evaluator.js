@@ -271,10 +271,12 @@ function createCandidateEvaluator(options = {}) {
         { role: 'user', content: '上一次输出无效。请严格按照系统输出协议修复，并且只返回一个有效 JSON 对象。' }
       ];
       const result = await visionAI.complete(messages, { ...directOptions, signal: context.signal });
+      context.onUsage?.(result?.usage);
       if (result?.ok === false) throw failure(result.code || 'EVALUATION_FAILED', text(result.error?.message || result.error || result.text, '候选图评估失败'));
       previousText = responseText(result);
       try {
-        return normalizeResult(result, input);
+        const data = normalizeResult(result, input);
+        return options.returnEnvelope === true ? { ok: true, data, usage: result?.usage || null } : data;
       } catch (error) {
         if (attempt === 1 || error?.code !== 'OUTPUT_INVALID') throw error;
       }
@@ -303,4 +305,3 @@ module.exports = {
   createCandidateEvaluator,
   normalizeResult
 };
-

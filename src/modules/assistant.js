@@ -192,6 +192,11 @@ function createAssistant(options = {}) {
     if (Array.isArray(payload.events)) live.events = clone(payload.events).filter(event => !isNoiseEvent(event));
     live.activity = clone(live.events);
   }
+  function hydrateGenerationPayload(payload = {}) {
+    const jobId = text(payload?.jobId);
+    const local = jobId ? (generation?.uiSnapshot?.(jobId) || generation?.get?.(jobId)) : null;
+    return local ? { ...clone(payload), ...clone(local) } : clone(payload);
+  }
   function cancel(requestId) {
     if (!active || (requestId && active.id !== requestId)) return false;
     const job = active;
@@ -249,8 +254,8 @@ function createAssistant(options = {}) {
       if (!writable(job)) return;
       if (isNoiseEvent(event)) return; // 流式增量不写入任务事件，避免刷满 256 条上限。
       live.events.push(clone(event)); if (live.events.length > 256) live.events.shift(); live.activity = clone(live.events);
-      if (event?.jobId && typeof generation?.get === 'function') {
-        const generationState = generation.get(event.jobId);
+      if (event?.jobId && (typeof generation?.uiSnapshot === 'function' || typeof generation?.get === 'function')) {
+        const generationState = generation.uiSnapshot?.(event.jobId) || generation.get?.(event.jobId);
         if (generationState) {
           live.result = { ...(object(live.result) ? live.result : {}), ...clone(generationState) };
           live.artifacts = clone(array(generationState.artifacts));
@@ -268,7 +273,8 @@ function createAssistant(options = {}) {
         onToolCall: traces => { if (!writable(job)) return; for (const trace of array(traces)) { const index = live.toolCalls.findIndex(row => row.id === trace.id); if (index < 0) live.toolCalls.push(clone(trace)); else live.toolCalls[index] = clone(trace); } persist(); }
       });
       if (!writable(job)) return { ...failure('CANCELLED', '请求已取消', requestId, session.id), data: cancelledPayload(job) };
-      const payload = object(result.data) ? result.data : object(result.partial) ? result.partial : {};
+      const publicPayload = object(result.data) ? result.data : object(result.partial) ? result.partial : {};
+      const payload = hydrateGenerationPayload(publicPayload);
       applyPayload(job, payload);
       const error = result.ok ? null : errorShape(result.error);
       live.status = result.ok ? 'done' : error.code === 'CANCELLED' ? 'cancelled' : error.code === 'TIMEOUT' ? 'timeout' : 'error';
@@ -340,7 +346,7 @@ function createAssistant(options = {}) {
     const onEvent = event => {
       if (!writable(job) || isNoiseEvent(event)) return;
       live.events.push(clone(event)); if (live.events.length > 256) live.events.shift(); live.activity = clone(live.events);
-      const generationState = event?.jobId ? generation?.get?.(event.jobId) : null;
+      const generationState = event?.jobId ? (generation?.uiSnapshot?.(event.jobId) || generation?.get?.(event.jobId)) : null;
       if (generationState) {
         live.result = { ...(object(live.result) ? live.result : {}), ...clone(generationState) };
         live.artifacts = clone(array(generationState.artifacts));
@@ -351,7 +357,8 @@ function createAssistant(options = {}) {
     try {
       const outcome = await runtime.callTool('generation.resume', { jobId, action: 'continue', baseCandidateId: text(candidateId), feedback: note }, { requestId, sessionId: session.id, messageId: live.id, signal: controller.signal, onEvent });
       if (!writable(job)) return { ...failure('CANCELLED', '请求已取消', requestId, session.id), data: cancelledPayload(job) };
-      const payload = object(outcome.data) ? outcome.data : {};
+      const publicPayload = object(outcome.data) ? outcome.data : {};
+      const payload = hydrateGenerationPayload(publicPayload);
       applyPayload(job, payload);
       const error = outcome.ok ? null : errorShape(outcome.error);
       live.status = outcome.ok ? 'done' : error.code === 'CANCELLED' ? 'cancelled' : 'error';

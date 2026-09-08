@@ -186,12 +186,12 @@
 - Usage exposes exact root totals and `byKind`.
 - Primary tool messages omit full evaluations and metadata while Assistant UI retains them.
 
-- [ ] **Step 1:** Add failing byte-budget and exact token-sum tests using multiple subagents.
-- [ ] **Step 2:** Standardize fixed-subagent `{ data, usage }` envelopes without changing public parsed data.
-- [ ] **Step 3:** Add usage kind attribution and aggregate every provider response.
-- [ ] **Step 4:** Split public generation DTO from local UI state and compact public Vision output.
-- [ ] **Step 5:** Run focused tests and `npm run check`.
-- [ ] **Step 6:** Commit `V1.4.227：压缩AI返回并修正Token统计`.
+- [x] **Step 1:** Add failing byte-budget and exact token-sum tests using multiple subagents.
+- [x] **Step 2:** Standardize fixed-subagent `{ data, usage }` envelopes without changing public parsed data.
+- [x] **Step 3:** Add usage kind attribution and aggregate every provider response.
+- [x] **Step 4:** Split public generation DTO from local UI state and compact public Vision output.
+- [x] **Step 5:** Run focused tests and `npm run check`.
+- [x] **Step 6:** Commit `V1.4.227：压缩AI返回并修正Token统计`.
 
 ### Task 8: V1.4.228 End-To-End Delivery
 

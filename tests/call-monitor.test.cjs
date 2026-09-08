@@ -60,14 +60,20 @@ test('real assistant connects primary rounds and fixed-subagent output under one
   assert.equal(child.exchanges[0].response.text, 'blue hair');
   assert.equal(child.output.text, 'blue hair');
   assert.equal(child.exchanges[0].usage.total_tokens, 6);
+  const exchangeTotal = rows.flatMap(row => row.exchanges || []).reduce((sum, exchange) => sum + Number(exchange.usage?.total_tokens || 0), 0);
+  assert.equal(result.usage.total_tokens, exchangeTotal);
+  assert.equal(result.usage.total_tokens, 13);
+  assert.deepEqual(result.usage.byKind, { primary: 7, translation: 6 });
   assert.doesNotMatch(JSON.stringify(rows), /test-secret-key/);
   app.destroy();
 });
 
 test('raw malformed Tag replies remain inspectable after parser failure', async () => {
-  const app = createAssistant({ promptSource, primaryApi: { model: 'test' }, visionGateway: { complete: async () => ({ text: 'not JSON at all' }) } });
+  const app = createAssistant({ promptSource, primaryApi: { model: 'test' }, visionGateway: { complete: async () => ({ text: 'not JSON at all', usage: { total_tokens: 9 } }) } });
   const result = await app.runtime.runSubAgent('generateTags', { input: { requirements: 'girl' } });
   assert.equal(result.error.code, 'OUTPUT_INVALID');
+  assert.equal(result.usage.total_tokens, 9);
+  assert.deepEqual(result.usage.byKind, { generateTags: 9 });
   const row = app.listCallRecords()[0];
   assert.equal(row.status, 'error');
   assert.equal(row.exchanges[0].response.text, 'not JSON at all');

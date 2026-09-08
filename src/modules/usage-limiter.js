@@ -4,7 +4,7 @@ function bounded(value, fallback, maximum) { return Number.isFinite(Number(value
 function createUsageLimiter() {
   const records = new Map();
   function begin(id, limits = {}) {
-    const row = { limits: { maxToolRounds: bounded(limits.maxToolRounds, 8, 128), maxToolCalls: bounded(limits.maxToolCalls, 32, 512), maxComfyCalls: bounded(limits.maxComfyCalls, 3, 128) }, usage: { toolRounds: 0, toolCalls: 0, comfyCalls: 0, subAgentCalls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } };
+    const row = { limits: { maxToolRounds: bounded(limits.maxToolRounds, 8, 128), maxToolCalls: bounded(limits.maxToolCalls, 32, 512), maxComfyCalls: bounded(limits.maxComfyCalls, 3, 128) }, usage: { toolRounds: 0, toolCalls: 0, comfyCalls: 0, subAgentCalls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, byKind: {} } };
     records.set(id, row); return row;
   }
   function rules(kind) {
@@ -26,14 +26,17 @@ function createUsageLimiter() {
     return snapshot(id);
   }
   function consume(id, kind) { return complete(id, kind); }
-  function add(id, usage) {
+  function add(id, usage, kind = '') {
     const row = records.get(id); if (!row || !usage || typeof usage !== 'object') return;
     const prompt = Number(usage.prompt_tokens ?? usage.input_tokens) || 0;
     const completion = Number(usage.completion_tokens ?? usage.output_tokens) || 0;
+    const total = Math.max(0, Number(usage.total_tokens) || prompt + completion);
     row.usage.prompt_tokens += Math.max(0, prompt); row.usage.completion_tokens += Math.max(0, completion);
-    row.usage.total_tokens += Math.max(0, Number(usage.total_tokens) || prompt + completion);
+    row.usage.total_tokens += total;
+    const bucket = String(kind || '').trim();
+    if (bucket && total > 0) row.usage.byKind[bucket] = (Number(row.usage.byKind[bucket]) || 0) + total;
   }
-  function snapshot(id) { const row = records.get(id); return row ? { ...row.usage } : null; }
+  function snapshot(id) { const row = records.get(id); return row ? { ...row.usage, byKind: { ...row.usage.byKind } } : null; }
   return { begin, check, complete, consume, add, snapshot, has: id => records.has(id), end: id => records.delete(id), clear: () => records.clear(), size: () => records.size };
 }
 

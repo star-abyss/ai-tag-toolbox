@@ -29,6 +29,7 @@ test('assistant create/recreate workflows iterate, compare, upload source and pr
   let renderSequence = 0;
   let hangNext = false;
   let renderStarted;
+  const primaryRequests = [];
   const comfy = {
     setBase: () => {},
     status: async () => ({ connected: true, workflowReady: true, render: true, error: '' }),
@@ -48,12 +49,13 @@ test('assistant create/recreate workflows iterate, compare, upload source and pr
   let currentIntent = 'create';
   const reviewCounts = { create: 0, recreate: 0, cancel: 0 };
   const primaryGateway = { complete: async messages => {
+    primaryRequests.push(structuredClone(messages));
     const last = messages.at(-1);
-    if (last?.role === 'tool') return { text: '已完成候选比较并返回实际提示词。' };
+    if (last?.role === 'tool') return { text: '已完成候选比较并返回实际提示词。', usage: { total_tokens: 11 } };
     const currentUser = [...messages].reverse().find(message => message.role === 'user')?.content || '';
     currentIntent = /复刻/.test(currentUser) ? 'recreate' : /取消/.test(currentUser) ? 'cancel' : 'create';
     const source = currentIntent === 'recreate' ? sourceImage.id : undefined;
-    return { toolCalls: [{ id: `generation-${currentIntent}-${Date.now()}`, name: 'generation_execute', arguments: { requirements: currentUser, mode: currentIntent === 'recreate' ? 'recreate' : 'create', ...(source ? { sourceImageId: source } : {}), strategy: currentIntent === 'cancel' ? 'quick' : 'auto' } }] };
+    return { toolCalls: [{ id: `generation-${currentIntent}-${Date.now()}`, name: 'generation_execute', arguments: { requirements: currentUser, mode: currentIntent === 'recreate' ? 'recreate' : 'create', ...(source ? { sourceImageId: source } : {}), strategy: currentIntent === 'cancel' ? 'quick' : 'auto' } }], usage: { total_tokens: 10 } };
   } };
   const visionGateway = { complete: async messages => {
     const system = messages[0]?.content || '';
@@ -62,15 +64,15 @@ test('assistant create/recreate workflows iterate, compare, upload source and pr
       reviewCounts[currentIntent] += 1;
       const candidateId = content.match(/generated-\d+/)?.[0];
       const score = reviewCounts[currentIntent] === 1 ? 72 : 94;
-      return { text: JSON.stringify({ operation: 'review', evaluations: [{ candidateId, score, verdict: score >= 90 ? 'accept' : 'revise', confidence: 0.92, dimensions: { requirementMatch: score }, hardErrors: [], issues: score >= 90 ? [] : [{ expected: '侧身构图', observed: '视角偏正面', severity: 'major', suggestedChange: '增加 from side' }], strengths: ['主体清晰'], suggestedChanges: score >= 90 ? [] : ['增加 from side'], summary: score >= 90 ? '符合要求' : '需要调整视角' }] }) };
+      return { text: JSON.stringify({ operation: 'review', evaluations: [{ candidateId, score, verdict: score >= 90 ? 'accept' : 'revise', confidence: 0.92, dimensions: { requirementMatch: score }, hardErrors: [], issues: score >= 90 ? [] : [{ expected: '侧身构图', observed: '视角偏正面', severity: 'major', suggestedChange: '增加 from side' }], strengths: ['主体清晰'], suggestedChanges: score >= 90 ? [] : ['增加 from side'], summary: score >= 90 ? '符合要求' : '需要调整视角' }] }), usage: { total_tokens: 30 } };
     }
     if (/operation="compare"/.test(system)) {
       const ids = [...new Set([...content.matchAll(/generated-\d+/g)].map(match => match[0]))];
-      return { text: JSON.stringify({ operation: 'compare', recommendedCandidateId: ids[0], ranking: ids.map((candidateId, index) => ({ candidateId, score: 95 - index, reason: 'fixture ranking' })), reason: '高分候选更符合要求', confidence: 0.9 }) };
+      return { text: JSON.stringify({ operation: 'compare', recommendedCandidateId: ids[0], ranking: ids.map((candidateId, index) => ({ candidateId, score: 95 - index, reason: 'fixture ranking' })), reason: '高分候选更符合要求', confidence: 0.9 }), usage: { total_tokens: 30 } };
     }
-    if (/系统修订协议/.test(system)) return { text: '{"add":["from side"],"remove":[],"preserve":["blue hair"]}' };
-    if (/系统输出协议/.test(system)) return { text: '{"positiveTags":["1girl","blue hair"],"negativeTags":["lowres"]}' };
-    return { text: '侧身蓝发女孩，半身构图，冷色光照' };
+    if (/系统修订协议/.test(system)) return { text: '{"add":["from side"],"remove":[],"preserve":["blue hair"]}', usage: { total_tokens: 20 } };
+    if (/系统输出协议/.test(system)) return { text: '{"positiveTags":["1girl","blue hair"],"negativeTags":["lowres"]}', usage: { total_tokens: 20 } };
+    return { text: '侧身蓝发女孩，半身构图，冷色光照', usage: { total_tokens: 15 } };
   } };
 
   const sourceImage = images.add({ id: 'source-image', filename: 'source.png', mime: 'image/png', dataUrl: 'data:image/png;base64,AQID' });
@@ -92,6 +94,15 @@ test('assistant create/recreate workflows iterate, compare, upload source and pr
   assert.equal(created.candidates[1].prompt, submitted[1].prompt);
   assert.match(created.candidates[1].prompt, /from side/);
   assert.equal(created.usage.comfyCalls, 2);
+  const createToolPayload = JSON.parse(primaryRequests[1].find(message => message.role === 'tool').content);
+  assert(Buffer.byteLength(JSON.stringify(createToolPayload)) < 5000);
+  assert.equal(createToolPayload.artifacts, undefined);
+  assert.equal(createToolPayload.candidates[0].evaluation, undefined);
+  assert.equal(created.candidates[0].evaluation.status, 'reviewed', 'Assistant UI result keeps the local snapshot');
+  assert.deepEqual(created.usage.byKind, { primary: 21, generateTags: 40, evaluateImages: 90 });
+  const createExchangeTotal = assistant.listCallRecords().filter(row => row.rootRequestId === 'integration-create').flatMap(row => row.exchanges || []).reduce((sum, exchange) => sum + Number(exchange.usage?.total_tokens || 0), 0);
+  assert.equal(created.usage.total_tokens, createExchangeTotal);
+  assert.equal(created.usage.total_tokens, 151);
 
   const recreated = await assistant.run({ text: '复刻这张图片', imageIds: [sourceImage.id], requestId: 'integration-recreate' });
   assert.equal(recreated.ok, true, JSON.stringify(recreated.error));
@@ -101,6 +112,10 @@ test('assistant create/recreate workflows iterate, compare, upload source and pr
   assert.equal(uploads.length, 2, 'each successful recreation render uploads the authorized source');
   assert(submitted.slice(2).every(call => call.sourceImage?.name === 'source.png'));
   assert.equal(recreated.candidates[1].prompt, submitted.at(-1).prompt);
+  assert.deepEqual(recreated.usage.byKind, { primary: 21, vision: 15, generateTags: 40, evaluateImages: 90 });
+  const recreateExchangeTotal = assistant.listCallRecords().filter(row => row.rootRequestId === 'integration-recreate').flatMap(row => row.exchanges || []).reduce((sum, exchange) => sum + Number(exchange.usage?.total_tokens || 0), 0);
+  assert.equal(recreated.usage.total_tokens, recreateExchangeTotal);
+  assert.equal(recreated.usage.total_tokens, 166);
 
   const records = assistant.listCallRecords();
   assert(records.some(row => row.kind === 'tool:generation.execute'));

@@ -357,3 +357,25 @@ test('exhausting render attempts exposes a failed outcome', async () => {
   assert.equal(result.status, 'failed');
   assert.equal(result.outcome, 'failed');
 });
+
+test('public generation result is compact while the UI snapshot retains full evaluations', async () => {
+  const longText = '详细评价'.repeat(1800);
+  const app = harness({
+    settings: { generation: { autoRun: true, maxAutoRounds: 1, maxRenderAttempts: 2, acceptScore: 90 } },
+    runSubAgent: async (name, request) => {
+      if (name === 'generateTags') return ok({ positiveTags: ['1girl', 'blue hair'], negativeTags: ['lowres'] });
+      if (name === 'evaluateImages') return ok({ operation: 'review', evaluations: [{ candidateId: request.input.candidateImageIds[0], score: 92, verdict: 'accept', hardErrors: [], issues: [], summary: longText }] });
+      throw new Error(name);
+    }
+  });
+  const completed = await app.orchestrator.execute({ originalRequirements: 'blue-haired portrait', mode: 'create' }, app.context);
+  const local = app.orchestrator.uiSnapshot(completed.jobId);
+  const compact = app.orchestrator.publicResult(completed.jobId);
+  assert.equal(local.candidates[0].evaluation.summary, longText);
+  assert.equal(compact.selected.prompt, '1girl, blue hair');
+  assert.equal(compact.selected.negative, 'lowres');
+  assert.equal(compact.candidates[0].evaluation, undefined);
+  assert.equal(compact.comparison, undefined);
+  assert.equal(compact.artifacts, undefined);
+  assert(Buffer.byteLength(JSON.stringify(compact)) < 5000);
+});

@@ -284,6 +284,57 @@ function createGenerationOrchestrator(options = {}) {
       error: job.error || null
     });
   }
+  function uiSnapshot(jobId) {
+    const job = object(jobId) ? jobId : jobs.get(text(jobId));
+    return job ? result(job) : null;
+  }
+  function publicResult(jobId) {
+    const job = object(jobId) ? jobId : jobs.get(text(jobId));
+    if (!job) return null;
+    const candidates = candidateSnapshot(job.candidates);
+    const selected = activeCandidate(job, job.selectedCandidateId) || candidates.find(candidate => candidate.evaluation?.recommended) || null;
+    const compactIssue = issue => ({
+      expected: text(issue?.expected).slice(0, 240),
+      observed: text(issue?.observed).slice(0, 240),
+      severity: text(issue?.severity, 'major').slice(0, 16),
+      suggestedChange: text(issue?.suggestedChange).slice(0, 240)
+    });
+    const nextAction = job.status === 'needs_input' ? 'provide_input' : job.status === 'awaiting_feedback' ? 'provide_feedback_or_select' : '';
+    return clone({
+      jobId: job.jobId,
+      status: job.status,
+      outcome: job.outcome || '',
+      mode: job.mode,
+      recreationMode: job.recreationMode || '',
+      aspectRatioMode: job.aspectRatioMode || '',
+      selected: selected ? {
+        candidateId: selected.id,
+        imageId: selected.imageId,
+        prompt: selected.prompt,
+        negative: selected.negative,
+        positiveTags: selected.positiveTags,
+        negativeTags: selected.negativeTags,
+        parameters: selected.parameters || {}
+      } : null,
+      selectedCandidateId: job.selectedCandidateId || '',
+      candidates: candidates.map(candidate => ({
+        candidateId: candidate.id,
+        imageId: candidate.imageId,
+        roundIndex: candidate.roundIndex,
+        score: reviewed(candidate) ? score(candidate) : null,
+        verdict: text(candidate.evaluation?.verdict),
+        hardErrorCount: hardErrorCount(candidate),
+        summary: text(candidate.evaluation?.summary).slice(0, 240)
+      })),
+      residualIssues: (job.residualIssues || []).slice(0, 6).map(compactIssue),
+      needsInput: job.needsInput ? clone(job.needsInput) : null,
+      stopReason: job.stopReason,
+      successfulRounds: job.successfulRounds,
+      renderAttempts: job.renderAttempts,
+      error: job.error || null,
+      nextAction
+    });
+  }
   function needsInput(job, context, value) {
     job.needsInput = clone(value);
     transition(job, 'needs_input');
@@ -764,8 +815,7 @@ function createGenerationOrchestrator(options = {}) {
     return true;
   }
   function get(jobId) {
-    const job = jobs.get(text(jobId));
-    return job ? result(job) : null;
+    return uiSnapshot(jobId);
   }
   function list() {
     return [...jobs.values()].sort((a, b) => b.updatedAt - a.updatedAt).map(result);
@@ -808,7 +858,7 @@ function createGenerationOrchestrator(options = {}) {
     return result(job);
   }
 
-  return Object.freeze({ execute, resume, cancel, get, list, selectCandidate, selectAndFinish });
+  return Object.freeze({ execute, resume, cancel, get, list, uiSnapshot, publicResult, selectCandidate, selectAndFinish });
 }
 
 module.exports = {

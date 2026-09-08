@@ -421,6 +421,7 @@ function createVisionService(options = {}) {
       tool: 'vision.processOne',
       imageId,
       mode: 'ai',
+      usage: clone(result?.usage) || null,
       data: {
         metadata: clone(image?.metadata) || {},
         tags,

@@ -244,13 +244,15 @@ function createPrimaryTools(options = {}) {
       const generation = getGeneration();
       if (typeof generation?.execute !== 'function') throw failure('GENERATION_UNAVAILABLE', '自动生成任务模块不可用');
       context.extendRootTimeout?.(getSettings()?.generation?.jobTimeoutMs || 1200000);
-      return generation.execute(args, context);
+      const value = await generation.execute(args, context);
+      return typeof generation.publicResult === 'function' ? generation.publicResult(value?.jobId) : value;
     },
     'generation.resume': async (args, context) => {
       const generation = getGeneration();
       if (typeof generation?.resume !== 'function') throw failure('GENERATION_UNAVAILABLE', '自动生成任务模块不可用');
       context.extendRootTimeout?.(getSettings()?.generation?.jobTimeoutMs || 1200000);
-      return generation.resume(args, context);
+      const value = await generation.resume(args, context);
+      return typeof generation.publicResult === 'function' ? generation.publicResult(value?.jobId) : value;
     }
   };
   const resolve = value => { const name = NATIVE_NAMES.get(value) || value; return TOOL_NAMES.includes(name) ? { name, ...clone(DEFINITIONS[name]), handler: handlers[name] } : null; };
