@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
-    "version":  "1.4.228",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.228 双模式批次生成与复刻交付控制",
+    "version":  "1.4.230",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.230 统一生成限制与候选防重",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",
