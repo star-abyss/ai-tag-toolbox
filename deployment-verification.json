@@ -1,11 +1,11 @@
 {
-  "version": "1.4.230",
+  "version": "1.4.231",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.230",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.231",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.228-before230",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.230-before231",
   "oldDesktopSourceBackupMoved": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.192-source-backup-20260905-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
@@ -27,7 +27,7 @@
     "testsPassed": 141,
     "testsFailed": 0,
     "slowUiSmokeRun": true,
-    "desktopSmoke": "Packaged Electron V1.4.230 connected through CDP; local AI and ComfyUI fixtures completed two automatic 2-image rounds, reference-image recreation, manual feedback continuation, in-flight final selection, interruption, cancellation and duplicate-prompt blocking",
+    "desktopSmoke": "Packaged Electron V1.4.231 connected through CDP; local AI and ComfyUI fixtures completed mirrored setting edits, two automatic 2-image rounds, reference-image recreation, manual feedback continuation, in-flight final selection, interruption, cancellation and duplicate-prompt blocking",
     "desktopSmokeCounts": { "apiCalls": 49, "submittedPrompts": 10, "sourceUploads": 2, "monitorRecords": 68, "createCandidates": 4, "recreateCandidates": 4, "manualCandidates": 4, "finalSelectionInterrupts": 1, "duplicatePromptBlocked": true },
     "viewports": ["1100x800", "1500x950"],
     "screenshotVerification": true
