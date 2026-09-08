@@ -148,10 +148,7 @@
       "aiStatus": "Calling AI translation ({count} site Tag references)…",
       "aiDone": "AI translation · {direction} · {count} Tag references",
       "aiDirectionZhToTag": "Chinese → Tag",
-      "aiDirectionTagToZh": "Tag → Chinese",
-      "aiThinking": "💭 AI reasoning",
-      "aiThinkingNow": "💭 AI is thinking…",
-      "aiThinkingDone": "💭 AI reasoning complete"
+      "aiDirectionTagToZh": "Tag → Chinese"
     },
     "settings": {
       "language": "Interface language",

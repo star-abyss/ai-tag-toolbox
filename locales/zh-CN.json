@@ -112,10 +112,7 @@
       "aiStatus": "正在调用 AI 翻译（已提供 {count} 个本站 Tag 对照）…",
       "aiDone": "AI 翻译 · {direction} · 参考 {count} 个 Tag",
       "aiDirectionZhToTag": "中文 → Tag",
-      "aiDirectionTagToZh": "Tag → 中文",
-      "aiThinking": "💭 AI 思考过程",
-      "aiThinkingNow": "💭 AI 正在思考…",
-      "aiThinkingDone": "💭 AI 思考完成"
+      "aiDirectionTagToZh": "Tag → 中文"
     },
     "settings": {
       "language": "界面语言",
