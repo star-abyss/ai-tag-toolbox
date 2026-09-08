@@ -52,7 +52,7 @@
       "malformed alignment retains full translated text",
       "explicit direction and optional alignment through runtime"
     ],
-    "architectureLocalLinksVerified": 5
+    "architectureLocalLinksVerified": 7
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",

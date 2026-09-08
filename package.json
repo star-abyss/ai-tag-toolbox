@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
     "version":  "1.4.3",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.3 双向翻译对照",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.3 角色库与 ComfyUI 智能生成正式版",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",
