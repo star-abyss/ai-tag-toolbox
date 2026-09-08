@@ -26,8 +26,41 @@
     "command": "npm run check",
     "testsPassed": 148,
     "testsFailed": 0,
-    "slowUiSmokeRun": false,
-    "desktopSmoke": "Pending packaged verification; final evidence is in build-info.json"
+    "slowUiSmokeRun": true,
+    "desktopSmoke": "Packaged Electron V1.4.232 with isolated local AI and ComfyUI fixtures; character selection, local search, exact job resumption and appearance delivery verified",
+    "desktopSmokeCounts": {
+      "ok": true,
+      "version": "1.4.232",
+      "settingsMirrored": true,
+      "apiCalls": 52,
+      "submittedPrompts": 11,
+      "uploads": 2,
+      "createCandidates": 4,
+      "recreateCandidates": 4,
+      "manualCandidates": 4,
+      "duplicatePromptBlocked": true,
+      "finalSelectionInterrupted": 1,
+      "selected": 1,
+      "monitorRecords": 75,
+      "characterChoice": {
+        "sameJobId": true,
+        "primaryCalls": 1,
+        "localSearch": true,
+        "fullAppearance": true,
+        "resumedCandidates": 1
+      },
+      "screenshots": [
+        "generation-smoke-1100x800.png",
+        "generation-smoke-wide.png",
+        "character-selection-smoke.png"
+      ],
+      "wideOverlap": false
+    },
+    "viewports": [
+      "1100x800",
+      "1500x950"
+    ],
+    "screenshotVerification": true
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",
