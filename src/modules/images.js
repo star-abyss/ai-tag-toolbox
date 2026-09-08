@@ -31,6 +31,36 @@ function clone(value) {
   return value;
 }
 
+function fitDimensionsToAspectRatio(value = {}) {
+  const sourceWidth = Number(value.sourceWidth);
+  const sourceHeight = Number(value.sourceHeight);
+  const baseWidth = Number(value.baseWidth);
+  const baseHeight = Number(value.baseHeight);
+  const step = Math.max(1, Math.round(Number(value.step) || 64));
+  if (![sourceWidth, sourceHeight, baseWidth, baseHeight].every(item => Number.isFinite(item) && item > 0)) return null;
+  const pixelBudget = Math.floor(baseWidth * baseHeight);
+  const ratio = sourceWidth / sourceHeight;
+  const idealWidth = Math.sqrt(pixelBudget * ratio);
+  const idealHeight = Math.sqrt(pixelBudget / ratio);
+  const center = Math.max(1, Math.round(idealWidth / step));
+  const candidates = [];
+  for (let widthStep = Math.max(1, center - 6); widthStep <= center + 6; widthStep += 1) {
+    const width = widthStep * step;
+    const idealForWidth = width / ratio;
+    const heightCenter = Math.max(1, Math.round(idealForWidth / step));
+    for (let heightStep = Math.max(1, heightCenter - 2); heightStep <= heightCenter + 2; heightStep += 1) {
+      const height = heightStep * step;
+      if (width * height > pixelBudget) continue;
+      const distance = Math.abs(width - idealWidth) / idealWidth + Math.abs(height - idealHeight) / idealHeight;
+      const ratioError = Math.abs(width / height - ratio) / ratio;
+      candidates.push({ width, height, distance, ratioError, pixels: width * height });
+    }
+  }
+  candidates.sort((a, b) => a.distance - b.distance || a.ratioError - b.ratioError || b.pixels - a.pixels);
+  const selected = candidates[0];
+  return selected ? { width: selected.width, height: selected.height, sourceWidth, sourceHeight, pixelBudget } : null;
+}
+
 function makeId(sequence, source = '') {
   let hash = 2166136261;
   const input = `${sequence}|${source}`;
@@ -576,5 +606,6 @@ module.exports = {
   workflowPromptText,
   dataUrlFromBytes,
   dataUrlBytes,
-  normaliseInput
+  normaliseInput,
+  fitDimensionsToAspectRatio
 };

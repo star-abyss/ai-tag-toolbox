@@ -160,12 +160,12 @@
 - Results expose `outcome`, `residualIssues`, `recreationMode`, `aspectRatioMode`.
 - Reference mode derives dimensions from source ratio only when both explicit bindings are writable.
 
-- [ ] **Step 1:** Add failing tests for `best_available`, user-selected-with-issues, text approximation labels and 1024x1520 ratio fitting.
-- [ ] **Step 2:** Implement deterministic outcome classification and residual issue extraction.
-- [ ] **Step 3:** Implement pixel-budget aspect fitting and explicit width/height capability checks.
-- [ ] **Step 4:** Add authoritative UI delivery badges and strict primary response wording.
-- [ ] **Step 5:** Run focused tests and `npm run check`.
-- [ ] **Step 6:** Commit `V1.4.226：完善复刻结果语义与宽高比`.
+- [x] **Step 1:** Add failing tests for `best_available`, user-selected-with-issues, text approximation labels and 1024x1520 ratio fitting.
+- [x] **Step 2:** Implement deterministic outcome classification and residual issue extraction.
+- [x] **Step 3:** Implement pixel-budget aspect fitting and explicit width/height capability checks.
+- [x] **Step 4:** Add authoritative UI delivery badges and strict primary response wording.
+- [x] **Step 5:** Run focused tests and `npm run check`.
+- [x] **Step 6:** Commit `V1.4.226：完善复刻结果语义与宽高比`.
 
 ### Task 7: Compact Public DTO And Complete Usage
 

@@ -81,6 +81,16 @@ function analyzeWorkflow(value, options = {}) {
   return { ready: true, level: ambiguous || !selected || !positive.length || !outputs.length ? 'manual' : samplers.length === 1 ? 'standard' : 'advanced', nodeCount: entries.length, nodes: entries.map(([id]) => nodeRow(workflow, id)), samplerCandidates: samplers, outputCandidates: outputs, promptCandidates: { positive, negative }, fieldCandidates: fields, sourceImageCandidates: sourceImages, referenceFieldCandidates: referenceFields, suggestedBindings, missingClasses, errors: [], warnings: ambiguous ? ['发现多个采样器，请选择主采样器'] : [] };
 }
 function bindingValue(workflow, binding) { const node = workflow?.[String(binding?.nodeId)]; return node && Object.prototype.hasOwnProperty.call(node.inputs || {}, binding.input) ? node.inputs[binding.input] : undefined; }
+function hasWritableDimensionBindings(workflowValue, bindings = {}, overrides = DEFAULT_OVERRIDES) {
+  if (overrides?.width !== true || overrides?.height !== true) return false;
+  const validation = validateApiWorkflow(workflowValue);
+  if (!validation.ready) return false;
+  for (const field of ['width', 'height']) {
+    const rows = Array.isArray(bindings[field]) ? bindings[field] : bindings[field] ? [bindings[field]] : [];
+    if (!rows.length || rows.some(row => bindingValue(validation.workflow, row) === undefined)) return false;
+  }
+  return true;
+}
 function validateBindings(workflowValue, bindings = {}, overrides = DEFAULT_OVERRIDES, options = {}) {
   const validation = validateApiWorkflow(workflowValue); if (!validation.ready) return { ready: false, errors: [validation.error] }; const workflow = validation.workflow; const errors = []; const seen = new Map();
   const check = (field, value) => { if (!overrides[field]) return; const rows = Array.isArray(value) ? value : value ? [value] : []; if (!rows.length && field !== 'negative') errors.push(`未绑定 ${field}`); for (const row of rows) { if (bindingValue(workflow, row) === undefined) errors.push(`${options.profileName || '工作流'} 绑定失效：节点 ${row.nodeId} 输入 ${row.input}`); const key = `${row.nodeId}.${row.input}`; if (seen.has(key) && seen.get(key) !== field) errors.push(`绑定冲突：${key} 同时用于 ${seen.get(key)} 和 ${field}`); seen.set(key, field); } };
@@ -111,4 +121,4 @@ function applyExplicitBindings(workflowValue, bindings = {}, values = {}, overri
   }
   return workflow;
 }
-module.exports = { DEFAULT_OVERRIDES, REFERENCE_FIELD_KEYS, parseWorkflow, validateApiWorkflow, analyzeWorkflow, collectOutputCandidates, collectSourceImageCandidates, collectReferenceFieldCandidates, validateBindings, applyExplicitBindings };
+module.exports = { DEFAULT_OVERRIDES, REFERENCE_FIELD_KEYS, parseWorkflow, validateApiWorkflow, analyzeWorkflow, collectOutputCandidates, collectSourceImageCandidates, collectReferenceFieldCandidates, validateBindings, applyExplicitBindings, hasWritableDimensionBindings };

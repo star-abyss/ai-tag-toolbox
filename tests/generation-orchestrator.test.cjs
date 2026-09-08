@@ -78,6 +78,7 @@ test('auto creates two candidates, revises Tags and selects the accepted candida
   assert.equal(result.successfulRenders, 2);
   assert.equal(result.renderAttempts, 2);
   assert.equal(result.stopReason, 'accepted');
+  assert.equal(result.outcome, 'accepted');
   assert.deepEqual(result.positiveTags, ['1girl', 'blue hair', 'revision 1']);
   assert.equal(result.candidates[1].prompt, app.renders[1].positiveTags.join(', '));
   assert(app.renders[1].positiveTags.includes('blue hair'), 'preserved Tag must not be removed by a revision patch');
@@ -153,6 +154,7 @@ test('cancel aborts an active job and preserves a cancelled snapshot', async () 
   assert.equal(app.orchestrator.cancel(jobId), true);
   const result = await pending;
   assert.equal(result.status, 'cancelled');
+  assert.equal(result.outcome, 'cancelled');
   assert.equal(app.orchestrator.get(jobId).status, 'cancelled');
   assert(app.events.some(event => event.type === 'generation.cancelled'));
 });
@@ -296,4 +298,62 @@ test('selecting while awaiting manual feedback completes without another render'
   assert.equal(selected.status, 'completed');
   assert.equal(selected.selectedCandidateId, 'candidate-1');
   assert.equal(selected.successfulRounds, 1);
+});
+
+test('limit completion is best available and exposes bounded residual issues', async () => {
+  const reviewRows = [
+    { score: 72, observed: '姿势偏差', suggestedChange: '加强原图姿势' },
+    { score: 68, observed: '背景缺失', suggestedChange: '恢复教堂背景' },
+    { score: 78, observed: '视角不符', suggestedChange: '改成低视角' }
+  ];
+  const app = harness({
+    settings: { generation: { strategy: 'fixed3', autoRun: true, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90 } },
+    runSubAgent: async (name, request) => {
+      if (name === 'generateTags' && request.input.operation === 'compile') return ok({ positiveTags: ['1girl', 'church'] });
+      if (name === 'generateTags') return ok({ add: [], remove: [], preserve: [] });
+      if (name === 'evaluateImages' && request.input.operation === 'review') {
+        const row = reviewRows.shift();
+        const issue = { expected: '匹配原图', observed: row.observed, severity: 'hard', suggestedChange: row.suggestedChange };
+        return ok({ operation: 'review', evaluations: [{ candidateId: request.input.candidateImageIds[0], score: row.score, verdict: 'revise', hardErrors: [issue], issues: [issue], summary: row.observed }] });
+      }
+      if (name === 'evaluateImages') {
+        const candidateId = request.input.candidateImageIds.includes('img-3') ? 'img-3' : request.input.candidateImageIds[0];
+        return ok({ operation: 'compare', recommendedCandidateId: candidateId, ranking: request.input.candidateImageIds.map((id, index) => ({ candidateId: id, rank: index + 1, score: 70 + index, reason: 'best effort' })), reason: '达到上限后的最佳项' });
+      }
+      throw new Error(name);
+    }
+  });
+  const result = await app.orchestrator.execute({ originalRequirements: '复刻构图', mode: 'create', strategy: 'fixed3' }, app.context);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.outcome, 'best_available');
+  assert.equal(result.selectedCandidateId, 'candidate-3');
+  assert.equal(result.residualIssues.length, 1);
+  assert.equal(result.residualIssues[0].observed, '视角不符');
+  assert.equal(result.residualIssues[0].severity, 'hard');
+});
+
+test('user selection with hard errors has an explicit delivery outcome', async () => {
+  const issue = { expected: '双手完整', observed: '手部畸形', severity: 'hard', suggestedChange: '修复手部' };
+  const app = harness({
+    settings: { generation: { autoRun: false, imagesPerRound: 1, maxAutoRounds: 3 } },
+    runSubAgent: async (name, request) => {
+      if (name === 'generateTags') return ok({ positiveTags: ['1girl'] });
+      if (name === 'evaluateImages' && request.input.operation === 'review') return ok({ operation: 'review', evaluations: [{ candidateId: request.input.candidateImageIds[0], score: 66, verdict: 'reject', hardErrors: [issue], issues: [], summary: '手部需要修复' }] });
+      throw new Error(name);
+    }
+  });
+  const paused = await app.orchestrator.execute({ originalRequirements: 'portrait', mode: 'create', autoRun: false }, app.context);
+  const selected = await app.orchestrator.selectAndFinish(paused.jobId, 'candidate-1', 'user');
+  assert.equal(selected.outcome, 'user_selected_with_issues');
+  assert.equal(selected.residualIssues[0].observed, '手部畸形');
+});
+
+test('exhausting render attempts exposes a failed outcome', async () => {
+  const app = harness({
+    settings: { generation: { autoRun: true, maxAutoRounds: 1, maxRenderAttempts: 2 } },
+    renderPlan: [error('COMFY_FAILED', 'first failure'), error('COMFY_FAILED', 'second failure')]
+  });
+  const result = await app.orchestrator.execute({ originalRequirements: 'portrait', mode: 'create' }, app.context);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.outcome, 'failed');
 });

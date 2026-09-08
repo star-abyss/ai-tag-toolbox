@@ -4,6 +4,8 @@ const { SCHEMAS, OUTPUT_SCHEMAS } = require('./fixed-subagents');
 const { assertValid } = require('./schema');
 const { errorShape, resultOk, resultError } = require('./error-manager');
 const { compactVisionResult } = require('./vision-payload');
+const { fitDimensionsToAspectRatio } = require('./images');
+const { hasWritableDimensionBindings } = require('./comfy-workflow');
 const TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'agent.generateTags', 'comfy.status', 'comfy.validateWorkflow', 'comfy.render', 'generation.execute', 'generation.resume']);
 const PRIMARY_TOOL_NAMES = Object.freeze(['tags.search', 'characters.search', 'conversation.listImages', 'vision.processOne', 'translation.translate', 'comfy.status', 'generation.execute', 'generation.resume']);
 const NATIVE_NAMES = new Map(TOOL_NAMES.map(name => [name.replace('.', '_'), name]));
@@ -24,7 +26,7 @@ const imageSchema = schema({ imageId: nonempty, refId: string, slotNo: { type: '
 const workflowSchema = schema({ ready: { type: 'boolean' }, error: string }, ['ready', 'error']);
 const capabilitiesSchema = schema({ txt2img: { type: 'boolean' }, img2img: { type: 'boolean' }, controlImage: { type: 'boolean' }, mask: { type: 'boolean' } });
 const statusSchema = schema({ enabled: { type: 'boolean' }, connected: { type: 'boolean' }, workflowReady: { type: 'boolean' }, render: { type: 'boolean' }, error: string, workflowProfileId: string, workflowRevision: string, capabilities: capabilitiesSchema }, ['enabled', 'connected', 'workflowReady', 'render', 'error']);
-const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty }, prompt: string, negative: string, positiveTags: tagArray, negativeTags: tagArray, parameters: { type: 'object' }, workflowProfileId: string, workflowRevision: string, workflowHash: string, changedBindings: { type: 'array', items: string }, recreationMode: { type: 'string', enum: ['', 'reference_image', 'text_approximation'] } }, ['artifacts', 'imageIds']);
+const renderSchema = schema({ artifacts: { type: 'array', minItems: 1, maxItems: 256, items: imageSchema }, imageIds: { type: 'array', minItems: 1, maxItems: 256, items: nonempty }, prompt: string, negative: string, positiveTags: tagArray, negativeTags: tagArray, parameters: { type: 'object' }, workflowProfileId: string, workflowRevision: string, workflowHash: string, changedBindings: { type: 'array', items: string }, recreationMode: { type: 'string', enum: ['', 'reference_image', 'text_approximation'] }, aspectRatioMode: { type: 'string', enum: ['', 'source_matched', 'workflow_fixed'] } }, ['artifacts', 'imageIds']);
 const generationExecuteSchema = schema({ originalRequirements: { type: 'string', minLength: 1, maxLength: 16000 }, requirements: { type: 'string', minLength: 1, maxLength: 16000 }, mode: { type: 'string', enum: ['create', 'recreate', 'auto'] }, sourceImageId: nonempty, sourceSlot: { type: 'integer', minimum: 1, maximum: 10000 }, characterQueries: { type: 'array', maxItems: 8, items: nonempty }, characterIds: { type: 'array', maxItems: 8, items: nonempty }, strategy: { type: 'string', enum: ['quick', 'auto', 'fixed3'] }, autoSelect: { type: 'boolean' }, autoRun: { type: 'boolean' }, imagesPerRound: { type: 'integer', minimum: 1, maximum: 8 }, maxAutoRounds: { type: 'integer', minimum: 1, maximum: 3 }, workflowProfileId: nonempty });
 const generationResumeSchema = schema({ jobId: nonempty, action: { type: 'string', enum: ['continue'] }, baseCandidateId: nonempty, feedback: { type: 'string', minLength: 1, maxLength: 16000 }, sourceImageId: nonempty, characterIds: { type: 'array', maxItems: 8, items: nonempty }, workflowProfileId: nonempty, strategy: { type: 'string', enum: ['quick', 'auto', 'fixed3'] }, autoSelect: { type: 'boolean' }, autoRun: { type: 'boolean' }, imagesPerRound: { type: 'integer', minimum: 1, maximum: 8 }, maxAutoRounds: { type: 'integer', minimum: 1, maximum: 3 } }, ['jobId']);
 const DEFINITIONS = Object.freeze({
@@ -192,26 +194,38 @@ function createPrimaryTools(options = {}) {
       const negative = args.negativeTags === undefined ? (Array.isArray(settings.negativeTags) ? settings.negativeTags : text(settings.negativeTags).split(/[,，\n]+/).filter(Boolean)) : args.negativeTags;
       let uploaded = null;
       let recreationMode = '';
+      let aspectRatioMode = '';
+      let sourceAsset = null;
       if (args.sourceImageId) {
         if (!context.sessionId) throw failure('SESSION_REQUIRED', '复刻任务缺少当前会话');
         const listed = await repository?.listConversation?.(context.sessionId, { includePending: true, includeDeleted: false });
         const references = Array.isArray(listed) ? listed : listed?.items;
         const sourceReference = Array.isArray(references) ? references.find(item => text(item?.imageId || item?.id) === args.sourceImageId && !item?.deleted) : null;
         if (!sourceReference) throw failure('IMAGE_SCOPE', '参考原图不在当前会话中');
+        sourceAsset = images?.get?.(args.sourceImageId) || {};
         const canUseReference = Boolean(profile?.bindings?.sourceImage && (!profile.capabilities || profile.capabilities.img2img === true || profile.capabilities.controlImage === true));
         if (canUseReference) {
           if (typeof repository?.getOriginalBytes !== 'function' || typeof comfy?.uploadImage !== 'function') throw failure('IMAGE_UPLOAD_UNAVAILABLE', '当前环境无法向 ComfyUI 上传参考原图');
           const bytes = await repository.getOriginalBytes(args.sourceImageId);
           guardSignal(context);
           if (!bytes?.length) throw failure('IMAGE_DATA_UNAVAILABLE', '无法读取参考原图内容');
-          const asset = images?.get?.(args.sourceImageId) || {};
-          uploaded = await comfy.uploadImage({ bytes, filename: text(asset.filename || asset.displayName, `${args.sourceImageId}.png`), type: text(asset.mime, 'image/png') }, context.signal);
+          uploaded = await comfy.uploadImage({ bytes, filename: text(sourceAsset.filename || sourceAsset.displayName, `${args.sourceImageId}.png`), type: text(sourceAsset.mime, 'image/png') }, context.signal);
           guardSignal(context);
           recreationMode = 'reference_image';
         } else recreationMode = 'text_approximation';
       }
       let submitted = null;
       const parameters = { width: settings.width, height: settings.height, steps: settings.steps, cfg: settings.cfg, seed: settings.seed, sampler: settings.sampler, scheduler: settings.scheduler, batchCount: args.batchCount || settings.batchCount };
+      if (args.sourceImageId) {
+        const followSource = getSettings()?.generation?.followSourceAspectRatio !== false;
+        const writable = followSource && hasWritableDimensionBindings(settings.workflow, profile?.bindings, profile?.overrides);
+        const fitted = writable ? fitDimensionsToAspectRatio({ sourceWidth: sourceAsset?.width, sourceHeight: sourceAsset?.height, baseWidth: settings.width, baseHeight: settings.height, step: 64 }) : null;
+        if (fitted) {
+          parameters.width = fitted.width;
+          parameters.height = fitted.height;
+          aspectRatioMode = 'source_matched';
+        } else aspectRatioMode = 'workflow_fixed';
+      }
       if (uploaded && profile?.bindings?.denoise && args.denoise !== undefined) parameters.denoise = args.denoise;
       if (uploaded && profile?.bindings?.controlStrength && args.controlStrength !== undefined) parameters.controlStrength = args.controlStrength;
       const raw = await comfy.render({ prompt: args.positiveTags.join(', '), negative: negative.join(', '), ...parameters, ...(uploaded ? { sourceImage: uploaded } : {}), workflow: settings.workflow, signal: context.signal, onSubmitted: value => { submitted = clone(value || {}); if (!context.signal?.aborted) context.onEvent?.({ type: 'comfy.submitted', workflowHash: text(value?.workflowHash), changedBindings: Array.isArray(value?.changedBindings) ? value.changedBindings.slice() : [], parameters: object(value?.parameters) ? clone(value.parameters) : {} }); }, onProgress: value => { if (!context.signal?.aborted) context.onEvent?.({ type: 'progress', tool: 'comfy.render', queue: typeof value === 'number' ? value : undefined }); } });
@@ -222,7 +236,8 @@ function createPrimaryTools(options = {}) {
         workflowProfileId: text(profile?.id), workflowRevision: profile?.updatedAt ? String(profile.updatedAt) : '',
         workflowHash: text(submitted?.workflowHash || raw?.workflowHash),
         changedBindings: Array.isArray(submitted?.changedBindings || raw?.changedBindings) ? (submitted?.changedBindings || raw.changedBindings).slice() : [],
-        recreationMode
+        recreationMode,
+        aspectRatioMode
       });
     },
     'generation.execute': async (args, context) => {

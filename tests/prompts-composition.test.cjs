@@ -64,6 +64,8 @@ test('default primary prompt delegates drawing to the high-level generation work
   const primary = prompts.get('primary');
   assert.match(primary, /generation\.execute/);
   assert.match(primary, /不确定.*Tag.*tags\.search/s);
+  assert.match(primary, /best_available/);
+  assert.match(primary, /text_approximation/);
   assert.doesNotMatch(primary, /【进度 步骤|每步汇报/);
 });
 

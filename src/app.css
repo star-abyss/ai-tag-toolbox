@@ -590,6 +590,13 @@ body.aiview #catList,body.aiview #addTagBtn{display:none}
   body.vision-open #tagPane.tkpane{left:0;right:0;width:100%;max-width:none}
 }
 .draw-candidates{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:10px 0 4px}
+.generation-delivery{grid-column:1/-1;padding:8px 10px;border:1px solid var(--border2);border-left:3px solid var(--pri);border-radius:6px;background:var(--well)}
+.generation-delivery[data-outcome="best_available"],.generation-delivery[data-outcome="user_selected_with_issues"]{border-left-color:#d97706}
+.generation-delivery-badges{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.generation-delivery-badge{padding:2px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--card);color:var(--muted);font-size:10.5px;font-weight:700}
+.generation-delivery-badge.outcome{border-color:var(--pri);background:var(--pri-bg);color:var(--pri-h)}
+.generation-delivery-badge.warning{border-color:#d97706;background:rgba(217,119,6,.1);color:#b45309}
+.generation-residual-issues{margin:7px 0 0;padding-left:18px;color:var(--muted);font-size:11px;line-height:1.5}
 .draw-round-heading{grid-column:1/-1;margin:4px 0 0;padding-bottom:4px;border-bottom:1px solid var(--border2);font-size:12px;color:var(--muted)}
 .draw-candidate{min-width:0;padding:10px;border:1px solid var(--border2);border-radius:8px;background:var(--card);box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s}
 .draw-candidate:hover{border-color:var(--pri);box-shadow:0 3px 12px var(--pri-bg)}

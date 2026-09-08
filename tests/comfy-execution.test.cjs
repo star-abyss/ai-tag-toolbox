@@ -135,6 +135,55 @@ test('internal render uploads and binds a current-session source or reports text
   assert.equal(calls.filter(call => call.type === 'upload').length, 1);
 });
 
+test('recreation follows source aspect ratio only with explicit writable dimensions', async () => {
+  const source = { imageId: 'source-ratio', refId: 'source-ref', slotNo: 1 };
+  const renderedInputs = [];
+  const profile = {
+    id: 'profile-ratio', updatedAt: 456, workflow: structuredClone(workflow),
+    capabilities: { txt2img: true, img2img: true, controlImage: false, mask: false },
+    bindings: {
+      positive: [{ nodeId: '6', input: 'text' }], negative: [{ nodeId: '7', input: 'text' }],
+      width: [{ nodeId: '5', input: 'width' }], height: [{ nodeId: '5', input: 'height' }], outputs: ['8'],
+      sourceImage: { nodeId: '10', input: 'image' }
+    },
+    overrides: { positive: true, negative: true, width: true, height: true }
+  };
+  const images = {
+    get: id => id === 'source-ratio'
+      ? { id, imageId: id, width: 1024, height: 1520, filename: 'source.png', mime: 'image/png' }
+      : { id, imageId: id },
+    add: value => ({ id: value.id || value.imageId || 'render-ratio' })
+  };
+  const repository = {
+    listConversation: () => ({ items: [source] }),
+    getOriginalBytes: async () => Buffer.from([1, 2, 3]),
+    attachToConversation: (_sessionId, imageId) => ({ imageId, refId: `ref-${imageId}` })
+  };
+  const comfy = {
+    profiles: { active: () => profile },
+    uploadImage: async () => ({ name: 'source.png', subfolder: 'aitag', type: 'input' }),
+    render: async input => { renderedInputs.push(input); return { artifact: { id: `render-${renderedInputs.length}` } }; }
+  };
+  const settings = {
+    comfy: { enabled: true, workflow, negativeTags: [], width: 1024, height: 1024, steps: 20, cfg: 7, seed: 1, sampler: 'euler', scheduler: 'normal', batchCount: 1 },
+    generation: { followSourceAspectRatio: true }
+  };
+  const tools = createPrimaryTools({ images, imageRepository: repository, comfy, comfyProfiles: comfy.profiles, getSettings: () => settings });
+  const matched = await tools.call('comfy.render', { positiveTags: ['1girl'], sourceImageId: source.imageId }, { sessionId: 'session-1' });
+  assert.equal(matched.ok, true, JSON.stringify(matched.error));
+  assert.deepEqual([renderedInputs[0].width, renderedInputs[0].height], [832, 1216]);
+  assert.equal(renderedInputs[0].width % 64, 0);
+  assert.equal(renderedInputs[0].height % 64, 0);
+  assert(renderedInputs[0].width * renderedInputs[0].height <= 1024 * 1024);
+  assert.equal(matched.data.aspectRatioMode, 'source_matched');
+
+  profile.overrides.height = false;
+  const fixed = await tools.call('comfy.render', { positiveTags: ['1girl'], sourceImageId: source.imageId }, { sessionId: 'session-1' });
+  assert.equal(fixed.ok, true, JSON.stringify(fixed.error));
+  assert.deepEqual([renderedInputs[1].width, renderedInputs[1].height], [1024, 1024]);
+  assert.equal(fixed.data.aspectRatioMode, 'workflow_fixed');
+});
+
 test('ComfyUI cancel interrupts the active render exactly once', async () => {
   let interrupts = 0;
   const comfy = createComfy({ base: 'http://example.test:8188', fetch: async url => {

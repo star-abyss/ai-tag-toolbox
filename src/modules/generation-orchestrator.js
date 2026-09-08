@@ -19,6 +19,7 @@ const JOB_STATES = Object.freeze([
 const RUNNING_STATES = new Set(['preparing', 'compiling', 'rendering', 'evaluating', 'revising', 'selecting', 'finishing']);
 const TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
 const GENERATION_STRATEGIES = Object.freeze(['quick', 'auto', 'fixed3']);
+const GENERATION_OUTCOMES = Object.freeze(['', 'accepted', 'best_available', 'user_selected', 'user_selected_with_issues', 'cancelled', 'failed']);
 const DEFAULT_GENERATION_POLICY = Object.freeze({
   autoRun: true,
   imagesPerRound: 1,
@@ -107,6 +108,28 @@ function activeCandidate(job, id) {
 function reviewed(candidate) { return candidate?.evaluation?.status === 'reviewed'; }
 function hardErrorCount(candidate) { return Array.isArray(candidate?.evaluation?.hardErrors) ? candidate.evaluation.hardErrors.length : 0; }
 function score(candidate) { return reviewed(candidate) ? number(candidate.evaluation.score, 0, 0, 100) : -1; }
+function residualIssues(candidate, limit = 6) {
+  const rows = [...(Array.isArray(candidate?.evaluation?.hardErrors) ? candidate.evaluation.hardErrors : []), ...(Array.isArray(candidate?.evaluation?.issues) ? candidate.evaluation.issues : [])];
+  const seen = new Set();
+  const output = [];
+  for (const value of rows) {
+    const issue = object(value) ? {
+      expected: text(value.expected), observed: text(value.observed), severity: text(value.severity, 'major'), suggestedChange: text(value.suggestedChange)
+    } : { expected: '', observed: text(value), severity: 'major', suggestedChange: '' };
+    const key = `${issue.expected}|${issue.observed}|${issue.suggestedChange}`;
+    if (!issue.observed && !issue.expected || seen.has(key)) continue;
+    seen.add(key);
+    output.push(issue);
+    if (output.length >= limit) break;
+  }
+  return output;
+}
+function classifyOutcome(candidate, source = 'program', acceptScore = 90) {
+  if (source === 'user') return hardErrorCount(candidate) > 0 ? 'user_selected_with_issues' : 'user_selected';
+  return reviewed(candidate) && hardErrorCount(candidate) === 0 && candidate.evaluation?.verdict === 'accept' && score(candidate) >= acceptScore
+    ? 'accepted'
+    : 'best_available';
+}
 function programRanking(candidates) {
   const rows = candidates.slice();
   const hasClean = rows.some(candidate => reviewed(candidate) && hardErrorCount(candidate) === 0);
@@ -176,6 +199,10 @@ function createGenerationOrchestrator(options = {}) {
       candidates,
       rounds,
       selectedCandidateId: text(source.selectedCandidateId),
+      outcome: GENERATION_OUTCOMES.includes(source.outcome) ? source.outcome : '',
+      residualIssues: Array.isArray(source.residualIssues) ? clone(source.residualIssues).slice(0, 6) : [],
+      recreationMode: text(source.recreationMode),
+      aspectRatioMode: text(source.aspectRatioMode),
       selectionReason: text(source.selectionReason),
       renderAttempts: Math.max(0, Number(source.renderAttempts) || 0),
       successfulRenders: candidates.length,
@@ -231,6 +258,9 @@ function createGenerationOrchestrator(options = {}) {
       originalRequirements: job.originalRequirements,
       sourceImageId: job.sourceImageId,
       recreationMode: job.recreationMode || '',
+      aspectRatioMode: job.aspectRatioMode || '',
+      outcome: job.outcome || '',
+      residualIssues: clone(job.residualIssues || []),
       needsInput: job.needsInput || null,
       selectedCandidateId: final?.finalCandidateId || '',
       selectedImageId: final?.finalImageId || '',
@@ -530,6 +560,10 @@ function createGenerationOrchestrator(options = {}) {
         continue;
       }
       const candidateIds = [];
+      if (job.mode === 'recreate') {
+        job.recreationMode = text(rendered?.recreationMode, job.recreationMode || 'text_approximation');
+        job.aspectRatioMode = text(rendered?.aspectRatioMode, job.aspectRatioMode || 'workflow_fixed');
+      }
       job.successfulRounds += 1;
       for (const [indexInRound, artifact] of artifacts.entries()) {
         job.successfulRenders += 1;
@@ -550,7 +584,8 @@ function createGenerationOrchestrator(options = {}) {
           parameters: object(rendered?.parameters) ? rendered.parameters : object(artifact.parameters) ? artifact.parameters : {},
           workflowProfileId: text(rendered?.workflowProfileId, job.workflowProfileId),
           workflowRevision: text(rendered?.workflowRevision, job.workflowRevision),
-          recreationMode: text(rendered?.recreationMode, job.recreationMode)
+          recreationMode: text(rendered?.recreationMode, job.recreationMode),
+          aspectRatioMode: text(rendered?.aspectRatioMode, job.aspectRatioMode)
         });
         emit(job, context, 'candidate.ready', { candidateId, imageId: artifact.imageId, iteration: job.successfulRenders, roundId, roundIndex, indexInRound: indexInRound + 1 });
         await evaluateOne(job, activeCandidate(job, candidateId), context);
@@ -631,6 +666,9 @@ function createGenerationOrchestrator(options = {}) {
       if (!job.candidates.length) throw failure('NO_CANDIDATE', '在允许的尝试次数内没有生成可用图片');
       if (job.status === 'awaiting_feedback') return result(job);
       await chooseRecommendation(job, context);
+      const delivery = activeCandidate(job, job.selectedCandidateId) || job.candidates.find(candidate => candidate.evaluation?.recommended) || programRanking(job.candidates)[0];
+      job.outcome = classifyOutcome(delivery, 'program', job.policy.acceptScore);
+      job.residualIssues = residualIssues(delivery);
       transition(job, 'completed');
       emit(job, context, 'generation.completed', { candidateCount: job.candidates.length, selectedCandidateId: job.selectedCandidateId, stopReason: job.stopReason });
       return result(job);
@@ -643,6 +681,7 @@ function createGenerationOrchestrator(options = {}) {
       if (job.status === 'cancelled' || context.signal.aborted || error?.code === 'CANCELLED') {
         job.status = 'cancelled';
         job.stopReason = 'cancelled';
+        job.outcome = 'cancelled';
         persist(job);
         emit(job, context, 'generation.cancelled', { candidateCount: job.candidates.length });
         return result(job);
@@ -650,6 +689,7 @@ function createGenerationOrchestrator(options = {}) {
       job.error = errorValue(error);
       job.status = 'failed';
       job.stopReason = job.stopReason || 'failed';
+      job.outcome = 'failed';
       persist(job);
       emit(job, context, 'generation.failed', { error: job.error, candidateCount: job.candidates.length });
       return result(job);
@@ -717,6 +757,7 @@ function createGenerationOrchestrator(options = {}) {
     if (!job || TERMINAL_STATES.has(job.status)) return false;
     job.status = 'cancelled';
     job.stopReason = 'cancelled';
+    job.outcome = 'cancelled';
     persist(job);
     const running = active.get(job.jobId);
     if (running && !running.controller.signal.aborted) running.controller.abort(failure('CANCELLED', '生成任务已取消'));
@@ -737,6 +778,8 @@ function createGenerationOrchestrator(options = {}) {
     job.candidates = selectCandidateRows(job.candidates, candidate.id, source);
     job.selectedCandidateId = candidate.id;
     job.selectionReason = source === 'user' ? '用户手动选择' : job.selectionReason;
+    job.outcome = classifyOutcome(candidate, source === 'user' ? 'user' : 'program', job.policy.acceptScore);
+    job.residualIssues = residualIssues(candidate);
     persist(job);
     return result(job);
   }
@@ -750,6 +793,8 @@ function createGenerationOrchestrator(options = {}) {
     job.selectedCandidateId = candidate.id;
     job.selectionReason = source === 'user' ? '用户选择最终候选' : text(source, '程序选择最终候选');
     job.stopReason = 'user_selected';
+    job.outcome = classifyOutcome(candidate, source === 'user' ? 'user' : 'program', job.policy.acceptScore);
+    job.residualIssues = residualIssues(candidate);
     job.status = 'finishing';
     const running = active.get(job.jobId);
     emit(job, running?.context || {}, 'generation.user_selected', { candidateId: candidate.id, imageId: candidate.imageId, source });
@@ -769,6 +814,7 @@ function createGenerationOrchestrator(options = {}) {
 module.exports = {
   JOB_STATES,
   GENERATION_STRATEGIES,
+  GENERATION_OUTCOMES,
   DEFAULT_GENERATION_POLICY,
   createGenerationOrchestrator,
   policyFrom

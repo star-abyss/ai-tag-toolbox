@@ -265,6 +265,20 @@ test('automatic running candidates hide continuation but keep final selection', 
   app.dom.window.close();
 });
 
+test('generation delivery badges expose limits, approximation and residual issues', () => {
+  const issue = { expected: '原图构图', observed: '视角仍有偏差', severity: 'hard', suggestedChange: '改成低视角' };
+  const candidate = { id: 'candidate-1', iteration: 1, imageId: 'img-1', prompt: '1girl, church', negative: 'lowres', selected: true, evaluation: { status: 'reviewed', score: 78, verdict: 'revise', hardErrors: [issue], issues: [], summary: '尚未完全匹配' } };
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', imageIds: ['img-1'], status: 'done', result: { status: 'completed', outcome: 'best_available', recreationMode: 'text_approximation', aspectRatioMode: 'workflow_fixed', selectedCandidateId: candidate.id, residualIssues: [issue], candidates: [candidate] } }] });
+  const delivery = app.window.document.querySelector('.generation-delivery');
+  assert(delivery);
+  assert.equal(delivery.dataset.outcome, 'best_available');
+  assert.match(delivery.textContent, /达到上限后的最佳候选/);
+  assert.match(delivery.textContent, /文本近似复刻/);
+  assert.match(delivery.textContent, /工作流固定尺寸/);
+  assert.match(delivery.textContent, /视角仍有偏差/);
+  app.dom.window.close();
+});
+
 test('needs-input generation result is shown as an actionable conversation notice', () => {
   const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '请选择参考图', imageIds: [], status: 'done', result: { status: 'needs_input', jobId: 'job-1', needsInput: { kind: 'source_image', message: '请选择当前会话中的参考原图' }, candidates: [] } }] });
   app.view.route('ai'); app.view.showAi('talk'); app.view.renderTalk();

@@ -2684,6 +2684,58 @@
       const selectedId = str(message.result?.finalCandidateId || message.result?.selectedCandidateId);
       const host = doc.createElement("div");
       host.className = "draw-candidates";
+      const outcome = str(message.result?.outcome);
+      const recreationMode = str(message.result?.recreationMode);
+      const aspectRatioMode = str(message.result?.aspectRatioMode);
+      if (outcome || recreationMode || aspectRatioMode) {
+        const delivery = doc.createElement("section");
+        delivery.className = "generation-delivery";
+        delivery.dataset.outcome = outcome;
+        const badges = doc.createElement("div");
+        badges.className = "generation-delivery-badges";
+        const addBadge = (kind, label) => {
+          if (!label) return;
+          const badge = doc.createElement("span");
+          badge.className = `generation-delivery-badge ${kind}`;
+          badge.textContent = label;
+          badges.appendChild(badge);
+        };
+        const outcomeLabels = {
+          accepted: localized("ui.ai.outcomeAccepted", "已达到验收标准"),
+          best_available: localized("ui.ai.outcomeBestAvailable", "达到上限后的最佳候选"),
+          user_selected: localized("ui.ai.outcomeUserSelected", "用户最终选择"),
+          user_selected_with_issues: localized("ui.ai.outcomeUserSelectedWithIssues", "用户已选择，仍有已知问题")
+        };
+        const recreationLabels = {
+          reference_image: localized("ui.ai.recreationReference", "参考图已进入工作流"),
+          text_approximation: localized("ui.ai.recreationTextApproximation", "文本近似复刻")
+        };
+        const aspectLabels = {
+          source_matched: localized("ui.ai.aspectSourceMatched", "已匹配原图宽高比"),
+          workflow_fixed: localized("ui.ai.aspectWorkflowFixed", "工作流固定尺寸")
+        };
+        addBadge("outcome", outcomeLabels[outcome] || outcome);
+        addBadge("recreation", recreationLabels[recreationMode]);
+        addBadge("aspect", aspectLabels[aspectRatioMode]);
+        const selectedCandidate = candidates.find(candidate => candidate.id === selectedId || candidate.selected);
+        const hardErrorTotal = Array.isArray(selectedCandidate?.evaluation?.hardErrors) ? selectedCandidate.evaluation.hardErrors.length : 0;
+        addBadge(hardErrorTotal ? "hard-errors warning" : "hard-errors", formatText(localized("ui.ai.hardErrorCount", "硬错误 {count}"), { count: hardErrorTotal }));
+        delivery.appendChild(badges);
+        const remaining = Array.isArray(message.result?.residualIssues) ? message.result.residualIssues : [];
+        if (remaining.length) {
+          const list = doc.createElement("ul");
+          list.className = "generation-residual-issues";
+          for (const issue of remaining.slice(0, 6)) {
+            const item = doc.createElement("li");
+            const observed = str(issue?.observed || issue?.expected || "待调整");
+            const suggestion = str(issue?.suggestedChange);
+            item.textContent = suggestion ? `${observed}；${suggestion}` : observed;
+            list.appendChild(item);
+          }
+          delivery.appendChild(list);
+        }
+        host.appendChild(delivery);
+      }
       let visibleRound = 0;
       candidates.forEach(candidate => {
         const roundIndex = Number(candidate.roundIndex) || 1;
