@@ -589,16 +589,18 @@ body.aiview #catList,body.aiview #addTagBtn{display:none}
   body.vision-open #scrim{left:0;right:0;top:var(--vision-scrim-top,63px)}
   body.vision-open #tagPane.tkpane{left:0;right:0;width:100%;max-width:none}
 }
-.draw-candidates{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:10px 0 4px}
-.generation-delivery{grid-column:1/-1;padding:8px 10px;border:1px solid var(--border2);border-left:3px solid var(--pri);border-radius:6px;background:var(--well)}
+.draw-candidates{display:flex;min-width:0;flex-direction:column;gap:10px;margin:10px 0 4px}
+.generation-delivery{padding:8px 10px;border:1px solid var(--border2);border-left:3px solid var(--pri);border-radius:6px;background:var(--well)}
 .generation-delivery[data-outcome="best_available"],.generation-delivery[data-outcome="user_selected_with_issues"]{border-left-color:#d97706}
 .generation-delivery-badges{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .generation-delivery-badge{padding:2px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--card);color:var(--muted);font-size:10.5px;font-weight:700}
 .generation-delivery-badge.outcome{border-color:var(--pri);background:var(--pri-bg);color:var(--pri-h)}
 .generation-delivery-badge.warning{border-color:#d97706;background:rgba(217,119,6,.1);color:#b45309}
 .generation-residual-issues{margin:7px 0 0;padding-left:18px;color:var(--muted);font-size:11px;line-height:1.5}
-.draw-round-heading{grid-column:1/-1;margin:4px 0 0;padding-bottom:4px;border-bottom:1px solid var(--border2);font-size:12px;color:var(--muted)}
-.draw-candidate{min-width:0;padding:10px;border:1px solid var(--border2);border-radius:8px;background:var(--card);box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s}
+.draw-round{min-width:0}
+.draw-round-heading{margin:4px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border2);font-size:12px;color:var(--muted)}
+.draw-round-track{display:flex;min-width:0;gap:10px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding:2px 2px 10px}
+.draw-candidate{flex:0 0 clamp(260px,32vw,340px);min-width:0;padding:10px;border:1px solid var(--border2);border-radius:8px;background:var(--card);box-shadow:var(--shadow);scroll-snap-align:start;transition:border-color .15s,box-shadow .15s}
 .draw-candidate:hover{border-color:var(--pri);box-shadow:0 3px 12px var(--pri-bg)}
 .draw-candidate.selected{border-color:var(--pri);box-shadow:0 0 0 2px var(--pri-bg)}
 .draw-candidate.recommended{border-color:var(--cp)}
@@ -1228,7 +1230,7 @@ header{padding:12px 20px;gap:9px;background:var(--card);border-bottom-color:var(
 .call-record-section pre{max-height:300px;min-height:38px;margin:0;padding:8px;border-top:1px solid var(--border);background:var(--bg);color:var(--text);font:10.5px/1.45 Consolas,'Cascadia Code',monospace;white-space:pre-wrap;word-break:break-word;overflow:auto}
 .call-monitor-actions>label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}.call-monitor-actions select{height:34px;max-width:300px}
 @media(max-width:700px){.call-monitor-head{display:block}.call-monitor-head .secret-status{display:inline-block;margin-top:6px}.call-monitor-actions{flex-wrap:wrap}.tk-statusline .talk-status{flex-basis:100%;width:auto;max-width:none}}
-@media(max-width:700px){.generation-controls{width:100%;flex-wrap:wrap}.generation-workflow-name{margin-left:auto}.draw-candidates{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:700px){.generation-controls{width:100%;flex-wrap:wrap}.generation-workflow-name{margin-left:auto}.draw-round-track .draw-candidate{flex-basis:min(320px,calc(100vw - 54px))}}
 .talkmain>.tkmodebar{align-self:flex-start;width:max-content;max-width:100%}
 
 /* V1.4.114：对话尺寸与主流 AI 工作台保持一致。

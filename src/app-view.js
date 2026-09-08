@@ -2736,16 +2736,25 @@
         }
         host.appendChild(delivery);
       }
-      let visibleRound = 0;
+      const roundTracks = new Map();
+      const ensureRoundTrack = roundIndex => {
+        if (roundTracks.has(roundIndex)) return roundTracks.get(roundIndex);
+        const group = doc.createElement("section");
+        group.className = "draw-round";
+        group.dataset.roundIndex = String(roundIndex);
+        const roundHeading = doc.createElement("h4");
+        roundHeading.className = "draw-round-heading";
+        roundHeading.textContent = `第 ${roundIndex} 轮`;
+        const track = doc.createElement("div");
+        track.className = "draw-round-track";
+        group.append(roundHeading, track);
+        host.appendChild(group);
+        roundTracks.set(roundIndex, track);
+        return track;
+      };
       candidates.forEach(candidate => {
         const roundIndex = Number(candidate.roundIndex) || 1;
-        if (roundIndex !== visibleRound) {
-          visibleRound = roundIndex;
-          const roundHeading = doc.createElement("h4");
-          roundHeading.className = "draw-round-heading";
-          roundHeading.textContent = `第 ${roundIndex} 轮`;
-          host.appendChild(roundHeading);
-        }
+        const roundTrack = ensureRoundTrack(roundIndex);
         const card = doc.createElement("article");
         card.className = "draw-candidate";
         if (candidate.id === selectedId || candidate.selected) card.classList.add("selected");
@@ -2873,7 +2882,7 @@
         };
         actions.append(continueButton, choose);
         card.appendChild(actions);
-        host.appendChild(card);
+        roundTrack.appendChild(card);
       });
       row.appendChild(host);
       return true;

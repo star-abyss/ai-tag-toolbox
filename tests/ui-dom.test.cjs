@@ -233,6 +233,8 @@ test('candidate comparison shows scores and issues and accepts a manual final ch
   const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', imageIds: ['img-1', 'img-2'], status: 'done', result: { status: 'completed', selectedCandidateId: 'candidate-2', selectedImageId: 'img-2', prompt: candidates[1].prompt, negative: 'lowres', candidates } }] });
   app.view.route('ai'); app.view.showAi('talk'); app.view.renderTalk();
   const cards = app.window.document.querySelectorAll('.draw-candidate');
+  assert.equal(app.window.document.querySelectorAll('.draw-round').length, 1);
+  assert.equal(app.window.document.querySelector('.draw-round-track').children.length, 2);
   assert.equal(cards.length, 2);
   assert.match(cards[1].querySelector('.draw-candidate-score').textContent, /94/);
   assert.match(cards[0].querySelector('.draw-candidate-issues').textContent, /视角偏正面/);
@@ -259,6 +261,21 @@ test('manual candidate feedback continues only the selected image', async () => 
   button.click();
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(app.continuationCalls[0], { messageId: 'a1', candidateId: 'candidate-1', feedback: '保留人物，增强低视角' });
+  app.dom.window.close();
+});
+
+test('candidate rounds render as separate horizontal comparison tracks', () => {
+  const candidates = [
+    { id: 'candidate-1', iteration: 1, roundIndex: 1, imageId: 'img-1', prompt: 'first', evaluation: { status: 'reviewed', score: 70 } },
+    { id: 'candidate-2', iteration: 2, roundIndex: 1, imageId: 'img-2', prompt: 'second', evaluation: { status: 'reviewed', score: 75 } },
+    { id: 'candidate-3', iteration: 3, roundIndex: 2, imageId: 'img-3', prompt: 'third', evaluation: { status: 'reviewed', score: 80 } },
+    { id: 'candidate-4', iteration: 4, roundIndex: 2, imageId: 'img-4', prompt: 'fourth', evaluation: { status: 'reviewed', score: 85 } }
+  ];
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', imageIds: candidates.map(row => row.imageId), status: 'done', result: { status: 'completed', candidates } }] });
+  const rounds = [...app.window.document.querySelectorAll('.draw-round')];
+  assert.equal(rounds.length, 2);
+  assert.deepEqual(rounds.map(round => round.querySelectorAll('.draw-round-track > .draw-candidate').length), [2, 2]);
+  assert.deepEqual(rounds.map(round => round.querySelector('.draw-round-heading').textContent), ['第 1 轮', '第 2 轮']);
   app.dom.window.close();
 });
 

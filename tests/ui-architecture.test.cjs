@@ -48,7 +48,8 @@ test('generation UI consumes dotted state-machine events and keeps stable candid
   assert.match(app, /candidate\.ready/);
   assert.match(app, /candidate\.evaluated/);
   assert.match(app, /generation\.needs_input/);
-  assert.match(css, /\.draw-candidates\s*\{[^}]*grid-template-columns\s*:\s*repeat\(auto-fit,minmax\(260px,1fr\)\)/);
+  assert.match(css, /\.draw-round-track\s*\{[^}]*display\s*:\s*flex[^}]*overflow-x\s*:\s*auto/);
+  assert.match(css, /\.draw-candidate\s*\{[^}]*flex\s*:\s*0 0/);
 });
 
 test('preload exposes the scoped final-selection command', () => {
