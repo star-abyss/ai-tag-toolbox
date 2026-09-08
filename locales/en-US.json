@@ -257,7 +257,7 @@
       "comfyMaster": "ComfyUI",
       "comfySettings": "ComfyUI settings",
       "imagesPerRound": "Images per round",
-      "maxAutoRounds": "Maximum automatic rounds",
+      "maxAutoRounds": "Maximum ComfyUI calls",
       "generationAutoRun": "Run automatically",
       "generationStrategy": "Candidate generation mode",
       "generationQuick": "Quick · 1 image",

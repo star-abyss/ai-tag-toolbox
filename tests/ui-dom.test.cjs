@@ -44,7 +44,7 @@ function boot(options = {}) {
   const assistant = {
     sessions: () => [session], currentSession: () => session, newSession: () => session,
     getSettings: () => settings,
-    setSettings: patch => { settings = { ...settings, ...patch }; return settings; }, listModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }), listVisionModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }),
+    setSettings: patch => { settings = { ...settings, ...patch }; if (patch.batchCount !== undefined) settings.imagesPerRound = patch.batchCount; if (patch.imagesPerRound !== undefined) settings.batchCount = patch.imagesPerRound; if (patch.maxComfyCalls !== undefined) settings.maxAutoRounds = patch.maxComfyCalls; if (patch.maxAutoRounds !== undefined) settings.maxComfyCalls = patch.maxAutoRounds; return settings; }, listModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }), listVisionModels: async () => ({ ok: true, models: ['gpt-4o-mini'] }),
     refreshCapabilities: async () => ({ comfy: { enabled: false, connected: false }, vision: { local: false, ai: false } }),
     calls: { refreshCapabilities: async () => ({ comfy: { enabled: false, connected: false }, vision: { local: false, ai: false } }) },
     run: async input => {
@@ -158,6 +158,20 @@ test('ComfyUI gets a dedicated AI tab and the conversation debug button opens it
   assert.equal(app.window.document.querySelector('#comfyWf').value, '{"3":{"class_type":"KSampler"}}');
   app.window.document.querySelector('#talkComfyDebug').click();
   assert.equal(app.window.document.querySelector('#tabComfy')?.style.display, '');
+  const batch = app.window.document.querySelector('#batchCount');
+  const maxCalls = app.window.document.querySelector('#maxComfyCalls');
+  batch.value = '7'; batch.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  maxCalls.value = '6'; maxCalls.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  app.view.showAi('talk');
+  assert.equal(app.window.document.querySelector('#imagesPerRound').value, '7');
+  assert.equal(app.window.document.querySelector('#maxAutoRounds').value, '6');
+  app.window.document.querySelector('#imagesPerRound').value = '5';
+  app.window.document.querySelector('#imagesPerRound').dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  app.window.document.querySelector('#maxAutoRounds').value = '4';
+  app.window.document.querySelector('#maxAutoRounds').dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  app.view.showAi('comfy');
+  assert.equal(app.window.document.querySelector('#batchCount').value, '5');
+  assert.equal(app.window.document.querySelector('#maxComfyCalls').value, '4');
   app.dom.window.close();
 });
 
@@ -209,6 +223,7 @@ test('conversation generation controls persist batch and auto/manual mode', () =
   assert.equal(rounds.options[9].value, '10');
   assert.equal(app.window.document.querySelector('#batchCount').max, '10');
   assert.equal(app.window.document.querySelector('#maxComfyCalls').max, '10');
+  assert.match(app.window.document.querySelector('#maxAutoRounds').getAttribute('aria-label'), /ComfyUI|调用|迭代/);
   assert.equal(autoRun.checked, true);
   assert.match(gear.textContent, /⚙/);
   batch.value = '4'; batch.dispatchEvent(new app.window.Event('change', { bubbles: true }));

@@ -231,7 +231,7 @@
       "comfyMaster": "ComfyUI",
       "comfySettings": "ComfyUI 设置",
       "imagesPerRound": "每轮生成张数",
-      "maxAutoRounds": "自动最多迭代轮数",
+      "maxAutoRounds": "最多 ComfyUI 调用",
       "generationAutoRun": "自动执行",
       "generationStrategy": "候选生成模式",
       "generationQuick": "快速 1 张",

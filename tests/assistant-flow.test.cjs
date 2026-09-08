@@ -157,21 +157,22 @@ async function testHighLevelGenerationPersistsCandidatesAndSelection() {
   });
   const result = await assistant.run({ text: '画一个蓝发女孩', requestId: 'assistant-generation-root' });
   assert.equal(result.ok, true, JSON.stringify(result.error));
-  assert.equal(renderCount, 2);
-  assert.equal(result.candidates.length, 2);
-  assert.equal(result.selectedImageId, 'generated-2');
+  assert.equal(renderCount, 1);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.selectedImageId, 'generated-1');
+  assert.equal(result.stopReason, 'prompt_unchanged');
   assert.deepEqual(result.positiveTags, ['1girl', 'blue hair']);
   assert.equal(result.usage.toolRounds, 2);
-  assert.equal(result.usage.comfyCalls, 2);
+  assert.equal(result.usage.comfyCalls, 1);
   const message = assistant.currentSession().messages.at(-1);
-  assert.equal(message.result.candidates.length, 2);
+  assert.equal(message.result.candidates.length, 1);
   assert.equal(message.result.finalPrompt, undefined);
   const selected = assistant.chooseCandidate(message.id, 'candidate-1', 'user');
   assert.equal(selected.finalImageId, 'generated-1');
   assert.equal(selected.finalPrompt, '1girl, blue hair');
-  const finalized = await assistant.selectGenerationFinal(message.id, 'candidate-2');
-  assert.equal(finalized.finalCandidateId, 'candidate-2');
-  assert.equal(finalized.finalImageId, 'generated-2');
+  const finalized = await assistant.selectGenerationFinal(message.id, 'candidate-1');
+  assert.equal(finalized.finalCandidateId, 'candidate-1');
+  assert.equal(finalized.finalImageId, 'generated-1');
   assistant.destroy();
 }
 

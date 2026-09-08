@@ -108,6 +108,10 @@ function activeCandidate(job, id) {
 function reviewed(candidate) { return candidate?.evaluation?.status === 'reviewed'; }
 function hardErrorCount(candidate) { return Array.isArray(candidate?.evaluation?.hardErrors) ? candidate.evaluation.hardErrors.length : 0; }
 function score(candidate) { return reviewed(candidate) ? number(candidate.evaluation.score, 0, 0, 100) : -1; }
+function promptFingerprint(positiveTags, negativeTags) {
+  const normalize = value => strings(value).map(item => item.toLowerCase().replace(/\s+/g, ' ')).sort();
+  return JSON.stringify({ positive: normalize(positiveTags), negative: normalize(negativeTags) });
+}
 function residualIssues(candidate, limit = 6) {
   const rows = [...(Array.isArray(candidate?.evaluation?.hardErrors) ? candidate.evaluation.hardErrors : []), ...(Array.isArray(candidate?.evaluation?.issues) ? candidate.evaluation.issues : [])];
   const seen = new Set();
@@ -203,6 +207,7 @@ function createGenerationOrchestrator(options = {}) {
       residualIssues: Array.isArray(source.residualIssues) ? clone(source.residualIssues).slice(0, 6) : [],
       recreationMode: text(source.recreationMode),
       aspectRatioMode: text(source.aspectRatioMode),
+      lastSubmittedPromptKey: text(source.lastSubmittedPromptKey),
       selectionReason: text(source.selectionReason),
       renderAttempts: Math.max(0, Number(source.renderAttempts) || 0),
       successfulRenders: candidates.length,
@@ -510,8 +515,10 @@ function createGenerationOrchestrator(options = {}) {
     return '';
   }
   async function revise(job, evaluation, context, force = false) {
-    if (!evaluation || evaluation.status !== 'reviewed' || (!force && evaluation.verdict === 'accept')) return false;
+    if (!evaluation || evaluation.status !== 'reviewed') return { ok: false, reason: 'revision_unavailable' };
+    if (!force && evaluation.verdict === 'accept') return { ok: false, reason: 'no_revision_needed' };
     transition(job, 'revising');
+    const previousPromptKey = promptFingerprint(job.positiveTags, job.negativeTags);
     try {
       let patch = await callAgent(job, context, 'generateTags', {
         operation: 'revise',
@@ -537,17 +544,22 @@ function createGenerationOrchestrator(options = {}) {
         next = applyPromptPatch(job, patch, patchOptions);
       }
       if (!next.ok) throw failure('OUTPUT_INVALID', next.rejected.map(item => item.message).join('；') || 'Tag 修订补丁无效');
+      const nextPromptKey = promptFingerprint(next.positiveTags, next.negativeTags);
+      if (nextPromptKey === previousPromptKey) {
+        emit(job, context, 'prompt.revision_unchanged', { positiveTagCount: next.positiveTags.length, negativeTagCount: next.negativeTags.length });
+        return { ok: false, changed: false, reason: 'prompt_unchanged' };
+      }
       job.positiveTags = next.positiveTags;
       job.negativeTags = next.negativeTags;
       job.lockedTags = next.lockedTags;
       job.patchWarnings = [...(job.patchWarnings || []), ...next.warnings].slice(-32);
       emit(job, context, 'prompt.revised', { positiveTagCount: job.positiveTags.length, negativeTagCount: job.negativeTags.length, warningCount: next.warnings.length });
-      return true;
+      return { ok: true, changed: true };
     } catch (error) {
       if (context.signal.aborted || error?.code === 'CANCELLED') throw error;
       job.errors.push({ stage: 'prompt_revision', ...errorValue(error), at: Date.now() });
       emit(job, context, 'prompt.revision_failed', { error: errorValue(error) });
-      return false;
+      return { ok: false, changed: false, reason: 'revision_failed' };
     }
   }
   async function compareCandidates(job, candidates, context, stage) {
@@ -575,6 +587,13 @@ function createGenerationOrchestrator(options = {}) {
     if (!renderCandidate) throw failure('COMFY_UNAVAILABLE', 'ComfyUI 渲染器不可用');
     while (job.renderAttempts < job.policy.maxRenderAttempts) {
       guard(job, context);
+      const promptKey = promptFingerprint(job.positiveTags, job.negativeTags);
+      if (job.lastSubmittedPromptKey && job.lastSubmittedPromptKey === promptKey) {
+        job.stopReason = 'prompt_unchanged';
+        emit(job, context, 'candidate.duplicate_blocked', { promptKey });
+        persist(job);
+        return null;
+      }
       transition(job, 'rendering');
       job.renderAttempts += 1;
       const roundIndex = job.successfulRounds + 1;
@@ -610,6 +629,7 @@ function createGenerationOrchestrator(options = {}) {
         emit(job, context, 'candidate.failed', { attempt: job.renderAttempts, error: value });
         continue;
       }
+      job.lastSubmittedPromptKey = promptKey;
       const candidateIds = [];
       if (job.mode === 'recreate') {
         job.recreationMode = text(rendered?.recreationMode, job.recreationMode || 'text_approximation');
@@ -668,7 +688,12 @@ function createGenerationOrchestrator(options = {}) {
       job.stopReason = stoppingReason(job, rendered.winner);
       persist(job);
       if (job.stopReason) break;
-      await revise(job, rendered.winner?.evaluation, context);
+      const revision = await revise(job, rendered.winner?.evaluation, context);
+      if (!revision.ok) {
+        job.stopReason = revision.reason || 'revision_failed';
+        persist(job);
+        break;
+      }
     }
     if (!job.stopReason) job.stopReason = job.renderAttempts >= job.policy.maxRenderAttempts ? 'render_attempts_exhausted' : 'max_auto_rounds';
     persist(job);
@@ -707,9 +732,16 @@ function createGenerationOrchestrator(options = {}) {
         if (!base) throw failure('CANDIDATE_NOT_FOUND', '没有找到要继续优化的候选图');
         job.positiveTags = base.positiveTags.slice();
         job.negativeTags = base.negativeTags.slice();
-        await revise(job, { ...(base.evaluation || {}), status: 'reviewed', candidateId: base.imageId, userFeedback: job.pendingFeedback.feedback }, context, true);
+        const revision = await revise(job, { ...(base.evaluation || {}), status: 'reviewed', candidateId: base.imageId, userFeedback: job.pendingFeedback.feedback }, context, true);
         job.feedbackHistory = [...(job.feedbackHistory || []), { baseCandidateId: base.id, feedback: job.pendingFeedback.feedback, at: Date.now() }].slice(-32);
         job.pendingFeedback = null;
+        if (!revision.ok) {
+          job.stopReason = revision.reason || 'revision_failed';
+          job.status = 'awaiting_feedback';
+          emit(job, context, 'generation.awaiting_feedback', { roundId: job.rounds.at(-1)?.roundId || '', recommendedCandidateId: job.rounds.at(-1)?.recommendedCandidateId || '', reason: job.stopReason });
+          persist(job);
+          return result(job);
+        }
         persist(job);
       }
       await renderLoop(job, context);

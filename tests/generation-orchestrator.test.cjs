@@ -100,7 +100,7 @@ test('failed renders consume attempts but not the successful-image budget', asyn
 });
 
 test('legacy fixed3 maps to three successful rounds and caps each returned batch', async () => {
-  const app = harness({ settings: { generation: { strategy: 'fixed3', imagesPerRound: 2, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3 } }, renderPlan: [['img-1', 'img-2', 'ignored-1'], ['img-3', 'img-4', 'ignored-2'], ['img-5', 'img-6', 'ignored-3']], reviewScores: [99, 98, 97, 96, 95, 94] });
+  const app = harness({ settings: { generation: { strategy: 'fixed3', imagesPerRound: 2, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3 } }, renderPlan: [['img-1', 'img-2', 'ignored-1'], ['img-3', 'img-4', 'ignored-2'], ['img-5', 'img-6', 'ignored-3']], reviewScores: [70, 72, 74, 76, 78, 80] });
   const result = await app.orchestrator.execute({ requirements: 'three variations', mode: 'create', strategy: 'fixed3' }, app.context);
   assert.equal(result.status, 'completed');
   assert.equal(result.successfulRounds, 3);
@@ -227,6 +227,68 @@ test('invalid revision patch is repaired once before the next render', async () 
   assert.match(JSON.stringify(repair.input.evaluation), /patchValidation/);
 });
 
+test('invalid repair patch stops before submitting the same prompt again', async () => {
+  let revisionCalls = 0;
+  const app = harness({
+    settings: { generation: { autoRun: true, imagesPerRound: 1, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3 } },
+    runSubAgent: async (name, request) => {
+      if (name === 'generateTags' && request.input.operation === 'compile') return ok({ positiveTags: ['1girl', 'hand holding bottle'] });
+      if (name === 'generateTags') { revisionCalls += 1; return ok({ add: ['hand holding bottle'], remove: ['hand holding bottle'], preserve: ['1girl'] }); }
+      if (name === 'evaluateImages' && request.input.operation === 'review') return ok({ operation: 'review', evaluations: [{ candidateId: request.input.candidateImageIds[0], score: 45, verdict: 'revise', hardErrors: [], issues: [], summary: '需要修正' }] });
+      if (name === 'evaluateImages') return ok({ operation: 'compare', recommendedCandidateId: request.input.candidateImageIds[0], ranking: request.input.candidateImageIds.map((candidateId, index) => ({ candidateId, rank: index + 1, score: 45 - index, reason: 'same prompt' })), reason: 'same prompt' });
+      throw new Error(name);
+    }
+  });
+  const result = await app.orchestrator.execute({ originalRequirements: '修正手部', mode: 'create' }, app.context);
+  assert.equal(revisionCalls, 2, 'one invalid patch and one repair attempt are allowed');
+  assert.equal(app.renders.length, 1);
+  assert.equal(result.successfulRounds, 1);
+  assert.equal(result.stopReason, 'revision_failed');
+});
+
+test('valid no-op patch does not spend another automatic or manual render', async () => {
+  const makeApp = autoRun => harness({
+    settings: { generation: { autoRun, imagesPerRound: 1, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90, minImprovement: 3 } },
+    runSubAgent: async (name, request) => {
+      if (name === 'generateTags' && request.input.operation === 'compile') return ok({ positiveTags: ['1girl', 'blue hair'] });
+      if (name === 'generateTags') return ok({ add: [], remove: [], preserve: ['1girl', 'blue hair'] });
+      if (name === 'evaluateImages' && request.input.operation === 'review') return ok({ operation: 'review', evaluations: [{ candidateId: request.input.candidateImageIds[0], score: 70, verdict: 'revise', hardErrors: [], issues: [], summary: '需要调整' }] });
+      if (name === 'evaluateImages') return ok({ operation: 'compare', recommendedCandidateId: request.input.candidateImageIds[0], ranking: request.input.candidateImageIds.map((candidateId, index) => ({ candidateId, rank: index + 1, score: 70 - index, reason: 'same prompt' })), reason: 'same prompt' });
+      throw new Error(name);
+    }
+  });
+  const automatic = makeApp(true);
+  const automaticResult = await automatic.orchestrator.execute({ originalRequirements: 'blue-haired portrait' }, automatic.context);
+  assert.equal(automatic.renders.length, 1);
+  assert.equal(automaticResult.stopReason, 'prompt_unchanged');
+  assert(automatic.events.some(event => event.type === 'prompt.revision_unchanged'));
+
+  const manual = makeApp(false);
+  const paused = await manual.orchestrator.execute({ originalRequirements: 'blue-haired portrait', autoRun: false }, manual.context);
+  const continued = await manual.orchestrator.resume({ jobId: paused.jobId, action: 'continue', baseCandidateId: 'candidate-1', feedback: '更准确一些' }, manual.context);
+  assert.equal(manual.renders.length, 1);
+  assert.equal(continued.status, 'awaiting_feedback');
+  assert.equal(continued.stopReason, 'prompt_unchanged');
+});
+
+test('restored job blocks a duplicate prompt before ComfyUI submission', async () => {
+  const storage = createStorage({ prefix: `generation-duplicate-${Date.now()}-${Math.random()}` });
+  storage.set('generation_jobs', [{
+    jobId: 'job-duplicate', sessionId: 'session-1', mode: 'create', status: 'interrupted', originalRequirements: 'portrait',
+    policy: { autoRun: true, imagesPerRound: 1, maxAutoRounds: 2, maxRenderAttempts: 3, acceptScore: 90, minImprovement: 3 },
+    positiveTags: ['1girl'], negativeTags: [], lastSubmittedPromptKey: JSON.stringify({ positive: ['1girl'], negative: [] }),
+    candidates: [{ id: 'candidate-1', imageId: 'img-1', iteration: 1, roundId: 'round-1', roundIndex: 1, positiveTags: ['1girl'], negativeTags: [], prompt: '1girl', evaluation: { status: 'reviewed', score: 70, verdict: 'revise', hardErrors: [], issues: [] } }],
+    rounds: [{ roundId: 'round-1', roundIndex: 1, candidateIds: ['candidate-1'], recommendedCandidateId: 'candidate-1', prompt: '1girl', negative: '' }],
+    successfulRounds: 1, successfulRenders: 1, renderAttempts: 1, createdAt: 1, updatedAt: 2
+  }]);
+  const app = harness({ storage });
+  const result = await app.orchestrator.resume({ jobId: 'job-duplicate' }, app.context);
+  assert.equal(app.renders.length, 0);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.stopReason, 'prompt_unchanged');
+  assert(app.events.some(event => event.type === 'candidate.duplicate_blocked'));
+});
+
 test('automatic multi-image rounds revise from the round winner only', async () => {
   const app = harness({ settings: { generation: { autoRun: true, imagesPerRound: 2, maxAutoRounds: 2, maxRenderAttempts: 4, acceptScore: 90, minImprovement: 3 } }, renderPlan: [['img-1', 'img-2'], ['img-3', 'img-4']], reviewScores: [60, 78, 82, 94] });
   const result = await app.orchestrator.execute({ originalRequirements: 'two-image rounds', mode: 'create' }, app.context);
@@ -310,7 +372,7 @@ test('limit completion is best available and exposes bounded residual issues', a
     settings: { generation: { strategy: 'fixed3', autoRun: true, maxAutoRounds: 3, maxRenderAttempts: 5, acceptScore: 90 } },
     runSubAgent: async (name, request) => {
       if (name === 'generateTags' && request.input.operation === 'compile') return ok({ positiveTags: ['1girl', 'church'] });
-      if (name === 'generateTags') return ok({ add: [], remove: [], preserve: [] });
+      if (name === 'generateTags') return ok({ add: [`revision ${4 - reviewRows.length}`], remove: [], preserve: [] });
       if (name === 'evaluateImages' && request.input.operation === 'review') {
         const row = reviewRows.shift();
         const issue = { expected: '匹配原图', observed: row.observed, severity: 'hard', suggestedChange: row.suggestedChange };
