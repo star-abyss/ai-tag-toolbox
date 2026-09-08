@@ -181,6 +181,11 @@ function createGenerationOrchestrator(options = {}) {
       createdAt: Number(round.createdAt) || Date.now()
     })) : [];
     if (!rounds.length && candidates.length) rounds = candidates.map((candidate, index) => ({ roundId: candidate.roundId || `round-${index + 1}`, roundIndex: candidate.roundIndex || index + 1, candidateIds: [candidate.id], recommendedCandidateId: candidate.evaluation?.recommended ? candidate.id : '', prompt: candidate.prompt, negative: candidate.negative, createdAt: candidate.createdAt }));
+    const lastRound = rounds.at(-1);
+    const lastCandidate = candidates.at(-1);
+    const derivedPromptKey = text(source.lastSubmittedPromptKey)
+      || (lastRound?.prompt ? promptFingerprint(lastRound.prompt, lastRound.negative) : '')
+      || (lastCandidate ? promptFingerprint(lastCandidate.positiveTags || lastCandidate.prompt, lastCandidate.negative) : '');
     return {
       ...source,
       jobId: text(source.jobId, `job_${randomUUID()}`),
@@ -207,7 +212,7 @@ function createGenerationOrchestrator(options = {}) {
       residualIssues: Array.isArray(source.residualIssues) ? clone(source.residualIssues).slice(0, 6) : [],
       recreationMode: text(source.recreationMode),
       aspectRatioMode: text(source.aspectRatioMode),
-      lastSubmittedPromptKey: text(source.lastSubmittedPromptKey),
+      lastSubmittedPromptKey: derivedPromptKey,
       selectionReason: text(source.selectionReason),
       renderAttempts: Math.max(0, Number(source.renderAttempts) || 0),
       successfulRenders: candidates.length,

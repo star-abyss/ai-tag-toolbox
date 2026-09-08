@@ -276,7 +276,7 @@ test('restored job blocks a duplicate prompt before ComfyUI submission', async (
   storage.set('generation_jobs', [{
     jobId: 'job-duplicate', sessionId: 'session-1', mode: 'create', status: 'interrupted', originalRequirements: 'portrait',
     policy: { autoRun: true, imagesPerRound: 1, maxAutoRounds: 2, maxRenderAttempts: 3, acceptScore: 90, minImprovement: 3 },
-    positiveTags: ['1girl'], negativeTags: [], lastSubmittedPromptKey: JSON.stringify({ positive: ['1girl'], negative: [] }),
+    positiveTags: ['1girl'], negativeTags: [],
     candidates: [{ id: 'candidate-1', imageId: 'img-1', iteration: 1, roundId: 'round-1', roundIndex: 1, positiveTags: ['1girl'], negativeTags: [], prompt: '1girl', evaluation: { status: 'reviewed', score: 70, verdict: 'revise', hardErrors: [], issues: [] } }],
     rounds: [{ roundId: 'round-1', roundIndex: 1, candidateIds: ['candidate-1'], recommendedCandidateId: 'candidate-1', prompt: '1girl', negative: '' }],
     successfulRounds: 1, successfulRenders: 1, renderAttempts: 1, createdAt: 1, updatedAt: 2
