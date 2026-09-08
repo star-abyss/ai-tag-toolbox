@@ -30,7 +30,7 @@ function createWindow() {
     height: 900,
     minWidth: 980,
     minHeight: 680,
-    title: 'AI 绘画 Tag 工具箱 V1.4.237',
+    title: 'AI 绘画 Tag 工具箱 V1.4.238',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

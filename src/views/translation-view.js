@@ -25,13 +25,6 @@
       if (button) { button.disabled = busy || !input?.value.trim(); button.setAttribute('aria-busy', String(busy)); }
       put('#translateInputCount', `${input?.value.length || 0} ${label('charactersUnit', '字')}`);
     }
-    function thinking(visible, value, done = false) {
-      const box = q('#translateThinking'); if (!box) return;
-      const wasHidden = box.hidden; box.hidden = !visible;
-      if (value != null) put('#translateThinkingBody', value);
-      put('#translateThinkingTitle', label(done ? 'aiThinkingDone' : 'aiThinkingNow', done ? '💭 AI 思考完成' : '💭 AI 正在思考…'));
-      if (visible && !done && wasHidden) box.open = false;
-    }
     function highlight() {
       const current = hovered || pinned;
       sourceElements.forEach((node, index) => {
@@ -161,7 +154,6 @@
       const previous = job; job = null;
       if (previous) { try { runtime?.cancel?.(previous.runtimeId); } catch { /* stale responses are still discarded */ } }
       if (invalidate) invalidateAlignment(); else clearHighlights();
-      thinking(false);
       put('#translateStatus', input?.value.trim() ? label('waitingAction', '等待翻译') : label('statusIdle', '输入内容后自动本地翻译'));
       syncControls();
     }
@@ -172,8 +164,7 @@
       cancel();
       const current = { runtimeId: `translation-${useAi ? 'ai' : 'local'}-${sequence}`, useAi: Boolean(useAi) }; job = current;
       syncControls();
-      const direction = q('#translateDirection')?.value || 'auto'; let reasoning = '';
-      if (useAi) thinking(true, label('aiThinkingNow', 'AI 正在思考…'));
+      const direction = q('#translateDirection')?.value || 'auto';
       put('#translateStatus', label(useAi ? 'aiWorking' : 'localWorking', useAi ? 'AI 翻译中…' : '本地翻译中…'));
       try {
         let result;
@@ -181,12 +172,10 @@
           if (typeof runtime?.runSubAgent !== 'function') throw new Error(label('serviceUnavailable', '翻译服务不可用，请重启应用'));
           const envelope = await runtime.runSubAgent('translation', {
             input: { text: original, direction, source: useAi ? 'ai' : 'local', ...(useAi ? { includeAlignment: true } : {}) }, requestId: current.runtimeId,
-            onEvent: event => { if (useAi && job === current && event?.reasoning) { reasoning += String(event.reasoning); thinking(true, reasoning); } }
           });
           result = envelope?.ok === false ? { ok: false, error: envelope.error?.message || envelope.error || label('failed', '翻译失败') } : { ok: true, ...(envelope?.data || {}) };
         } catch (error) { result = { ok: false, error: error.message || String(error) }; }
         if (job !== current) return result;
-        if (useAi) thinking(true, reasoning || (result.ok ? label('aiComplete', 'AI 已完成翻译。') : result.error), true);
         renderResult(result, original, useAi);
         put('#translateStatus', label(result.ok ? 'complete' : 'failed', result.ok ? '完成' : '翻译失败'));
         return result;

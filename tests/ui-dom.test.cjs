@@ -367,7 +367,7 @@ test('editing or clearing translation retires the old AI request without letting
   await app.settle();
   assert.equal(app.output.value, '');
   assert.equal(app.button.disabled, true);
-  assert.equal(app.doc.querySelector('#translateThinking').hidden, true);
+  assert.equal(app.doc.querySelector('#translateThinking'), null);
 });
 
 test('changing translation direction cancels AI and local completion cannot replace a newer explicit AI translation', async t => {
@@ -392,7 +392,7 @@ test('changing translation direction cancels AI and local completion cannot repl
   await app.settle();
   assert.equal(app.output.value, '蓝发（AI）');
   assert.equal(app.button.disabled, false);
-  assert.equal(app.doc.querySelector('#translateThinking').hidden, false);
+  assert.equal(app.doc.querySelector('#translateThinking'), null, 'translation must not show a thinking panel');
 });
 
 test('gallery factory owns card action rendering and rename path', () => {

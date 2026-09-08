@@ -117,7 +117,9 @@ function createFixedSubagents(options = {}) {
           '保持绘画 Tag、权重、专名的语义和结构；sourceUnits 仅为定位单元，应结合完整原文翻译。'
         ].join('\n') : '';
         const content = alignmentSource ? JSON.stringify({ text: input.text, direction, sourceUnits: alignmentSource.sourceUnits.map(({ id, text }) => ({ id, text })) }) : input.text;
-        result = await primaryAI.complete([{ role: 'system', content: protocol ? base + '\n\n' + protocol : base }, { role: 'user', content }], { ...noThinking, signal: context.signal, onDelta: (delta, reasoning) => context.onEvent?.({ type: 'delta', text: typeof delta === 'string' ? delta : '', reasoning: typeof reasoning === 'string' ? reasoning : '' }) });
+        // Translation is a short, non-streaming child task. Do not expose
+        // provider reasoning or partial deltas to the page.
+        result = await primaryAI.complete([{ role: 'system', content: protocol ? base + '\n\n' + protocol : base }, { role: 'user', content }], { ...noThinking, signal: context.signal });
         source = 'ai';
       }
       reportUsage(result, context);
