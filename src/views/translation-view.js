@@ -47,11 +47,14 @@
     function fromSource(ids) {
       const sourceIds = new Set(ids), targetIndexes = new Set();
       mapping.targetSegments.forEach((segment, i) => { if (segment.sourceIds.some(id => sourceIds.has(id))) targetIndexes.add(i); });
-      // A translated phrase can correspond to more than one source word.
-      for (const i of targetIndexes) mapping.targetSegments[i].sourceIds.forEach(id => sourceIds.add(id));
       return { sourceIds, targetIndexes };
     }
-    const fromTarget = indexes => fromSource(indexes.flatMap(i => mapping.targetSegments[i]?.sourceIds || []));
+    // Follow direct links only; shared phrases must not expand the selection.
+    const fromTarget = indexes => {
+      const targetIndexes = new Set(indexes), sourceIds = new Set();
+      for (const index of targetIndexes) mapping.targetSegments[index]?.sourceIds.forEach(id => sourceIds.add(id));
+      return { sourceIds, targetIndexes };
+    };
     function pin(value, toggle = false) {
       const same = pinned && value.sourceIds.size === pinned.sourceIds.size && [...value.sourceIds].every(id => pinned.sourceIds.has(id));
       pinned = toggle && same ? null : value.targetIndexes.size ? value : null;
@@ -138,7 +141,7 @@
         aligned.append(span); targetElements.push(span);
       });
       mirror.hidden = false; aligned.hidden = false; output.hidden = true;
-      if (hint) { hint.hidden = false; hint.textContent = label(['sentence', 'block'].includes(source.granularity) ? 'alignmentCoarse' : 'alignmentHint', ['sentence', 'block'].includes(source.granularity) ? '长文本按分句对照；选择文字高亮对应内容，Esc 取消。' : '悬停或选择文字可双向对照；点击固定高亮，Esc 取消。'); }
+      if (hint) { hint.hidden = false; hint.textContent = label(['sentence', 'block'].includes(source.granularity) ? 'alignmentCoarse' : 'alignmentReady', ['sentence', 'block'].includes(source.granularity) ? '分句对照已就绪' : '对照已就绪'); }
       tick(syncMirror);
     }
     function renderReferences() {
@@ -200,7 +203,7 @@
       input?.addEventListener('mousemove', event => { if (!mapping || event.buttons) return; const id = sourceAtPoint(event); hovered = id ? fromSource([id]) : null; highlight(); });
       input?.addEventListener('mouseleave', () => { hovered = null; highlight(); });
       input?.addEventListener('click', () => { if (!mapping || selectSource()) return; const unit = mapping.sourceUnits.find(unit => unit.start <= input.selectionStart && unit.end > input.selectionStart); if (unit) pin(fromSource([unit.id]), true); else clearHighlights(); });
-      q('#translateDirection')?.addEventListener('change', () => { cancel(); refsTimer = win.setTimeout(renderReferences, 80); if (input?.value.trim()) translate(false); });
+      q('#translateDirection')?.addEventListener('change', () => { cancel(); if (input?.value.trim()) translate(false); refsTimer = win.setTimeout(renderReferences, 80); });
       q('#translateAi')?.addEventListener('click', () => translate(true));
       q('#translateClear')?.addEventListener('click', () => { if (input) input.value = ''; if (output) output.value = ''; cancel(); renderReferences(); });
       q('#translateCopy')?.addEventListener('click', () => copy?.(output?.value || ''));

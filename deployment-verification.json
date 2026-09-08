@@ -24,7 +24,7 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 165,
+    "testsPassed": 167,
     "testsFailed": 0,
     "slowUiSmokeRun": false,
     "desktopSmoke": "Skipped per project policy: translation alignment and page interaction use fast checks; no real AI or ComfyUI calls",
@@ -37,7 +37,9 @@
       "optional alignment and plain-text fallback",
       "bidirectional source and target selection",
       "reordered duplicate words and plain-text copy",
-      "model markup is inert and editing invalidates alignment"
+      "model markup is inert and editing invalidates alignment",
+      "shared segments never expand the selection beyond direct links",
+      "direction changes refresh dictionary references after local translation starts"
     ],
     "translationAlignmentProtocol": [
       "stable IDs with Tag weights and duplicate occurrences",

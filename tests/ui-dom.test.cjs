@@ -103,7 +103,7 @@ function boot(options = {}) {
     save: value => { comfyProfile = structuredClone(value); return structuredClone(comfyProfile); },
     setActive: () => structuredClone(comfyProfile), remove: () => false
   };
-  const modules = { assistant, characters: options.characters, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords, ...options.runtime }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy, locales: { 'zh-CN': {} }, version: '1.4.194' };
+  const modules = { assistant, characters: options.characters, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords, ...options.runtime }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: options.translation || { findReferences: () => [] }, comfy, locales: { 'zh-CN': {} }, version: '1.4.194' };
 
   for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'views/call-monitor-view.js', 'modules/translation-alignment.js', 'views/translation-view.js', 'app-view.js']) window.eval(source(file));
   const view = window.AppView.create(modules, window.document);
@@ -183,6 +183,51 @@ test('AI translation falls back to plain output when alignment is missing', asyn
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(doc.querySelector('#translateAlignedOutput').hidden, true);
   assert.equal(doc.querySelector('#translateOutput').value, 'blue hair');
+});
+
+test('translation target hover keeps only the directly linked source units', async t => {
+  const app = boot({ runtime: {
+    runSubAgent: async () => ({ ok: true, data: { text: 'long blue hair', alignment: { sourceUnits: [{ id: 's1', text: 'blue' }, { id: 's2', text: 'long' }, { id: 's3', text: 'hair' }], targetSegments: [
+      { text: 'long', sourceIds: ['s2'] }, { text: ' ', sourceIds: [] },
+      { text: 'blue', sourceIds: ['s1'] }, { text: ' ', sourceIds: [] },
+      { text: 'hair', sourceIds: ['s1', 's2', 's3'] }
+    ] } } })
+  } });
+  t.after(() => app.dom.window.close());
+  const doc = app.window.document;
+  app.view.route('translation');
+  doc.querySelector('#translateInput').value = 'blue, long, hair';
+  doc.querySelector('#translateInput').dispatchEvent(new app.window.Event('input', { bubbles: true }));
+  doc.querySelector('#translateAi').click();
+  await new Promise(resolve => setImmediate(resolve));
+  const blue = doc.querySelector('[data-source-ids="s1"]');
+  blue.dispatchEvent(new app.window.MouseEvent('mouseenter', { bubbles: true }));
+  assert.deepEqual([...doc.querySelectorAll('.translation-alignment-token.active')].map(node => node.dataset.sourceId), ['s1']);
+  blue.dispatchEvent(new app.window.MouseEvent('mouseleave'));
+  const input = doc.querySelector('#translateInput');
+  input.focus(); input.setSelectionRange(0, 4);
+  input.dispatchEvent(new app.window.Event('select'));
+  assert.deepEqual([...doc.querySelectorAll('.translation-alignment-token.active')].map(node => node.dataset.sourceId), ['s1']);
+  assert.deepEqual([...doc.querySelectorAll('.translation-alignment-segment.active')].map(node => node.textContent), ['blue', 'hair']);
+});
+
+test('direction changes refresh matched references after starting local translation', async t => {
+  let referenceCalls = 0;
+  const app = boot({
+    translation: { findReferences: () => { referenceCalls += 1; return []; } },
+    runtime: { runSubAgent: async () => ({ ok: true, data: { text: 'translation' } }) }
+  });
+  t.after(() => app.dom.window.close());
+  const doc = app.window.document, input = doc.querySelector('#translateInput'), direction = doc.querySelector('#translateDirection');
+  app.view.route('translation');
+  input.value = 'blue_hair';
+  input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 130));
+  const before = referenceCalls;
+  direction.value = 'en-zh';
+  direction.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 120));
+  assert.equal(referenceCalls > before, true);
 });
 
 test('alignment follows source and target text selections, keeps whitespace and copies only plain translated text', async t => {
