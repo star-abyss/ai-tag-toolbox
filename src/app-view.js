@@ -40,6 +40,7 @@
       translateTimer: null,
       translateRefsTimer: null,
       translateRequestId: 0,
+      translateJob: null,
       searchTimer: null,
       searchPrecision: "standard",
       tagPageCache: new Map(),
@@ -3213,6 +3214,7 @@
     function route(route) {
       if (ui.route === "ai" && ui.aiTab === "api" && route !== "ai") flushSettingsSave();
       if (ui.route === "ai" && ui.aiTab === "comfy" && route !== "ai") views.comfy?.flush?.();
+      if (ui.route === "translation" && route !== "translation") cancelTranslationRequest();
       if (ui.route !== route) {
         clearTimeout(ui.searchTimer);
         const input = $("#q");
@@ -3267,6 +3269,7 @@
         const active = route === "translation";
         tv.hidden = !active;
         tv.style.display = active ? "" : "none";
+        if (active) syncTranslationControls();
       }
       doc.body.classList.toggle("aiview", ai);
       doc.body.classList.toggle("translation-mode", route === "translation");
@@ -3829,15 +3832,14 @@
       $("#cfmNo")?.addEventListener("click", () => { ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); });
       $("#cfmYes")?.addEventListener("click", () => { const action = ui.confirmAction; const retain = Boolean($("#cfmRetainImages")?.checked); ui.confirmAction = null; $("#cfmModal")?.classList.remove("show"); action?.(retain); });
       $("#translateDirection")?.addEventListener("change", () => {
+        cancelTranslationRequest();
         clearTimeout(ui.translateRefsTimer);
         ui.translateRefsTimer = setTimeout(renderTranslationRefs, 80);
         if ($("#translateInput")?.value) translate(false);
       });
       $("#translateInput")?.addEventListener("input", () => {
         const input = $("#translateInput")?.value || "";
-        ui.translateRequestId += 1;
-        put("#translateInputCount", `${input.length} 字`);
-        if ($("#translateAi") && !$("#translateAi").disabled) $("#translateAi").disabled = !input.trim();
+        cancelTranslationRequest();
         clearTimeout(ui.translateRefsTimer);
         ui.translateRefsTimer = setTimeout(renderTranslationRefs, 100);
         clearTimeout(ui.translateTimer);
@@ -3845,14 +3847,11 @@
       });
       $("#translateAi")?.addEventListener("click", () => translate(true));
       $("#translateClear")?.addEventListener("click", () => {
-        ui.translateRequestId += 1;
         clearTimeout(ui.translateRefsTimer);
-        clearTimeout(ui.translateTimer);
         $("#translateInput").value = "";
         $("#translateOutput").value = "";
+        cancelTranslationRequest();
         renderTranslationRefs();
-        const thinking = $("#translateThinking");
-        if (thinking) thinking.hidden = true;
       });
       $("#translateCopy")?.addEventListener("click", () =>
         copy($("#translateOutput")?.value),
@@ -4091,26 +4090,51 @@
       // user's toggle while streaming new reasoning chunks into it.
       if (visible && !done && wasHidden) box.open = false;
     }
+    function syncTranslationControls() {
+      const input = String($("#translateInput")?.value || "");
+      const button = $("#translateAi");
+      if (button) {
+        const busy = ui.translateJob?.useAi === true;
+        button.disabled = busy || !input.trim();
+        button.setAttribute("aria-busy", String(busy));
+      }
+      put("#translateInputCount", `${input.length} 字`);
+    }
+    function cancelTranslationRequest() {
+      clearTimeout(ui.translateTimer);
+      ui.translateTimer = null;
+      ui.translateRequestId += 1;
+      const previous = ui.translateJob;
+      ui.translateJob = null;
+      // Invalidate first: a late completion must not unlock a newer request.
+      if (previous) {
+        try { runtime?.cancel?.(previous.runtimeId); } catch { /* stale results are still ignored */ }
+      }
+      setTranslationThinking(false);
+      put("#translateStatus", str($("#translateInput")?.value) ? "等待翻译" : localized("ui.translation.statusIdle", "输入内容后自动本地翻译"));
+      syncTranslationControls();
+    }
     async function translate(useAi) {
       const input = str($("#translateInput")?.value);
-      if (!input) return notify("请输入要翻译的内容");
-      if (useAi) {
-        clearTimeout(ui.translateTimer);
-        ui.translateTimer = null;
-        if ($("#translateAi")) $("#translateAi").disabled = true;
-      }
-      const requestId = ++ui.translateRequestId;
+      if (!input) { syncTranslationControls(); return notify("请输入要翻译的内容"); }
+      if (ui.translateJob?.useAi) return;
+      cancelTranslationRequest();
+      const job = { runtimeId: `translation-${useAi ? 'ai' : 'local'}-${ui.translateRequestId}`, useAi: Boolean(useAi) };
+      ui.translateJob = job;
+      syncTranslationControls();
       const direction = $("#translateDirection")?.value || "auto";
-      let result;
+      let reasoning = "";
+      if (useAi) setTranslationThinking(true, "AI 正在思考…");
+      put("#translateStatus", useAi ? "AI 翻译中…" : "本地翻译中…");
       try {
-        if (useAi) {
-          let reasoning = "";
-          setTranslationThinking(true, "AI 正在思考…");
-          const envelope = await runtime?.runSubAgent?.('translation', {
-            input: { text: input, direction, source: 'ai' },
-            requestId: `translation-${requestId}`,
+        let result;
+        try {
+          if (typeof runtime?.runSubAgent !== "function") throw new Error("翻译服务不可用，请重启应用");
+          const envelope = await runtime.runSubAgent('translation', {
+            input: { text: input, direction, source: useAi ? 'ai' : 'local' },
+            requestId: job.runtimeId,
             onEvent: event => {
-              if (requestId !== ui.translateRequestId || !event?.reasoning) return;
+              if (!useAi || ui.translateJob !== job || !event?.reasoning) return;
               reasoning += String(event.reasoning);
               setTranslationThinking(true, reasoning);
             }
@@ -4118,24 +4142,20 @@
           result = envelope?.ok === false
             ? { ok: false, error: envelope.error?.message || envelope.error || '翻译失败' }
             : { ok: true, ...(envelope?.data || {}) };
-          if (requestId === ui.translateRequestId)
-            setTranslationThinking(true, reasoning || "AI 已完成翻译。", true);
-        } else {
-          setTranslationThinking(false);
-          const envelope = await runtime?.runSubAgent?.('translation', { input: { text: input, direction, source: 'local' }, requestId: `translation-local-${requestId}` });
-          result = envelope?.ok === false ? { ok: false, error: envelope.error?.message || envelope.error || '翻译失败' } : { ok: true, ...(envelope?.data || {}) };
+        } catch (error) {
+          result = { ok: false, error: error.message || String(error) };
         }
-      } catch (error) {
-        result = { ok: false, error: error.message || String(error) };
-      }
-      if (requestId !== ui.translateRequestId) {
-        if (useAi && $("#translateAi")) $("#translateAi").disabled = !String($("#translateInput")?.value || "").trim();
+        if (ui.translateJob !== job) return result;
+        if (useAi) setTranslationThinking(true, reasoning || (result.ok ? "AI 已完成翻译。" : result.error), true);
+        if ($("#translateOutput")) $("#translateOutput").value = result?.text || result?.error || "";
+        put("#translateStatus", result?.ok === false ? "翻译失败" : "完成");
         return result;
+      } finally {
+        if (ui.translateJob === job) {
+          ui.translateJob = null;
+          syncTranslationControls();
+        }
       }
-      if ($("#translateOutput"))
-        $("#translateOutput").value = result?.text || result?.error || "";
-      put("#translateStatus", result?.ok === false ? "翻译失败" : "完成");
-      if (useAi && $("#translateAi")) $("#translateAi").disabled = !input;
     }
     function start() {
       if (ui.started) return;

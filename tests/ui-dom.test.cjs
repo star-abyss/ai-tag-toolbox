@@ -103,7 +103,7 @@ function boot(options = {}) {
     save: value => { comfyProfile = structuredClone(value); return structuredClone(comfyProfile); },
     setActive: () => structuredClone(comfyProfile), remove: () => false
   };
-  const modules = { assistant, characters: options.characters, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy, locales: { 'zh-CN': {} }, version: '1.4.194' };
+  const modules = { assistant, characters: options.characters, runtime: { listCallRecords: assistant.listCallRecords, clearCallRecords: assistant.clearCallRecords, ...options.runtime }, prompts, tags, images: { get: id => images.get(id), preview: id => images.get(id) }, imageRepository: repository, preferences: { get: (_k, fallback) => fallback, set: () => {} }, translation: { findReferences: () => [] }, comfy, locales: { 'zh-CN': {} }, version: '1.4.194' };
 
   for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'views/call-monitor-view.js', 'app-view.js']) window.eval(source(file));
   const view = window.AppView.create(modules, window.document);
@@ -126,6 +126,136 @@ test('full DOM startup renders extracted views and conversation click uses assis
   assert.equal(app.getRunCount(), 1);
   assert.match(app.window.document.querySelector('#talkConv').textContent, /生成一张图/);
   app.dom.window.close();
+});
+
+test('AI translation button re-enables after empty input and stays usable when translation page reopens', t => {
+  const app = boot();
+  t.after(() => app.dom.window.close());
+  const doc = app.window.document;
+  const input = doc.querySelector('#translateInput');
+  const button = doc.querySelector('#translateAi');
+  app.view.route('translation');
+  input.value = ' ';
+  input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+  assert.equal(button.disabled, true);
+  input.value = 'blue hair';
+  input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+  assert.equal(button.disabled, false, 'typing non-empty input must recover the button');
+  doc.querySelector('#translateClear').click();
+  assert.equal(button.disabled, true, 'empty input must disable AI translation');
+  assert.match(doc.querySelector('#translateInputCount').textContent, /^0 /);
+  input.value = 'blue hair';
+  app.view.route('tags');
+  app.view.route('translation');
+  assert.equal(button.disabled, false, 'reopening translation must resync the button state');
+});
+
+function translationHarness(t) {
+  const requests = [], cancellations = [];
+  const app = boot({ runtime: {
+    runSubAgent: (name, request) => new Promise((resolve, reject) => requests.push({ name, ...request, resolve, reject })),
+    cancel: requestId => { cancellations.push(requestId); return true; }
+  } });
+  t.after(() => app.dom.window.close());
+  const doc = app.window.document;
+  const input = doc.querySelector('#translateInput');
+  const button = doc.querySelector('#translateAi');
+  const output = doc.querySelector('#translateOutput');
+  app.view.route('translation');
+  const type = value => { input.value = value; input.dispatchEvent(new app.window.Event('input', { bubbles: true })); };
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  return { ...app, doc, input, button, output, type, requests, cancellations, settle };
+}
+
+test('AI translation blocks duplicate clicks while running and releases after API errors, exceptions and success', async t => {
+  const app = translationHarness(t);
+  app.type('blue hair');
+  for (const outcome of ['error', 'exception', 'success']) {
+    const before = app.requests.length;
+    app.button.click(); app.button.click();
+    assert.equal(app.requests.length, before + 1);
+    const request = app.requests.at(-1);
+    assert.equal(request.name, 'translation');
+    assert.equal(request.input.source, 'ai');
+    assert.equal(app.button.disabled, true);
+    if (outcome === 'exception') request.reject(new Error('断线'));
+    else request.resolve(outcome === 'error' ? { ok: false, error: { code: 'TIMEOUT', message: '超时' } } : { ok: true, data: { text: '蓝发' } });
+    await app.settle();
+    assert.equal(app.button.disabled, false);
+    assert.equal(app.output.value, outcome === 'success' ? '蓝发' : outcome === 'error' ? '超时' : '断线');
+  }
+});
+
+test('leaving translation cancels pending work and reopening allows a fresh AI request', async t => {
+  const app = translationHarness(t);
+  app.type('blue hair'); app.button.click();
+  const previous = app.requests[0];
+  app.view.route('tags'); app.view.route('translation');
+  assert.deepEqual(app.cancellations, [previous.requestId]);
+  assert.equal(app.input.value, 'blue hair');
+  assert.equal(app.button.disabled, false);
+  app.button.click();
+  const current = app.requests[1];
+  previous.resolve({ ok: true, data: { text: '离开前的结果' } });
+  await app.settle();
+  assert.equal(app.button.disabled, true);
+  assert.equal(app.output.value, '');
+  current.resolve({ ok: true, data: { text: '蓝发' } });
+  await app.settle();
+  assert.equal(app.button.disabled, false);
+  assert.equal(app.output.value, '蓝发');
+});
+
+test('editing or clearing translation retires the old AI request without letting its completion unlock or overwrite a new one', async t => {
+  const app = translationHarness(t);
+  app.type('blue hair'); app.button.click();
+  const first = app.requests[0];
+  app.type('red eyes');
+  assert.equal(app.button.disabled, false);
+  assert.deepEqual(app.cancellations, [first.requestId]);
+  app.button.click();
+  const second = app.requests[1];
+  first.resolve({ ok: true, data: { text: '旧的蓝发结果' } });
+  await app.settle();
+  assert.equal(app.button.disabled, true, 'old completion cannot unlock the active AI request');
+  assert.notEqual(app.output.value, '旧的蓝发结果');
+  second.resolve({ ok: true, data: { text: '红眼' } });
+  await app.settle();
+  assert.equal(app.button.disabled, false);
+  assert.equal(app.output.value, '红眼');
+  app.button.click();
+  const third = app.requests[2];
+  app.doc.querySelector('#translateClear').click();
+  third.resolve({ ok: true, data: { text: '清空前的结果' } });
+  await app.settle();
+  assert.equal(app.output.value, '');
+  assert.equal(app.button.disabled, true);
+  assert.equal(app.doc.querySelector('#translateThinking').hidden, true);
+});
+
+test('changing translation direction cancels AI and local completion cannot replace a newer explicit AI translation', async t => {
+  const app = translationHarness(t);
+  app.type('blue hair'); app.button.click();
+  const first = app.requests[0];
+  const direction = app.doc.querySelector('#translateDirection');
+  direction.value = 'en-zh';
+  direction.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  const local = app.requests[1];
+  assert.equal(local.input.source, 'local');
+  assert.equal(local.input.direction, 'en-zh');
+  assert.equal(app.cancellations[0], first.requestId);
+  assert.equal(app.button.disabled, false, 'local translation must not block AI');
+  app.button.click();
+  const latest = app.requests[2];
+  assert.equal(latest.input.direction, 'en-zh');
+  latest.resolve({ ok: true, data: { text: '蓝发（AI）' } });
+  await app.settle();
+  local.resolve({ ok: true, data: { text: '旧本地结果' } });
+  first.resolve({ ok: true, data: { text: '旧方向结果' } });
+  await app.settle();
+  assert.equal(app.output.value, '蓝发（AI）');
+  assert.equal(app.button.disabled, false);
+  assert.equal(app.doc.querySelector('#translateThinking').hidden, false);
 });
 
 test('gallery factory owns card action rendering and rename path', () => {
