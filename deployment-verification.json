@@ -1,11 +1,11 @@
 {
-  "version": "1.4.237",
+  "version": "1.4.238",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.237",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.238",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.235-before237",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.237-before238",
   "oldDesktopSourceBackupMoved": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.192-source-backup-20260905-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
@@ -24,7 +24,7 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 167,
+    "testsPassed": 172,
     "testsFailed": 0,
     "slowUiSmokeRun": false,
     "desktopSmoke": "Skipped per project policy: translation alignment and page interaction use fast checks; no real AI or ComfyUI calls",
@@ -39,7 +39,10 @@
       "reordered duplicate words and plain-text copy",
       "model markup is inert and editing invalidates alignment",
       "shared segments never expand the selection beyond direct links",
-      "direction changes refresh dictionary references after local translation starts"
+      "direction changes refresh dictionary references after local translation starts",
+      "provider reasoning is disabled and not relayed",
+      "omitted separators are repaired without changing translation text",
+      "real Edge selection highlights both directions"
     ],
     "translationAlignmentProtocol": [
       "stable IDs with Tag weights and duplicate occurrences",
@@ -58,6 +61,7 @@
     "Reference-image reproduction requires an explicitly configured source-image binding; otherwise the result is labeled text_approximation.",
     "Source aspect-ratio matching requires explicit writable width and height bindings; otherwise the workflow dimensions remain fixed.",
     "Translation alignment is optional and depends on the configured AI; unavailable mappings fall back to plain translated text without another AI call.",
-    "Local translation stays plain text; long AI translation inputs use sentence or block alignment and may cost more tokens."
+    "Local translation stays plain text; long AI translation inputs use sentence or block alignment and may cost more tokens.",
+    "Translation page no longer displays a reasoning chain; provider-specific unsupported switches may still be handled by the existing non-thinking fallback."
   ]
 }

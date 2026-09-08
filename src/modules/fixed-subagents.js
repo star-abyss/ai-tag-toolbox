@@ -113,6 +113,7 @@ function createFixedSubagents(options = {}) {
         const protocol = alignmentSource ? [
           '【本次翻译对照协议】只返回 JSON：text 为完整译文，direction 为本次方向，targetSegments 为按译文顺序排列的片段。',
           '每个片段包含 text 和 sourceIds 数组。片段文本必须逐字拼接为完整 text（含全部空格、换行和标点）；只能引用输入 sourceUnits 中的 ID，不能改写原文或计算字符位置。',
+          '例：text 为“蓝发，红眼”时，targetSegments 应为 [{"text":"蓝发","sourceIds":["s1"]},{"text":"，","sourceIds":[]},{"text":"红眼","sourceIds":["s2"]}]，不要漏掉中间的逗号片段。',
           '按最小自然词组建立语义对应，可跨语序、一对多、多对一；重复词要对应正确的那次出现。关联不明、补充语法或纯标点可用空 sourceIds。不要为了对齐改变译文意思或凭空新增内容。',
           '保持绘画 Tag、权重、专名的语义和结构；sourceUnits 仅为定位单元，应结合完整原文翻译。'
         ].join('\n') : '';

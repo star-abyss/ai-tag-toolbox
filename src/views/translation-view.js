@@ -134,7 +134,7 @@
         aligned.append(span); targetElements.push(span);
       });
       mirror.hidden = false; aligned.hidden = false; output.hidden = true;
-      if (hint) { hint.hidden = false; hint.textContent = label(['sentence', 'block'].includes(source.granularity) ? 'alignmentCoarse' : 'alignmentReady', ['sentence', 'block'].includes(source.granularity) ? '分句对照已就绪' : '对照已就绪'); }
+      if (hint) { hint.hidden = false; hint.textContent = label(['sentence', 'block'].includes(source.granularity) ? 'alignmentCoarse' : 'alignmentReady', ['sentence', 'block'].includes(source.granularity) ? '分句对照已生成' : '对照已生成'); }
       tick(syncMirror);
     }
     function renderReferences() {
@@ -197,7 +197,15 @@
       q('#translateClear')?.addEventListener('click', () => { if (input) input.value = ''; if (output) output.value = ''; cancel(); renderReferences(); });
       q('#translateCopy')?.addEventListener('click', () => copy?.(output?.value || ''));
       q('#translateCopyTags')?.addEventListener('click', () => copy?.([...q('#translateTags').querySelectorAll('.translate-tag')].map(node => node.textContent).join(', ')));
-      doc.addEventListener('selectionchange', () => { if (!mapping || pane.hidden) return; if (doc.activeElement === input) selectSource(); else { const selection = targetSelection(); if (selection) pin(selection); } });
+      doc.addEventListener('selectionchange', () => {
+        if (!mapping || pane.hidden) return;
+        // A drag selection in the rendered translation can leave focus on the
+        // editable source textarea. Resolve the actual range first so target
+        // selection always wins over stale textarea focus.
+        const target = targetSelection();
+        if (target) pin(target);
+        else if (doc.activeElement === input) selectSource();
+      });
       pane?.addEventListener('mousedown', event => { if (event.target !== input && !event.target.closest('.translation-alignment-segment')) clearHighlights(); });
       pane?.addEventListener('keydown', event => { if (event.key !== 'Escape' || !mapping) return; clearHighlights(); if (doc.activeElement === input) input.setSelectionRange(input.selectionEnd, input.selectionEnd); else if (targetSelection()) win.getSelection().removeAllRanges(); });
       aligned?.addEventListener('mouseup', () => { const selection = targetSelection(); if (selection) pin(selection); });

@@ -185,6 +185,43 @@ test('AI translation falls back to plain output when alignment is missing', asyn
   assert.equal(doc.querySelector('#translateOutput').value, 'blue hair');
 });
 
+test('AI response with omitted commas reaches the page and highlights source and translated selections', async t => {
+  const { createAgentRuntime } = require('../src/modules/agent-runtime');
+  const { createFixedSubagents } = require('../src/modules/fixed-subagents');
+  let calls = 0;
+  const runtime = createAgentRuntime({ subagents: createFixedSubagents({ ai: { complete: async () => {
+    calls++;
+    return { text: JSON.stringify({ text: '蓝发，红眼，蓝发', targetSegments: [
+      { text: '蓝发', sourceIds: ['s1'] }, { text: '红眼', sourceIds: ['s2'] }, { text: '蓝发', sourceIds: ['s3'] }
+    ] }) };
+  } } }) });
+  const app = boot({ runtime: { runSubAgent: runtime.runSubAgent, cancel: runtime.cancel } });
+  t.after(() => app.dom.window.close());
+  const doc = app.window.document, input = doc.querySelector('#translateInput');
+  app.view.route('translation');
+  input.value = 'blue_hair, red_eyes, blue_hair';
+  input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+  doc.querySelector('#translateAi').click();
+  await new Promise(resolve => setImmediate(resolve));
+  const mirror = doc.querySelector('#translateSourceMirror'), aligned = doc.querySelector('#translateAlignedOutput');
+  assert.equal(aligned.hidden, false, 'valid word links survive missing comma segments');
+  assert.equal(aligned.textContent, '蓝发，红眼，蓝发');
+  input.focus(); input.setSelectionRange(21, input.value.length);
+  input.dispatchEvent(new app.window.Event('select'));
+  assert.deepEqual([...aligned.querySelectorAll('.active')].map(node => node.dataset.sourceIds), ['s3']);
+  aligned.focus();
+  const range = doc.createRange(); range.selectNodeContents(aligned.querySelector('[data-source-ids="s2"]'));
+  app.window.getSelection().removeAllRanges(); app.window.getSelection().addRange(range);
+  doc.dispatchEvent(new app.window.Event('selectionchange'));
+  assert.deepEqual([...mirror.querySelectorAll('.active')].map(node => node.dataset.sourceId), ['s2']);
+  let copied;
+  app.window.navigator.clipboard.writeText = async value => { copied = value; };
+  doc.querySelector('#translateCopy').click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(copied, '蓝发，红眼，蓝发');
+  assert.equal(calls, 1, 'separator recovery must not request another AI translation');
+});
+
 test('translation target hover keeps only the directly linked source units', async t => {
   const app = boot({ runtime: {
     runSubAgent: async () => ({ ok: true, data: { text: 'long blue hair', alignment: { sourceUnits: [{ id: 's1', text: 'blue' }, { id: 's2', text: 'long' }, { id: 's3', text: 'hair' }], targetSegments: [
@@ -257,7 +294,6 @@ test('alignment follows source and target text selections, keeps whitespace and 
   input.dispatchEvent(new app.window.Event('select'));
   assert.deepEqual([...aligned.querySelectorAll('.active')].map(node => node.textContent), ['长发', '蓝发']);
   const target = aligned.querySelector('[data-source-ids="s3"]');
-  aligned.focus();
   const range = doc.createRange(); range.selectNodeContents(target);
   app.window.getSelection().removeAllRanges(); app.window.getSelection().addRange(range);
   doc.dispatchEvent(new app.window.Event('selectionchange'));

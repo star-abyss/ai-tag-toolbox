@@ -72,9 +72,22 @@
       if (!item.text) continue;
       segments.push({ text: item.text, sourceIds: [...new Set((Array.isArray(item.sourceIds) ? item.sourceIds : []).slice(0, MAX_UNITS).filter(id => typeof id === 'string' && allowed.has(id)))] });
     }
-    // Never drop text, change whitespace or guess positions to make a mapping fit.
-    if (segments.map(row => row.text).join('') !== targetText || !segments.some(row => row.sourceIds.length)) return null;
-    return { sourceUnits: source, targetSegments: segments };
+    // Providers occasionally omit commas or other separators from the segment
+    // list even though they are present in the complete translated text. Keep
+    // those exact gaps as unlinked segments, but never skip meaningful text.
+    const aligned = [], gap = value => /^[\s\p{P}]*$/u.test(value);
+    let offset = 0;
+    for (const segment of segments) {
+      const index = targetText.indexOf(segment.text, offset);
+      if (index < offset || !gap(targetText.slice(offset, index))) return null;
+      if (index > offset) aligned.push({ text: targetText.slice(offset, index), sourceIds: [] });
+      aligned.push(segment);
+      offset = index + segment.text.length;
+    }
+    if (!gap(targetText.slice(offset)) || !segments.some(row => row.sourceIds.length)) return null;
+    if (offset < targetText.length) aligned.push({ text: targetText.slice(offset), sourceIds: [] });
+    if (aligned.length > MAX_SEGMENTS) return null;
+    return { sourceUnits: source, targetSegments: aligned };
   }
   function parseTranslationPayload(value, sourceUnits = []) {
     let payload = value;
