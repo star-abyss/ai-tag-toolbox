@@ -210,11 +210,11 @@
 **Interfaces:**
 - Final desktop directory is `C:\Users\admin\Desktop\AI绘画Tag工具箱V1.4.228`.
 
-- [ ] **Step 1:** Expand integration fixtures for auto multi-round, manual feedback, failed submission budget, selection during active render, compact DTO and exact usage.
-- [ ] **Step 2:** Run `npm run check` with zero failures.
-- [ ] **Step 3:** Update all version markers to 1.4.228 and rerun `npm run check`.
-- [ ] **Step 4:** Stop V1.4.220 processes and move its desktop directory into `F:\codex\desktop-backups`.
-- [ ] **Step 5:** Build and verify source mirrors, app.asar, native dependencies and V1.4.228 executable.
-- [ ] **Step 6:** Run packaged Electron smoke at 1100x800 and 1500x950 against local AI/ComfyUI fixtures, including manual continuation and in-flight final selection.
-- [ ] **Step 7:** Record evidence, mark every plan item complete, commit, rebuild once and verify desktop uniqueness/hash/HEAD.
-- [ ] **Step 8:** Do not push or publish; stop for user manual testing.
+- [x] **Step 1:** Expand integration fixtures for auto multi-round, manual feedback, failed submission budget, selection during active render, compact DTO and exact usage.
+- [x] **Step 2:** Run `npm run check` with zero failures.
+- [x] **Step 3:** Update all version markers to 1.4.228 and rerun `npm run check`.
+- [x] **Step 4:** Stop V1.4.220 processes and move its desktop directory into `F:\codex\desktop-backups`.
+- [x] **Step 5:** Build and verify source mirrors, app.asar, native dependencies and V1.4.228 executable.
+- [x] **Step 6:** Run packaged Electron smoke at 1100x800 and 1500x950 against local AI/ComfyUI fixtures, including manual continuation and in-flight final selection.
+- [x] **Step 7:** Record evidence, mark every plan item complete, commit, rebuild once and verify desktop uniqueness/hash/HEAD.
+- [x] **Step 8:** Do not push or publish; stop for user manual testing.

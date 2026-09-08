@@ -1,11 +1,11 @@
 {
-  "version": "1.4.220",
+  "version": "1.4.228",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.220",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.228",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.213-before220",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.220-before228",
   "oldDesktopSourceBackupMoved": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.192-source-backup-20260905-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
@@ -24,11 +24,11 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 110,
+    "testsPassed": 137,
     "testsFailed": 0,
     "slowUiSmokeRun": true,
-    "desktopSmoke": "Packaged Electron V1.4.220 connected through CDP; local AI and ComfyUI fixtures completed 2 create candidates, 2 reference-image recreation candidates, prompt revision, comparison, source upload and cancellation",
-    "desktopSmokeCounts": { "apiCalls": 17, "submittedPrompts": 5, "sourceUploads": 2, "monitorRecords": 21 },
+    "desktopSmoke": "Packaged Electron V1.4.228 connected through CDP; local AI and ComfyUI fixtures completed two automatic 2-image rounds, reference-image recreation, manual feedback continuation, in-flight final selection, interruption and cancellation",
+    "desktopSmokeCounts": { "apiCalls": 42, "submittedPrompts": 9, "sourceUploads": 2, "monitorRecords": 59, "createCandidates": 4, "recreateCandidates": 4, "manualCandidates": 4, "finalSelectionInterrupts": 1 },
     "viewports": ["1100x800", "1500x950"],
     "screenshotVerification": true
   },
@@ -37,6 +37,7 @@
     "No role thumbnails, original images, or LoRA files were included.",
     "Character-specific terms stay out of ordinary tag search and are returned only through character data.",
     "The existing ordinary-tag favorites format does not persist character selections.",
-    "Reference-image reproduction requires an explicitly configured source-image binding; otherwise the result is labeled text_approximation."
+    "Reference-image reproduction requires an explicitly configured source-image binding; otherwise the result is labeled text_approximation.",
+    "Source aspect-ratio matching requires explicit writable width and height bindings; otherwise the workflow dimensions remain fixed."
   ]
 }
