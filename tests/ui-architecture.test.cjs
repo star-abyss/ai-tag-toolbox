@@ -56,3 +56,10 @@ test('preload exposes the scoped final-selection command', () => {
   assert.match(preload, /selectGenerationFinal:\s*assistant\.selectGenerationFinal/);
   assert.doesNotMatch(preload, /generation:\s*assistant\.generation/);
 });
+
+test('new generation controls replace the old strategy selector', () => {
+  const html = fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8');
+  assert.doesNotMatch(html, /id="generationStrategy"|id="generationAutoSelect"/);
+  for (const id of ['imagesPerRound', 'maxAutoRounds', 'generationAutoRun']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /id="talkComfyDebug"[^>]*title=/);
+});

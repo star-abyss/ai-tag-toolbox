@@ -322,6 +322,47 @@ function createAssistant(options = {}) {
     persist();
     return clone(found.message.result);
   }
+  async function continueGeneration(value, candidateId, feedback, options = {}, sessionId = state.currentId) {
+    if (typeof options === 'string') { sessionId = options; options = {}; }
+    if (active) return failure('BUSY', '当前请求仍在处理中', active.id, active.sessionId);
+    const found = messageLocation(value, sessionId);
+    const jobId = text(found?.message?.result?.jobId);
+    const note = text(feedback);
+    if (!found || !jobId || !text(candidateId) || !note) return failure('INVALID_INPUT', '继续优化需要候选图和修改意见');
+    const session = found.session;
+    const requestId = id('generation_resume');
+    const user = append('user', note, { status: 'done' }, session.id);
+    const liveSnapshot = append('assistant', '', { status: 'streaming' }, session.id);
+    const live = session.messages.find(message => message.id === liveSnapshot.id);
+    const controller = new AbortController();
+    const job = { id: requestId, sessionId: session.id, session, live, controller, invalidated: false };
+    active = job; state.busy = true; state.status = 'running'; state.jobId = requestId; state.lastError = '';
+    const onEvent = event => {
+      if (!writable(job) || isNoiseEvent(event)) return;
+      live.events.push(clone(event)); if (live.events.length > 256) live.events.shift(); live.activity = clone(live.events);
+      const generationState = event?.jobId ? generation?.get?.(event.jobId) : null;
+      if (generationState) {
+        live.result = { ...(object(live.result) ? live.result : {}), ...clone(generationState) };
+        live.artifacts = clone(array(generationState.artifacts));
+        live.imageIds = ids(generationState.imageIds);
+      }
+      persist(); observe(options.onEvent, clone(event));
+    };
+    try {
+      const outcome = await runtime.callTool('generation.resume', { jobId, action: 'continue', baseCandidateId: text(candidateId), feedback: note }, { requestId, sessionId: session.id, messageId: live.id, signal: controller.signal, onEvent });
+      if (!writable(job)) return { ...failure('CANCELLED', '请求已取消', requestId, session.id), data: cancelledPayload(job) };
+      const payload = object(outcome.data) ? outcome.data : {};
+      applyPayload(job, payload);
+      const error = outcome.ok ? null : errorShape(outcome.error);
+      live.status = outcome.ok ? 'done' : error.code === 'CANCELLED' ? 'cancelled' : 'error';
+      live.result = { ...clone(payload), ok: outcome.ok, error, usage: clone(outcome.usage) };
+      if (!live.text && error) live.text = error.message;
+      session.updatedAt = Date.now(); state.status = outcome.ok ? 'idle' : live.status; state.lastError = error?.message || ''; persist();
+      return { ...outcome, ...payload, data: clone(payload), text: live.text, status: live.status, requestId, sessionId: session.id, userMessageId: user?.id };
+    } finally {
+      if (active === job) { active = null; state.busy = false; state.jobId = ''; }
+    }
+  }
   async function rerunFromMessage(value, inputPatch = {}, config = {}, sessionId = state.currentId) {
     if (active) return failure('BUSY', '当前请求仍在处理中', active.id, active.sessionId);
     const found = messageLocation(value, sessionId); if (!found || found.session.id !== state.currentId) return failure('MESSAGE_NOT_FOUND', '没有找到要重新执行的消息');
@@ -352,7 +393,7 @@ function createAssistant(options = {}) {
     deleteSession(sessionId = state.currentId, value = {}) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); const result = imageRepository.deleteSession(sessionId, { retainImages: value.retainImages === true }); if (!sessionById()) state.currentId = state.sessions[0]?.id || ''; if (!state.sessions.length) newSession(); else persist(); return result; },
     clearSession(sessionId = state.currentId) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); imageRepository.clearSessionContent(sessionId); persist(); return clone(sessionById(sessionId)); },
     clearConversationImages(sessionId = state.currentId) { if (!sessionById(sessionId)) return false; if (active?.sessionId === sessionId) cancel(); const result = imageRepository.clearConversationImages(sessionId); persist(); return result; },
-    append, editMessage, deleteMessage, chooseCandidate, selectCandidate: chooseCandidate, selectGenerationFinal, rerunFromMessage, regenerateMessage: rerunFromMessage,
+    append, editMessage, deleteMessage, chooseCandidate, selectCandidate: chooseCandidate, selectGenerationFinal, continueGeneration, rerunFromMessage, regenerateMessage: rerunFromMessage,
     exportSessions: () => JSON.stringify(sessionBundle(), null, 2),
     importSessions(value, replace = false) { const incoming = incomingBundle(value); if (!incoming) return false; cancel(); const usedSessions = new Set(replace ? [] : state.sessions.map(row => row.id)); const usedMessages = new Set(replace ? [] : state.sessions.flatMap(row => row.messages.map(message => message.id))); const normalized = incoming.sessions.map(row => normalizeSession(row, usedSessions, usedMessages)); state.sessions = replace ? normalized : [...state.sessions, ...normalized]; if (replace || !sessionById()) state.currentId = state.sessions[0]?.id || ''; for (const session of normalized) imageRepository.reconcileSessionMessages(session.id); imageRepository.reconcileSessions(); if (!state.sessions.length) newSession(); else persist(); return clone(state.sessions); },
     listFavorites: () => clone(favorites), getFavorites: () => clone(favorites), setFavorites(value) { favorites = array(value).map(clone); write('rewrite_favorites', favorites); return clone(favorites); }, addFavorite(value) { const item = object(value) ? clone(value) : { name: text(value, '未命名收藏') }; item.id = text(item.id, id('favorite')); favorites.push(item); write('rewrite_favorites', favorites); return clone(item); }, removeFavorite(favoriteId) { const index = favorites.findIndex(row => row.id === favoriteId); if (index < 0) return false; favorites.splice(index, 1); write('rewrite_favorites', favorites); return true; },

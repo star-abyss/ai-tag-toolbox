@@ -38,8 +38,9 @@ function boot(options = {}) {
     listConversation: () => ({ items: conversationItems.slice() }),
     clearConversationImages: sessionId => { options.clearConversationImages?.(sessionId); conversationItems = []; return { removed: 1, deletedImages: 1 }; }
   };
-  let settings = { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', comfyBase: 'http://127.0.0.1:8188', comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, batchCount: 1, maxComfyCalls: 3, generationStrategy: 'auto', generationAutoSelect: true };
+  let settings = { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: '', comfyBase: 'http://127.0.0.1:8188', comfyOn: true, comfyW: 768, comfyH: 1024, comfySteps: 25, comfyCfg: 7, batchCount: 1, maxComfyCalls: 3, generationAutoRun: true, imagesPerRound: 1, maxAutoRounds: 3 };
   let cancelCount = 0;
+  const continuationCalls = [];
   const assistant = {
     sessions: () => [session], currentSession: () => session, newSession: () => session,
     getSettings: () => settings,
@@ -62,6 +63,8 @@ function boot(options = {}) {
       Object.assign(message.result, { selectedCandidateId: candidateId, selectedImageId: candidate.imageId, finalCandidateId: candidateId, finalImageId: candidate.imageId, finalPrompt: candidate.prompt, finalNegative: candidate.negative || '' });
       return structuredClone(message.result);
     },
+    selectGenerationFinal: async (messageId, candidateId) => assistant.chooseCandidate(messageId, candidateId, 'user'),
+    continueGeneration: async (messageId, candidateId, feedback) => { continuationCalls.push({ messageId, candidateId, feedback }); return { ok: true }; },
     clearConversationImages: sessionId => repository.clearConversationImages?.(sessionId),
     deleteSession: (sessionId, value) => { options.deleteSession?.(sessionId, value); return true; },
     imageRepository: repository
@@ -104,7 +107,7 @@ function boot(options = {}) {
   for (const file of ['views/conversation-view.js', 'views/gallery-view.js', 'views/settings-view.js', 'views/comfy-view.js', 'views/prompt-view.js', 'views/agent-status-view.js', 'views/call-monitor-view.js', 'app-view.js']) window.eval(source(file));
   const view = window.AppView.create(modules, window.document);
   view.start();
-  return { dom, window, view, assistant, repository, gallery, downloadBlobs, getRunCount: () => runCount, getCancelCount: () => cancelCount, getComfyProfile: () => comfyProfile && structuredClone(comfyProfile) };
+  return { dom, window, view, assistant, repository, gallery, downloadBlobs, continuationCalls, getRunCount: () => runCount, getCancelCount: () => cancelCount, getComfyProfile: () => comfyProfile && structuredClone(comfyProfile) };
 }
 
 test('full DOM startup renders extracted views and conversation click uses assistant runtime', async () => {
@@ -189,17 +192,27 @@ test('ComfyUI profile exposes explicit capabilities and reference bindings', () 
   app.dom.window.close();
 });
 
-test('conversation generation controls persist strategy and automatic selection', () => {
+test('conversation generation controls persist batch and auto/manual mode', () => {
   const app = boot();
   app.view.route('ai'); app.view.showAi('talk');
-  const strategy = app.window.document.querySelector('#generationStrategy');
-  const autoSelect = app.window.document.querySelector('#generationAutoSelect');
-  assert.equal(strategy.value, 'auto');
-  assert.equal(autoSelect.checked, true);
-  strategy.value = 'fixed3'; strategy.dispatchEvent(new app.window.Event('change', { bubbles: true }));
-  autoSelect.checked = false; autoSelect.dispatchEvent(new app.window.Event('change', { bubbles: true }));
-  assert.equal(app.assistant.getSettings().generationStrategy, 'fixed3');
-  assert.equal(app.assistant.getSettings().generationAutoSelect, false);
+  const master = app.window.document.querySelector('#talkComfyOn');
+  const batch = app.window.document.querySelector('#imagesPerRound');
+  const rounds = app.window.document.querySelector('#maxAutoRounds');
+  const autoRun = app.window.document.querySelector('#generationAutoRun');
+  const gear = app.window.document.querySelector('#talkComfyDebug');
+  assert.equal(master.checked, true);
+  assert.equal(batch.value, '1');
+  assert.equal(rounds.value, '3');
+  assert.equal(autoRun.checked, true);
+  assert.match(gear.textContent, /⚙/);
+  batch.value = '4'; batch.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  autoRun.checked = false; autoRun.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  assert.equal(rounds.disabled, true);
+  assert.equal(app.assistant.getSettings().imagesPerRound, 4);
+  assert.equal(app.assistant.getSettings().generationAutoRun, false);
+  master.checked = false; master.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  assert.equal(batch.disabled, true);
+  assert.equal(autoRun.disabled, true);
   const beforeStop = app.getCancelCount();
   app.window.document.querySelector('#talkStopBtn').click();
   assert(app.getCancelCount() > beforeStop);
@@ -219,8 +232,36 @@ test('candidate comparison shows scores and issues and accepts a manual final ch
   assert.match(cards[0].querySelector('.draw-candidate-issues').textContent, /视角偏正面/);
   assert.equal(cards[1].classList.contains('selected'), true);
   assert.match(app.window.document.querySelector('.genout').textContent, /from side/);
+  assert.equal(cards[0].querySelectorAll('.draw-candidate-actions > .cico').length, 1, 'only continue may remain outside Tag details');
+  assert.equal(cards[0].querySelectorAll('.draw-candidate-tag-copy').length, 2);
   cards[0].querySelector('.draw-candidate-choose').click();
-  assert.equal(app.assistant.currentSession().messages[0].result.selectedCandidateId, 'candidate-1');
+  return new Promise(resolve => setTimeout(resolve, 0)).then(() => {
+    assert.equal(app.assistant.currentSession().messages[0].result.selectedCandidateId, 'candidate-1');
+    app.dom.window.close();
+  });
+});
+
+test('manual candidate feedback continues only the selected image', async () => {
+  const candidate = { id: 'candidate-1', iteration: 1, roundId: 'round-1', roundIndex: 1, imageId: 'img-1', prompt: '1girl', negative: '', evaluation: { status: 'reviewed', score: 70, summary: '需要调整', issues: [] } };
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', imageIds: ['img-1'], status: 'done', result: { status: 'awaiting_feedback', jobId: 'job-1', candidates: [candidate], rounds: [{ roundId: 'round-1', candidateIds: ['candidate-1'], recommendedCandidateId: 'candidate-1' }] } }] });
+  app.view.route('ai'); app.view.showAi('talk'); app.view.renderTalk();
+  const feedback = app.window.document.querySelector('.draw-candidate-feedback');
+  const button = app.window.document.querySelector('.draw-candidate-continue');
+  assert.ok(feedback);
+  assert.equal(button.hidden, false);
+  feedback.value = '保留人物，增强低视角';
+  button.click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(app.continuationCalls[0], { messageId: 'a1', candidateId: 'candidate-1', feedback: '保留人物，增强低视角' });
+  app.dom.window.close();
+});
+
+test('automatic running candidates hide continuation but keep final selection', () => {
+  const candidate = { id: 'candidate-1', iteration: 1, roundId: 'round-1', roundIndex: 1, imageId: 'img-1', prompt: '1girl', evaluation: { status: 'reviewed', score: 70, summary: 'reviewed' } };
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', imageIds: ['img-1'], status: 'streaming', result: { status: 'rendering', jobId: 'job-1', candidates: [candidate], rounds: [] } }] });
+  app.view.route('ai'); app.view.showAi('talk'); app.view.renderTalk();
+  assert.equal(app.window.document.querySelector('.draw-candidate-continue')?.hidden, true);
+  assert.equal(app.window.document.querySelector('.draw-candidate-choose')?.disabled, false);
   app.dom.window.close();
 });
 
@@ -307,6 +348,6 @@ test('failed replies keep progress in messages without copying it into the Comfy
     assert.equal(doc.querySelector('#talkStatus').textContent, '输出格式无效');
     assert.doesNotMatch(doc.querySelector('.tk-statusline').textContent, /进度|步骤1/);
     assert.match(doc.querySelector('#talkConv').textContent, /进度 步骤1/);
-    assert.equal(doc.querySelector('#talkComfyDebug').textContent, '调试');
+    assert.equal(doc.querySelector('#talkComfyDebug').textContent, '⚙');
   } finally { app.dom.window.close(); }
 });

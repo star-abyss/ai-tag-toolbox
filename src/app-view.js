@@ -126,7 +126,7 @@
     const views = {
       conversation: viewFactories.conversation?.createConversationView?.({ document: doc, api: assistant, runtime, repository: imageRepository, images, notify, preferences, autoBind: false, bindControls: false }),
       gallery: viewFactories.gallery?.createGalleryView?.({ document: doc, repository: imageRepository, images, preferences, notify, autoBind: false, bindToolbar: false, onVision: item => { if (item?.imageId) { visionTempStore?.setLibraryReference?.(item.imageId); clearVisionResult(); renderVisionPreview(); renderTalkVisionPanel(); setVisionOpen(true); } }, onConversation: () => route("ai") }),
-      settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, autoBind: false }),
+      settings: viewFactories.settings?.createSettingsView?.({ document: doc, api: assistant, runtime, comfy, notify, onChange: () => syncGenerationControls(), autoBind: false }),
       comfy: viewFactories.comfy?.createComfyView?.({ document: doc, comfy, assistant, notify, openExternal: url => global.open(url), autoBind: false }),
       prompt: viewFactories.prompt?.createPromptView?.({ document: doc, prompts, notify, download, autoBind: false }),
       agentStatus: viewFactories.agentStatus?.createAgentStatusView?.({ document: doc, runtime, api: assistant, notify, autoBind: false }),
@@ -735,12 +735,24 @@
         status.classList.toggle("is-comfy-error", !connected);
       }
       const toggle = $("#talkComfyOn"); if (toggle) toggle.checked = settings().comfyOn === true || settings().comfy?.enabled === true;
+      syncGenerationControls();
       const workflow = $("#generationWorkflowName");
       if (workflow) {
         const active = comfy?.profiles?.active?.();
         workflow.textContent = active?.name || "默认工作流";
         workflow.title = formatText(localized("ui.ai.generationWorkflow", "工作流：{name}"), { name: active?.name || "默认工作流" });
       }
+    }
+    function syncGenerationControls() {
+      const current = settings();
+      const enabled = current.comfyOn === true || current.comfy?.enabled === true;
+      const autoRun = current.generationAutoRun !== false;
+      const batch = $("#imagesPerRound");
+      const rounds = $("#maxAutoRounds");
+      const automatic = $("#generationAutoRun");
+      if (batch) { batch.value = String(Math.max(1, Math.min(8, Number(current.imagesPerRound || current.batchCount) || 1))); batch.disabled = !enabled; }
+      if (rounds) { rounds.value = String(Math.max(1, Math.min(3, Number(current.maxAutoRounds) || 3))); rounds.disabled = !enabled || !autoRun; }
+      if (automatic) { automatic.checked = autoRun; automatic.disabled = !enabled; }
     }
     async function refreshCapabilitiesStatus(options = {}) {
       if (typeof assistant?.refreshCapabilities !== "function") return null;
@@ -897,6 +909,7 @@
       settingsSaveTimer = null;
       const s = settings();
       views.settings?.render(s);
+      syncGenerationControls();
       if ($("#aiBase"))
         $("#aiBase").value = s.base || "https://api.openai.com/v1";
       if ($("#aiPreset")) {
@@ -2591,6 +2604,7 @@
       if (item.type === "prompt.revised") return "已按评价修订绘图 Tag";
       if (item.type === "source.inspected") return "参考原图已分析";
       if (item.type === "generation.needs_input") return item.needsInput?.message || "生成任务需要补充信息";
+      if (item.type === "generation.awaiting_feedback") return "本轮完成，等待用户点评";
       if (item.type === "generation.completed") return "候选生成与选择完成";
       if (item.type === "event") return item.name ? `${item.name} 事件` : "任务事件";
       return item.message || name || "任务事件";
@@ -2670,7 +2684,16 @@
       const selectedId = str(message.result?.finalCandidateId || message.result?.selectedCandidateId);
       const host = doc.createElement("div");
       host.className = "draw-candidates";
+      let visibleRound = 0;
       candidates.forEach(candidate => {
+        const roundIndex = Number(candidate.roundIndex) || 1;
+        if (roundIndex !== visibleRound) {
+          visibleRound = roundIndex;
+          const roundHeading = doc.createElement("h4");
+          roundHeading.className = "draw-round-heading";
+          roundHeading.textContent = `第 ${roundIndex} 轮`;
+          host.appendChild(roundHeading);
+        }
         const card = doc.createElement("article");
         card.className = "draw-candidate";
         if (candidate.id === selectedId || candidate.selected) card.classList.add("selected");
@@ -2737,38 +2760,36 @@
         tags.className = "draw-candidate-tags";
         const tagsSummary = doc.createElement("summary");
         tagsSummary.textContent = "查看本轮 Tag";
-        const tagsBody = doc.createElement("pre");
-        tagsBody.textContent = candidatePromptText(candidate);
-        tags.append(tagsSummary, tagsBody);
+        const addTagSection = (labelText, value, kind) => {
+          const section = doc.createElement("section"); section.className = `draw-candidate-tag-section ${kind}`;
+          const header = doc.createElement("div"); header.className = "draw-candidate-tag-head";
+          const label = doc.createElement("strong"); label.textContent = labelText;
+          const button = doc.createElement("button"); button.type = "button"; button.className = "draw-candidate-tag-copy btn btn-secondary"; button.textContent = localized("ui.ai.copyTagSection", "复制"); button.disabled = !str(value);
+          button.onclick = async event => { event.preventDefault(); if (await copy(value)) notify(`${labelText}已复制`); };
+          const body = doc.createElement("pre"); body.textContent = str(value, "未使用");
+          header.append(label, button); section.append(header, body); tags.appendChild(section);
+        };
+        tags.appendChild(tagsSummary);
+        addTagSection(localized("ui.ai.positiveTags", "正向 Tag"), candidate.prompt, "positive");
+        addTagSection(localized("ui.ai.negativeTags", "负向 Tag"), candidate.negative, "negative");
         card.appendChild(tags);
+        const manualWaiting = message.result?.status === "awaiting_feedback";
+        const running = message.status === "streaming" || ["preparing", "compiling", "rendering", "evaluating", "revising", "selecting", "finishing"].includes(message.result?.status);
+        const feedback = doc.createElement("textarea");
+        feedback.className = "draw-candidate-feedback";
+        feedback.rows = 2;
+        feedback.placeholder = localized("ui.ai.candidateFeedback", "输入对这张图的修改意见");
+        feedback.hidden = !manualWaiting;
+        card.appendChild(feedback);
         const actions = doc.createElement("div");
         actions.className = "draw-candidate-actions";
-        const copyPrompt = doc.createElement("button");
-        copyPrompt.type = "button";
-        copyPrompt.className = "cico btn btn-secondary";
-        copyPrompt.textContent = "完整";
-        copyPrompt.title = "复制本轮完整提示词";
-        copyPrompt.onclick = async () => { if (await copy(candidatePromptText(candidate))) notify("本轮提示词已复制"); };
-        const copyPositive = doc.createElement("button");
-        copyPositive.type = "button";
-        copyPositive.className = "cico btn btn-secondary";
-        copyPositive.textContent = "正向";
-        copyPositive.title = "复制本轮正向 Tag";
-        copyPositive.onclick = async () => { if (await copy(candidate.prompt)) notify("正向 Tag 已复制"); };
-        const copyNegative = doc.createElement("button");
-        copyNegative.type = "button";
-        copyNegative.className = "cico btn btn-secondary";
-        copyNegative.textContent = "负向";
-        copyNegative.title = "复制本轮负向 Tag";
-        copyNegative.disabled = !str(candidate.negative);
-        copyNegative.onclick = async () => { if (await copy(candidate.negative)) notify("负向 Tag 已复制"); };
         const choose = doc.createElement("button");
         choose.type = "button";
         choose.className = "draw-candidate-choose btn btn-primary";
         choose.textContent = candidate.id === selectedId || candidate.selected ? "已选为最终结果" : "设为最终结果";
         choose.disabled = candidate.id === selectedId || candidate.selected;
-        choose.onclick = () => {
-          const result = assistant?.chooseCandidate?.(message.id, candidate.id, "user");
+        choose.onclick = async () => {
+          const result = assistant?.selectGenerationFinal ? await assistant.selectGenerationFinal(message.id, candidate.id) : assistant?.chooseCandidate?.(message.id, candidate.id, "user");
           if (result) { renderTalk(); notify(`已选择第 ${Number(candidate.iteration) || 1} 次结果`); }
         };
         const continueButton = doc.createElement("button");
@@ -2776,15 +2797,29 @@
         continueButton.className = "cico btn btn-secondary draw-candidate-continue";
         continueButton.textContent = localized("ui.ai.candidateContinue", "继续优化");
         continueButton.title = "基于这张候选图开始新的优化任务";
-        continueButton.onclick = () => {
+        continueButton.hidden = running && !manualWaiting;
+        continueButton.onclick = async () => {
           const imageId = str(candidate.imageId);
           const suggestions = issueRows.map(issue => str(issue?.suggestedChange || issue?.observed)).filter(Boolean).join("；");
+          if (manualWaiting) {
+            const value = str(feedback.value);
+            if (!value) return notify("请先输入修改意见");
+            const label = $("#talkSendBtn")?.textContent || "发送";
+            setTalkBusy(true, label); put("#talkStatus", "正在按点评继续优化…");
+            const pending = assistant?.continueGeneration?.(message.id, candidate.id, value, { onEvent: handleTalkToolEvent });
+            renderTalk();
+            const result = await pending;
+            setTalkBusy(false, label);
+            if (result?.ok === false) notify(result.error?.message || "继续优化失败");
+            else renderTalk();
+            return;
+          }
           const input = $("#talkIn");
           if (!input) return;
           input.value = `请基于对话图片 ${imageId} 继续优化${suggestions ? `，重点修正：${suggestions}` : "，保留当前优点并进一步提高匹配度"}`;
           resizeTalkInput(); input.focus();
         };
-        actions.append(copyPrompt, copyPositive, copyNegative, continueButton, choose);
+        actions.append(continueButton, choose);
         card.appendChild(actions);
         host.appendChild(card);
       });
@@ -2836,6 +2871,7 @@
       }
       if (type === "prompt.revised") put("#talkStatus", "已按评价修订 Tag，准备下一张候选…");
       if (type === "generation.needs_input") put("#talkStatus", event.needsInput?.message || "生成任务需要补充信息");
+      if (type === "generation.awaiting_feedback") put("#talkStatus", "本轮完成，等待点评");
       if (type === "generation.completed") { updateStreamingCandidates(); put("#talkStatus", "候选比较完成"); }
       if (type === "generation.failed") put("#talkStatus", event.error?.message || "生成任务失败");
       if (type === "generation.cancelled") put("#talkStatus", "生成任务已取消");
@@ -2891,7 +2927,7 @@
         renderConversationRepository();
       }
       renderTalk();
-      put("#talkStatus", result?.ok === false ? compactTalkStatus(result, "发送失败") : "完成");
+      put("#talkStatus", result?.ok === false ? compactTalkStatus(result, "发送失败") : result?.status === "awaiting_feedback" ? "本轮完成，等待点评" : "完成");
       setTalkBusy(false, label);
     }
     function renderManager() {
@@ -3521,7 +3557,7 @@
         renderTalkVisionPanel();
       });
       $("#tpDescribe")?.addEventListener("click", () => describe());
-      $("#talkComfyOn")?.addEventListener("change", event => { assistant?.setSettings?.({ comfyOn: event.target.checked }); refreshCapabilitiesStatus({ force: true }); });
+      $("#talkComfyOn")?.addEventListener("change", event => { assistant?.setSettings?.({ comfyOn: event.target.checked }); syncGenerationControls(); refreshCapabilitiesStatus({ force: true }); });
       $("#talkComfyDebug")?.addEventListener("click", () => showAi("comfy"));
       $("#tpStop")?.addEventListener("click", () => {
         if (!ui.visionBusy) return;

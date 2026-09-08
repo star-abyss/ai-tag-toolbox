@@ -161,6 +161,28 @@ async function testHighLevelGenerationPersistsCandidatesAndSelection() {
   assistant.destroy();
 }
 
+async function testManualContinuationBypassesPrimaryAndReleasesConversation() {
+  const calls = [];
+  const candidate = { id: 'candidate-1', imageId: 'img-1', prompt: '1girl', negative: '', evaluation: { status: 'reviewed', score: 70 } };
+  const generation = {
+    resume: async input => { calls.push(input); return { status: 'awaiting_feedback', jobId: 'job-manual', candidates: [candidate], rounds: [{ roundId: 'round-2', candidateIds: ['candidate-1'], recommendedCandidateId: 'candidate-1' }], artifacts: [], imageIds: [], successfulRounds: 2 }; },
+    get: () => null,
+    selectAndFinish: async () => null
+  };
+  const assistant = modules.createAssistant({ storage: modules.createStorage({ prefix: `manual-continue-${Date.now()}` }), generation, primaryGateway: { complete: async () => ({ text: 'primary should not run' }) } });
+  assistant.importSessions({ format: 'ai-tag-sessions', version: 1, currentId: 's1', sessions: [{ id: 's1', title: 'manual', messages: [{ id: 'a1', role: 'assistant', text: '', status: 'done', result: { status: 'awaiting_feedback', jobId: 'job-manual', candidates: [candidate] } }] }] }, true);
+  const result = await assistant.continueGeneration('a1', 'candidate-1', '增强低视角');
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.deepEqual(calls[0], { jobId: 'job-manual', action: 'continue', baseCandidateId: 'candidate-1', feedback: '增强低视角' });
+  const messages = assistant.currentSession().messages;
+  assert.equal(messages.at(-2).role, 'user');
+  assert.equal(messages.at(-2).text, '增强低视角');
+  assert.equal(messages.at(-1).result.status, 'awaiting_feedback');
+  const normal = await assistant.run({ text: '现在可以继续对话' });
+  assert.equal(normal.ok, true);
+  assistant.destroy();
+}
+
 (async () => {
   await testConversationTranscriptAndImageScope();
   await testCancellationAndBusyGuard();
@@ -168,5 +190,6 @@ async function testHighLevelGenerationPersistsCandidatesAndSelection() {
   await testGenerationSettingsMigration();
   await testSessionFormatAndImport();
   await testHighLevelGenerationPersistsCandidatesAndSelection();
+  await testManualContinuationBypassesPrimaryAndReleasesConversation();
   console.log('assistant-flow: ok');
 })().catch(error => { console.error(error); process.exitCode = 1; });

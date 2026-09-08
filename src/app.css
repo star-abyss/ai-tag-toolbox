@@ -590,6 +590,7 @@ body.aiview #catList,body.aiview #addTagBtn{display:none}
   body.vision-open #tagPane.tkpane{left:0;right:0;width:100%;max-width:none}
 }
 .draw-candidates{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:10px 0 4px}
+.draw-round-heading{grid-column:1/-1;margin:4px 0 0;padding-bottom:4px;border-bottom:1px solid var(--border2);font-size:12px;color:var(--muted)}
 .draw-candidate{min-width:0;padding:10px;border:1px solid var(--border2);border-radius:8px;background:var(--card);box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s}
 .draw-candidate:hover{border-color:var(--pri);box-shadow:0 3px 12px var(--pri-bg)}
 .draw-candidate.selected{border-color:var(--pri);box-shadow:0 0 0 2px var(--pri-bg)}
@@ -610,6 +611,12 @@ body.aiview #catList,body.aiview #addTagBtn{display:none}
 .draw-candidate-tags{margin-top:8px;border-top:1px dashed var(--border2);padding-top:6px}
 .draw-candidate-tags summary{color:var(--muted);font-size:11px;cursor:pointer;user-select:none}
 .draw-candidate-tags pre{margin-top:6px;max-height:110px;overflow:auto;padding:7px 8px;border-radius:7px;background:var(--bg);color:var(--text);font:11px/1.55 'Cascadia Code',Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+.draw-candidate-tag-section{padding:7px 0 0}
+.draw-candidate-tag-section+.draw-candidate-tag-section{margin-top:6px;border-top:1px solid var(--border)}
+.draw-candidate-tag-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px}
+.draw-candidate-tag-copy{min-height:24px;padding:2px 8px;border-radius:6px;font-size:10.5px}
+.draw-candidate-feedback{display:block;width:100%;min-height:54px;margin-top:8px;padding:7px 8px;resize:vertical;border:1px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text);font-size:11.5px;line-height:1.45}
+.draw-candidate-feedback[hidden]{display:none}
 .draw-candidate-actions{display:flex;align-items:center;gap:6px;margin-top:9px;flex-wrap:wrap}
 .draw-candidate-actions .cico{width:auto;min-width:38px;height:26px;border-radius:8px;padding:0 6px;font-size:10.5px;font-weight:700}
 .draw-candidate-actions .cico:disabled{opacity:.35;cursor:not-allowed}

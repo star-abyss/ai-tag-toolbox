@@ -134,13 +134,13 @@
 - Candidate UI emits final selection, per-image feedback and continuation commands.
 - Tag details contain separate positive/negative copy actions.
 
-- [ ] **Step 1:** Add failing DOM tests for master switch, gear, disabled max rounds, manual feedback, running action visibility and Tag copy sections.
-- [ ] **Step 2:** Replace the three-way strategy control with the new compact controls.
-- [ ] **Step 3:** Render round grouping, feedback inputs and context-dependent candidate actions.
-- [ ] **Step 4:** Connect final selection immediately and manual continuation only while idle.
-- [ ] **Step 5:** Add responsive/localized styling and verify 980px/minimized and wide layouts in jsdom constraints.
-- [ ] **Step 6:** Run focused tests and `npm run check`.
-- [ ] **Step 7:** Commit `V1.4.225：完成双模式生成交互界面`.
+- [x] **Step 1:** Add failing DOM tests for master switch, gear, disabled max rounds, manual feedback, running action visibility and Tag copy sections.
+- [x] **Step 2:** Replace the three-way strategy control with the new compact controls.
+- [x] **Step 3:** Render round grouping, feedback inputs and context-dependent candidate actions.
+- [x] **Step 4:** Connect final selection immediately and manual continuation only while idle.
+- [x] **Step 5:** Add responsive/localized styling and verify 980px/minimized and wide layouts in jsdom constraints.
+- [x] **Step 6:** Run focused tests and `npm run check`.
+- [x] **Step 7:** Commit `V1.4.225：完成双模式生成交互界面`.
 
 ### Task 6: Delivery Semantics And Recreation Geometry
 
