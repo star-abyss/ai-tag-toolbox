@@ -7,6 +7,7 @@ module.exports = {
   ...require('./image-repository'),
   ...require('./vision-temp-store'),
   ...require('./translation'),
+  ...require('./translation-alignment'),
   ...require('./assistant'),
   ...require('./prompts'),
   ...require('./vision'),
