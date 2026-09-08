@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
-    "version":  "1.4.233",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.233 角色选择与原任务续跑",
+    "version":  "1.4.234",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.234 监视器滚动与角色参考传递",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",

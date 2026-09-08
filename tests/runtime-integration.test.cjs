@@ -128,10 +128,14 @@ test('generateTags compile returns full Tags and revise returns a bounded patch'
   assert.deepEqual(compiled.data.negativeTags, ['lowres']);
   const revised = await runtime.runSubAgent('generateTags', { input: {
     operation: 'revise', requirements: 'blue-haired girl', positiveTags: compiled.data.positiveTags,
-    negativeTags: compiled.data.negativeTags, evaluation: { score: 70, suggestedChanges: ['侧身'] }
+    negativeTags: compiled.data.negativeTags, evaluation: { score: 70, suggestedChanges: ['侧身'] },
+    characterReferences: [{ id: 'target', identityTags: ['target'], generalTags: ['blue hair', 'boots'], specificTags: [] }]
   } });
   assert.deepEqual(revised.data, { add: ['from side'], remove: ['front view'], preserve: ['blue hair'], negativeAdd: ['bad anatomy'], negativeRemove: [] });
   assert.match(messagesSeen[1][0].content, /add.*remove.*preserve/s);
+  assert.match(messagesSeen[1][0].content, /角色资料.*参考.*人数.*景别.*可见/s);
+  assert.match(messagesSeen[1][0].content, /评价建议.*目标角色资料冲突/s);
+  assert.doesNotMatch(messagesSeen[1][0].content, /角色资料.*全部.*必须保留/s);
   assert.match(messagesSeen[1][1].content[0].text, /上一版正向 Tag.*blue hair/s);
 });
 

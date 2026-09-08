@@ -91,6 +91,27 @@ test('recreation review labels the source first and returns structured actionabl
   assert.equal(result.evaluations[0].dimensions.referenceSimilarity, 62);
 });
 
+test('replacement evaluation receives authoritative target references without requiring every appearance tag', async () => {
+  let request;
+  const evaluator = createCandidateEvaluator({
+    resolveImage: async id => image(id),
+    visionAI: { complete: async messages => {
+      request = messages;
+      return { text: JSON.stringify({ operation: 'review', evaluations: [{ candidateId: 'candidate-1', score: 90, verdict: 'accept', confidence: 0.9, dimensions: {}, hardErrors: [], issues: [], strengths: [], suggestedChanges: [], summary: '目标角色正确' }] }) };
+    } }
+  });
+  const characterReferences = [{ id: 'hinanawi_tenshi', name: '比那名居天子', series: 'touhou', identityTags: ['hinanawi tenshi', 'touhou'], generalTags: ['blue hair', 'red eyes', 'boots'], specificTags: [] }];
+  await evaluator.run({
+    operation: 'review', mode: 'recreate', sourceImageId: 'source-1', candidateImageIds: ['candidate-1'],
+    brief: { requirements: '替换为天子，上半身构图', characterReferences, sourceReferenceRole: 'observations_before_requested_changes', characterReferencePolicy: 'adaptive_by_count_and_visible_crop', visualBlueprint: { pose: ['sitting'], scene: ['church'] } }
+  });
+  assert.match(request[0].content, /用户原始要求.*优先于角色资料/s);
+  assert.match(request[0].content, /人数.*景别.*可见范围/s);
+  assert.match(request[0].content, /外貌.*可选参考/s);
+  assert.match(request[0].content, /不得用原图人物的外貌重新解释目标角色/);
+  assert.match(request[1].content[0].text, /hinanawi_tenshi.*blue hair.*red eyes.*boots/s);
+});
+
 test('malformed JSON retries once with a repair instruction', async () => {
   const calls = [];
   const evaluator = createCandidateEvaluator({
@@ -151,4 +172,3 @@ test('operation-specific candidate counts and recreate source are validated', as
     error => error.code === 'SOURCE_IMAGE_REQUIRED'
   );
 });
-

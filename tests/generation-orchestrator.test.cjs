@@ -174,6 +174,67 @@ test('a unique name match loads the full character appearance before compiling T
   assert.deepEqual(reference.identityTags, ['hinanawi tenshi', 'touhou']);
 });
 
+test('character replacement keeps source composition but sends target references to compilation and evaluation', async () => {
+  const calls = [];
+  const role = { id: 'hinanawi_tenshi', nameZh: '比那名居天子', seriesName: 'touhou', identityTags: ['hinanawi tenshi', 'touhou'], generalTags: [{ en: 'blue hair' }, { en: 'red eyes' }, { en: 'boots' }], specificTags: [] };
+  const app = harness({
+    resolveCharacter: async value => value === role.id ? role : null,
+    runSubAgent: async (name, request) => {
+      calls.push({ name, input: structuredClone(request.input) });
+      if (name === 'vision') return ok({
+        description: '金发修女坐在教堂中', tags: ['blonde hair', 'nun', 'church'],
+        people: ['blonde nun'], appearance: ['blonde hair'], clothing: ['cassock'],
+        pose: ['sitting'], viewpoint: ['from below'], scene: ['church'], mustPreserve: ['blonde hair', 'cassock', 'sitting', 'church']
+      });
+      if (name === 'generateTags' && request.input.operation === 'compile') return ok({ positiveTags: ['hinanawi tenshi', 'blue hair', 'red eyes', 'upper body'] });
+      if (name === 'evaluateImages') return ok({ operation: 'review', evaluations: [{ candidateId: request.input.candidateImageIds[0], score: 95, verdict: 'accept', hardErrors: [], issues: [], summary: 'ok' }] });
+      throw new Error(name);
+    },
+    reviewScores: [95]
+  });
+  const result = await app.orchestrator.execute({ requirements: '把图1角色替换为比那名居天子，画上半身', mode: 'recreate', sourceImageId: 'source-1', characterIds: [role.id], strategy: 'quick' }, app.context);
+  assert.equal(result.status, 'completed');
+  const compile = calls.find(call => call.name === 'generateTags');
+  const blueprint = JSON.parse(compile.input.description);
+  assert.deepEqual(blueprint.pose, ['sitting']);
+  assert.deepEqual(blueprint.scene, ['church']);
+  // Keep source observations available for user instructions such as keeping
+  // the original outfit; they must be distinguishable from the target role.
+  assert.deepEqual(blueprint.appearance, ['blonde hair']);
+  assert.deepEqual(blueprint.clothing, ['cassock']);
+  assert.deepEqual(compile.input.characterReferences[0].generalTags, ['blue hair', 'red eyes', 'boots']);
+  const review = calls.find(call => call.name === 'evaluateImages');
+  assert.deepEqual(review.input.brief.characterReferences, compile.input.characterReferences);
+  assert.equal(review.input.brief.sourceReferenceRole, 'observations_before_requested_changes');
+  assert.equal(review.input.brief.characterReferencePolicy, 'adaptive_by_count_and_visible_crop');
+});
+
+test('Tag agent can omit or remove reference appearances for the crop while reviews retain the full reference', async () => {
+  const reviews = [];
+  const app = harness({
+    resolveCharacter: async () => ({ id: 'target', name: 'Target', identityTags: ['target'], generalTags: ['blue hair', 'red eyes', 'boots'], specificTags: [] }),
+    runSubAgent: async (name, { input }) => {
+      if (name === 'generateTags') return input.operation === 'compile'
+        ? ok({ positiveTags: ['target', 'blue hair', 'boots'] })
+        : ok({ add: ['upper body'], remove: ['blue hair', 'boots'], preserve: [] });
+      if (name === 'evaluateImages') {
+        reviews.push(structuredClone(input));
+        if (input.operation === 'compare') return ok({ operation: 'compare', recommendedCandidateId: 'img-2', ranking: [{ candidateId: 'img-2', score: 95 }, { candidateId: 'img-1', score: 70 }] });
+        const score = input.candidateImageIds[0] === 'img-1' ? 70 : 95;
+        return ok({ operation: 'review', evaluations: [{ candidateId: input.candidateImageIds[0], score, verdict: score > 90 ? 'accept' : 'revise', hardErrors: [], issues: [], suggestedChanges: ['只画上半身'], summary: '按景别调整' }] });
+      }
+      throw new Error(name);
+    }
+  });
+  const result = await app.orchestrator.execute({ requirements: '画 Target 的上半身', characterIds: ['target'] }, app.context);
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(app.renders[0].positiveTags, ['target', 'blue hair', 'boots']);
+  assert.deepEqual(app.renders[1].positiveTags, ['target', 'upper body']);
+  assert(reviews.some(input => input.operation === 'compare'));
+  for (const input of reviews) assert.deepEqual(input.brief.characterReferences[0].generalTags, ['blue hair', 'red eyes', 'boots']);
+  assert.deepEqual(app.storage.get('generation_jobs')[0].lockedTags, []);
+});
+
 test('character choices resume the original job across pauses and reject stale choices and foreign sessions', async () => {
   const roles = Object.fromEntries(['alice-a', 'alice-b', 'bob-a', 'bob-b'].map(id => [id, { id, name: id, identityTags: [id], generalTags: [{ en: 'blue hair' }] }]));
   const resolveCharacter = async (query, context) => context.mode === 'id' ? roles[query] : { items: Object.values(roles).filter(role => role.id.startsWith(query)) };

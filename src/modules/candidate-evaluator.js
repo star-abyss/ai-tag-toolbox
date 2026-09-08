@@ -1,6 +1,7 @@
 'use strict';
 
 const { assertValid } = require('./schema');
+const { SOURCE_REFERENCE_GUIDANCE, CHARACTER_REFERENCE_GUIDANCE } = require('./generation-guidance');
 
 const EVALUATION_OPERATIONS = Object.freeze(['review', 'compare']);
 const EVALUATION_MODES = Object.freeze(['create', 'recreate']);
@@ -239,7 +240,9 @@ function createCandidateEvaluator(options = {}) {
     return { imageId, url };
   }
   async function buildMessages(input, context) {
-    const system = `${promptFor(prompts)}\n\n${outputProtocol(input.operation)}`;
+    const system = [promptFor(prompts), SOURCE_REFERENCE_GUIDANCE,
+      input.brief.characterReferences?.length ? CHARACTER_REFERENCE_GUIDANCE : '',
+      outputProtocol(input.operation)].filter(Boolean).join('\n\n');
     const content = [{ type: 'text', text: [
       `操作：${input.operation}`,
       `模式：${input.mode}`,

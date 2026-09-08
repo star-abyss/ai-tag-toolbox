@@ -484,7 +484,7 @@ function createGenerationOrchestrator(options = {}) {
     const characters = await resolveCharacters(job, context);
     if (characters !== true) return characters;
     if (job.mode === 'recreate' && !object(job.visualBlueprint)) {
-      const value = await callAgent(job, context, 'vision', { imageId: job.sourceImageId, mode: 'ai', instruction: '生成用于图片复刻的紧凑视觉蓝图，涵盖人物、外貌、姿势、视角、构图、服装、场景、光照、风格和必须保留项。' }, 'source_inspection');
+      const value = await callAgent(job, context, 'vision', { imageId: job.sourceImageId, mode: 'ai', instruction: '客观记录参考原图的紧凑视觉蓝图，涵盖人物、外貌、姿势、视角、构图、服装、场景、光照和风格。只描述原图可见事实；不要将观察自动标成用户必须保留的硬约束，后续子代理会结合用户要求决定取舍。' }, 'source_inspection');
       job.visualBlueprint = compactBlueprint(value);
       emit(job, context, 'source.inspected', { sourceImageId: job.sourceImageId });
     }
@@ -493,6 +493,11 @@ function createGenerationOrchestrator(options = {}) {
       requirements: job.originalRequirements,
       sourceImageId: job.sourceImageId,
       characterIds: job.characterIds.slice(),
+      ...(job.characterReferences.length ? {
+        characterReferences: clone(job.characterReferences),
+        characterReferencePolicy: 'adaptive_by_count_and_visible_crop'
+      } : {}),
+      ...(job.mode === 'recreate' ? { sourceReferenceRole: 'observations_before_requested_changes' } : {}),
       visualBlueprint: clone(job.visualBlueprint || {})
     };
     persist(job);
