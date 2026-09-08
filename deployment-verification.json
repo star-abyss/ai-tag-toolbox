@@ -1,11 +1,11 @@
 {
-  "version": "1.4.234",
+  "version": "1.4.235",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.234",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.235",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.232-before234",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.234-before235",
   "oldDesktopSourceBackupMoved": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.192-source-backup-20260905-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
@@ -24,55 +24,18 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 151,
+    "testsPassed": 156,
     "testsFailed": 0,
-    "slowUiSmokeRun": true,
-    "desktopSmoke": "Packaged Electron V1.4.234 with isolated local AI and ComfyUI fixtures; independent monitor scrolling, full target references in evaluation, character selection and generation flows verified",
-    "desktopSmokeCounts": {
-      "ok": true,
-      "version": "1.4.234",
-      "settingsMirrored": true,
-      "apiCalls": 52,
-      "submittedPrompts": 11,
-      "uploads": 2,
-      "createCandidates": 4,
-      "recreateCandidates": 4,
-      "manualCandidates": 4,
-      "duplicatePromptBlocked": true,
-      "finalSelectionInterrupted": 1,
-      "selected": 1,
-      "monitorRecords": 75,
-      "characterChoice": {
-        "sameJobId": true,
-        "primaryCalls": 1,
-        "localSearch": true,
-        "fullAppearance": true,
-        "resumedCandidates": 1
-      },
-      "screenshots": [
-        "generation-smoke-1100x800.png",
-        "generation-smoke-wide.png",
-        "character-selection-smoke.png",
-        "monitor-scroll-smoke.png"
-      ],
-      "wideOverlap": false,
-      "monitorLayout": {
-        "count": 75,
-        "clientHeight": 514,
-        "scrollHeight": 4186,
-        "scrollTop": 3672,
-        "minCardHeight": 40.5,
-        "toolbarTop": 139.47500610351562,
-        "toolbarBottom": 175.47500610351562,
-        "listTop": 214.875
-      },
-      "characterReferenceEvaluation": true
-    },
-    "viewports": [
-      "1100x800",
-      "1500x950"
+    "slowUiSmokeRun": false,
+    "desktopSmoke": "Skipped per project policy: documentation and translation page state only; no real AI or ComfyUI calls",
+    "translationDomRegression": [
+      "empty input and reopen",
+      "duplicate clicks and failure recovery",
+      "leave and reopen",
+      "edit/clear while pending",
+      "direction change and stale local result"
     ],
-    "screenshotVerification": true
+    "architectureLocalLinksVerified": 7
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",
