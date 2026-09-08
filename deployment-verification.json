@@ -1,11 +1,11 @@
 {
-  "version": "1.4.239",
+  "version": "1.4.3",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.239",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.3",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.238-before239",
+  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.239-before143",
   "oldDesktopSourceBackupMoved": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.192-source-backup-20260905-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
@@ -27,7 +27,7 @@
     "testsPassed": 172,
     "testsFailed": 0,
     "slowUiSmokeRun": false,
-    "desktopSmoke": "Skipped per project policy: translation alignment and page interaction use fast checks; no real AI or ComfyUI calls",
+    "desktopSmoke": "Version promotion and release documentation only; fresh npm run check, source/archive hashes and 7z integrity verification; no new live AI/ComfyUI calls",
     "browserVisualSmoke": "Microsoft Edge headless: source/target selection highlights and AI translation loading spinner are visible",
     "translationDomRegression": [
       "empty input and reopen",
@@ -63,7 +63,14 @@
     "Source aspect-ratio matching requires explicit writable width and height bindings; otherwise the workflow dimensions remain fixed.",
     "Translation alignment is optional and depends on the configured AI; unavailable mappings fall back to plain translated text without another AI call.",
     "Local translation stays plain text; long AI translation inputs use sentence or block alignment and may cost more tokens.",
-    "Translation page no longer displays a reasoning chain; provider-specific unsupported switches may still be handled by the existing non-thinking fallback.",
-    "AI translation loading state is visual feedback only; it does not change the request timeout."
-  ]
+    "AI translation loading state is visual feedback only; it does not change the request timeout.",
+    "V1.4.191 and earlier use different settings and session structures; complete automatic migration is not provided. Back up old user data and check configuration after upgrading."
+  ],
+  "release": {
+    "tag": "v1.4.3",
+    "baseTag": "v1.4.191",
+    "channel": "stable",
+    "promotedFrom": "1.4.239",
+    "asset": "AI.Tag.V1.4.3.7z"
+  }
 }
