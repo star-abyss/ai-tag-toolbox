@@ -1,7 +1,7 @@
 {
     "name":  "ai-tag-toolbox-rewrite",
-    "version":  "1.4.238",
-    "description":  "AI 绘画 Tag 工具箱 V1.4.238 双向翻译对照",
+    "version":  "1.4.239",
+    "description":  "AI 绘画 Tag 工具箱 V1.4.239 双向翻译对照",
     "main":  "main.js",
     "private":  true,
     "type":  "commonjs",
