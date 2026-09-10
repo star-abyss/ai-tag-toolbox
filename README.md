@@ -5,10 +5,14 @@ Windows 便携式 AI 绘画提示词工作台。它把 Tag 搜索、离线角色
 ## 下载
 
 - [下载 V1.4.3 Windows 便携包（7z）](https://github.com/star-abyss/ai-tag-toolbox/releases/download/v1.4.3/AI.Tag.V1.4.3.7z)
+- [下载 V1.4.32 Windows 测试版（7z）](https://github.com/star-abyss/ai-tag-toolbox/releases/download/v1.4.32/AI.Tag.V1.4.32.7z)
 - [查看 V1.4.3 更新说明](更新说明-V1.4.3.md)
+- [查看 V1.4.32 测试版说明](交付说明-V1.4.32.md)
 - [查看全部 Release](https://github.com/star-abyss/ai-tag-toolbox/releases)
 
 下载并解压后，双击 `AI绘画Tag工具箱V1.4.3.exe` 即可运行，不需要安装 Node.js 或 Electron。便携包包含 Electron 运行时、依赖、Tag 素材、34,122 个离线角色资料、WD EVA02 本地识图模型和离线翻译模型。
+
+V1.4.32 是基于 V1.4.3 的 Pre-release 测试版，包含 DeepSeek thinking 模式兼容修复和原创人物跳过角色确认功能；解压后运行 `AI绘画Tag工具箱V1.4.32.exe`。
 
 ## 主要功能
 

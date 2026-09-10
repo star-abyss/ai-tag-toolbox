@@ -46,9 +46,13 @@
     "Original-character intent classification still depends on the configured model; the confirmation card provides a direct original-character continuation action."
   ],
   "release": {
-    "channel": "internal",
+    "channel": "prerelease",
+    "tag": "v1.4.32",
     "baseTag": "v1.4.3",
-    "published": false
+    "asset": "AI.Tag.V1.4.32.7z",
+    "checksumAsset": "AI.Tag.V1.4.32.7z.sha256",
+    "buildInfoAsset": "AI.Tag.V1.4.32.build-info.json",
+    "publishedByExplicitUserRequest": true
   },
   "templateVersion": "1.4.31",
   "templateBackup": "work/desktop-template-v1.4.31"
