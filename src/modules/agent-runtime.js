@@ -58,6 +58,8 @@ function normalizeCall(call, usedIds, allowedNames = TOOL_NAMES) {
   return { id, name, args, native: { id, type: 'function', function: { name: nativeName(name), arguments: JSON.stringify(args) } } };
 }
 function outputText(response) { const value = response?.data ?? response; if (typeof value === 'string') return value; return typeof value?.text === 'string' ? value.text : typeof value?.choices?.[0]?.message?.content === 'string' ? value.choices[0].message.content : ''; }
+function responseReasoning(response) { const value = response?.data ?? response; const reasoning = value?.reasoning_content ?? value?.reasoning ?? value?.choices?.[0]?.message?.reasoning_content ?? value?.choices?.[0]?.message?.reasoning; return typeof reasoning === 'string' ? reasoning : ''; }
+function attachResponseReasoning(message, response) { const reasoning = responseReasoning(response); if (response?.reasoningContentPresent === true || reasoning) message.reasoning_content = reasoning; return message; }
 function publicConfig(value) {
   if (!object(value)) return {};
   const output = {};
@@ -79,6 +81,10 @@ function historyMessage(item) {
     return message;
   }
   message.content = typeof item.content === 'string' || item.content === null ? item.content : typeof item.text === 'string' ? item.text : '';
+  if (item.role === 'assistant') {
+    if (typeof item.reasoning_content === 'string') message.reasoning_content = item.reasoning_content;
+    else if (typeof item.reasoning === 'string') message.reasoning_content = item.reasoning;
+  }
   if (item.role === 'assistant' && Array.isArray(item.tool_calls)) {
     const calls = item.tool_calls.filter(call => text(call?.id) && text(call?.function?.name || call?.name)).map(call => ({
       id: text(call.id), type: 'function', function: { name: nativeName(canonicalName(call.function?.name || call.name)), arguments: typeof call.function?.arguments === 'string' ? call.function.arguments : JSON.stringify(call.function?.arguments ?? call.arguments ?? {}) }
@@ -239,13 +245,13 @@ function createAgentRuntime(options = {}) {
         const responseText = outputText(response);
         if (!calls.length) {
           if (!responseText.trim()) throw reject('OUTPUT_INVALID', '主 AI 返回为空');
-          const finalMessage = { role: 'assistant', content: responseText };
+          const finalMessage = attachResponseReasoning({ role: 'assistant', content: responseText }, response);
           messages.push(finalMessage); transcript.push(clone(finalMessage));
           flushDelta(); emit(context, 'round.complete', { round });
-          const data = { ...(generationResult ? clone(generationResult) : {}), text: responseText, reasoning: typeof response?.reasoning === 'string' ? response.reasoning : '', toolCalls, events: context.events.slice(), artifacts, imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript };
+          const data = { ...(generationResult ? clone(generationResult) : {}), text: responseText, reasoning: responseReasoning(response), toolCalls, events: context.events.slice(), artifacts, imageIds: [...new Set(artifacts.map(item => item.imageId).filter(Boolean))], transcript };
           context.partial = data; return data;
         }
-        const assistantMessage = { role: 'assistant', content: responseText || null, tool_calls: calls.map(call => call.native) };
+        const assistantMessage = attachResponseReasoning({ role: 'assistant', content: responseText || null, tool_calls: calls.map(call => call.native) }, response);
         messages.push(assistantMessage); transcript.push(clone(assistantMessage)); context.partial = partial();
         for (const call of calls) {
           const outcome = await callTool(call.name, call.args, { parentRequestId: context.requestId, signal: context.signal, sessionId: context.sessionId, messageId: context.messageId, onEvent: event => { try { request.onEvent?.(event); } catch {} } });

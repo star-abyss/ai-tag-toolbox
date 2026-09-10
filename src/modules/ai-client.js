@@ -132,6 +132,10 @@ function messageForApi(message) {
     output.tool_calls = strictToolCalls(message.tool_calls);
     if (!output.tool_calls.length) delete output.tool_calls;
   }
+  if (message.role === 'assistant') {
+    if (typeof message.reasoning_content === 'string') output.reasoning_content = message.reasoning_content;
+    else if (typeof message.reasoning === 'string') output.reasoning_content = message.reasoning;
+  }
   return output;
 }
 
@@ -223,12 +227,14 @@ function normaliseCompletion(value) {
   const toolCalls = directCalls.length ? directCalls : (responseCalls?.length ? normaliseToolCalls(responseCalls) : embeddedCalls);
   const responseText = contentText(source.text != null ? source.text : source.content);
   const responseReasoning = contentText(source.reasoning != null ? source.reasoning : source.reasoning_content);
+  const reasoningContentPresent = source.reasoning != null || source.reasoning_content != null;
   const markedCalls = toolCalls;
   return {
     ok: source.ok !== false,
     ...(source.ok === false ? { code: source.code, error: source.error || source.text || 'AI request failed' } : {}),
     text: responseText,
     reasoning: responseReasoning,
+    reasoningContentPresent,
     usage: source.usage || null,
     finishReason: source.finishReason || source.finish_reason || value.choices?.[0]?.finish_reason || null,
     toolCalls: clone(markedCalls),
@@ -248,6 +254,7 @@ function responseChunk(data) {
   const delta = choice && (choice.delta || choice.message || choice);
   const content = contentText(delta && (delta.content != null ? delta.content : delta.text));
   const reasoning = contentText(delta && (delta.reasoning_content != null ? delta.reasoning_content : delta.reasoning));
+  const reasoningContentPresent = Boolean(delta && (delta.reasoning_content != null || delta.reasoning != null));
   let rawToolCalls = delta?.tool_calls || delta?.toolCalls || delta?.tool_call;
   if (typeof rawToolCalls === 'string') {
     try { rawToolCalls = JSON.parse(rawToolCalls); } catch { rawToolCalls = null; }
@@ -259,6 +266,7 @@ function responseChunk(data) {
   return {
     content,
     reasoning,
+    reasoningContentPresent,
     done: data.done === true || choice?.finish_reason != null,
     finishReason: choice?.finish_reason || null,
     toolCalls,
@@ -277,9 +285,10 @@ function eventParts(event) {
   const kind = text(event.type).toLowerCase();
   const content = kind === 'reasoning' || kind === 'thought' ? '' : contentText(event.content ?? event.delta ?? event.text);
   const reasoning = contentText(event.reasoning ?? event.reasoning_content) || (kind === 'reasoning' || kind === 'thought' ? contentText(event.content ?? event.delta ?? event.text) : '');
+  const reasoningContentPresent = event.reasoning != null || event.reasoning_content != null || kind === 'reasoning' || kind === 'thought';
   const rawToolCalls = event.toolCalls || event.tool_calls || event.function_call || event.functionCall;
   const toolCalls = rawToolCalls ? (Array.isArray(rawToolCalls) ? clone(rawToolCalls) : [clone(rawToolCalls)]) : [];
-  return { content, reasoning, toolCalls, done: Boolean(event.done || kind === 'done' || kind === 'complete'), usage: event.usage || null, finishReason: event.finishReason || event.finish_reason || null, raw: event };
+  return { content, reasoning, reasoningContentPresent, toolCalls, done: Boolean(event.done || kind === 'done' || kind === 'complete'), usage: event.usage || null, finishReason: event.finishReason || event.finish_reason || null, raw: event };
 }
 
 function createAiClient(initialConfig = {}, injectedGateway = null, monitor = null) {
@@ -388,9 +397,9 @@ function createAiClient(initialConfig = {}, injectedGateway = null, monitor = nu
       else if (typeof gateway.complete === 'function') value = await gateway.complete(apiMessages, gatewayOptions);
       else value = await gateway.stream(apiMessages, gatewayOptions);
       if (value && typeof value !== 'string' && (typeof value[Symbol.asyncIterator] === 'function' || typeof value[Symbol.iterator] === 'function')) {
-        let full = ''; let reasoning = ''; let usage = null; const toolCalls = [];
-        for await (const event of value) { const part = eventParts(event); full += part.content || ''; reasoning += part.reasoning || ''; usage = part.usage || usage; if (part.toolCalls?.length) toolCalls.push(...part.toolCalls); emit(part.content, part.reasoning); }
-        return { ok: true, text: full, reasoning, usage, toolCalls: normaliseToolCalls(toolCalls), elapsedMs: Date.now() - startedAt, raw: null };
+        let full = ''; let reasoning = ''; let reasoningContentPresent = false; let usage = null; const toolCalls = [];
+        for await (const event of value) { const part = eventParts(event); full += part.content || ''; reasoning += part.reasoning || ''; reasoningContentPresent ||= part.reasoningContentPresent === true; usage = part.usage || usage; if (part.toolCalls?.length) toolCalls.push(...part.toolCalls); emit(part.content, part.reasoning); }
+        return { ok: true, text: full, reasoning, reasoningContentPresent, usage, toolCalls: normaliseToolCalls(toolCalls), elapsedMs: Date.now() - startedAt, raw: null };
       }
       const result = normaliseCompletion(value); result.elapsedMs = Date.now() - startedAt; return result;
     }
@@ -482,6 +491,7 @@ function createAiClient(initialConfig = {}, injectedGateway = null, monitor = nu
   async function readStream(body, opts) {
     let full = '';
     let reasoning = '';
+    let reasoningContentPresent = false;
     let usage = null;
     let finishReason = null;
     const toolCallParts = new Map();
@@ -497,6 +507,7 @@ function createAiClient(initialConfig = {}, injectedGateway = null, monitor = nu
       const part = responseChunk(data);
       if (part.content) full += part.content;
       if (part.reasoning) reasoning += part.reasoning;
+      reasoningContentPresent ||= part.reasoningContentPresent === true;
       if (part.usage) usage = part.usage;
       if (part.finishReason) finishReason = part.finishReason;
       for (const item of part.toolCalls || []) {
@@ -553,7 +564,7 @@ function createAiClient(initialConfig = {}, injectedGateway = null, monitor = nu
       }
     }));
     const toolCalls = streamedToolCalls.length ? normaliseToolCalls(streamedToolCalls) : [];
-    return { ok: true, text: full, reasoning, usage, finishReason, toolCalls, raw: null };
+    return { ok: true, text: full, reasoning, reasoningContentPresent, usage, finishReason, toolCalls, raw: null };
   }
 
   return { complete, stream: (messages, options) => complete(messages, { ...(options || {}), stream: true }), listModels, setConfig, configure: setConfig, getConfig, config: getConfig };

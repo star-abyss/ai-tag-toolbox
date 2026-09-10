@@ -36,6 +36,8 @@ function transcript(value) {
     if (!object(row)) continue;
     if (row.role === 'assistant') {
       const item = { role: 'assistant', content: typeof row.content === 'string' ? row.content : '' };
+      if (typeof row.reasoning_content === 'string') item.reasoning_content = row.reasoning_content;
+      else if (typeof row.reasoning === 'string') item.reasoning_content = row.reasoning;
       const calls = array(row.tool_calls).filter(call => text(call?.id) && text(call?.function?.name) && typeof call?.function?.arguments === 'string');
       if (calls.length) item.tool_calls = calls.map(call => ({ id: call.id, type: 'function', function: { name: call.function.name, arguments: call.function.arguments } }));
       if (item.content || item.tool_calls) result.push(item);
@@ -214,7 +216,11 @@ function createAssistant(options = {}) {
     for (const message of session.messages) {
       if (message.role === 'user') result.push({ role: 'user', content: [message.text, message.imageIds.length ? `Attached imageIds: ${message.imageIds.join(', ')}` : ''].filter(Boolean).join('\n\n') });
       else if (message.transcript?.length) result.push(...transcript(message.transcript));
-      else if (message.role === 'assistant' && message.text && message.status === 'done') result.push({ role: 'assistant', content: message.text });
+      else if (message.role === 'assistant' && message.text && message.status === 'done') {
+        const item = { role: 'assistant', content: message.text };
+        if (message.reasoning) item.reasoning_content = message.reasoning;
+        result.push(item);
+      }
     }
     return result;
   }

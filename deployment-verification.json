@@ -1,12 +1,9 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.31",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.3",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.31",
   "oldDesktopDirectoryRemovedFromDesktop": true,
-  "oldDesktopBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.197-syncbackup",
-  "oldDesktopMovedBackup": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.239-before143",
-  "oldDesktopSourceBackupMoved": "F:\\codex\\desktop-backups\\AI绘画Tag工具箱V1.4.192-source-backup-20260905-before220",
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
     "sourceCommitField": "build-info.json:sourceCommit",
@@ -24,35 +21,10 @@
   },
   "checks": {
     "command": "npm run check",
-    "testsPassed": 172,
-    "testsFailed": 0,
+    "resultField": "build-info.json:checks",
+    "reasoningRegressionFile": "tests/ai-reasoning.test.cjs",
     "slowUiSmokeRun": false,
-    "desktopSmoke": "Version promotion and release documentation only; fresh npm run check, source/archive hashes and 7z integrity verification; no new live AI/ComfyUI calls",
-    "browserVisualSmoke": "Microsoft Edge headless: source/target selection highlights and AI translation loading spinner are visible",
-    "translationDomRegression": [
-      "empty input and reopen",
-      "duplicate clicks and failure recovery",
-      "leave and reopen",
-      "edit/clear while pending",
-      "direction change and stale local result",
-      "optional alignment and plain-text fallback",
-      "bidirectional source and target selection",
-      "reordered duplicate words and plain-text copy",
-      "model markup is inert and editing invalidates alignment",
-      "shared segments never expand the selection beyond direct links",
-      "direction changes refresh dictionary references after local translation starts",
-      "provider reasoning is disabled and not relayed",
-      "omitted separators are repaired without changing translation text",
-      "real Edge selection highlights both directions"
-    ],
-    "translationAlignmentProtocol": [
-      "stable IDs with Tag weights and duplicate occurrences",
-      "long text coarsens without truncation",
-      "many-to-many mapping and exact whitespace preservation",
-      "malformed alignment retains full translated text",
-      "explicit direction and optional alignment through runtime"
-    ],
-    "architectureLocalLinksVerified": 7
+    "liveProviderVerified": false
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",
@@ -64,13 +36,14 @@
     "Translation alignment is optional and depends on the configured AI; unavailable mappings fall back to plain translated text without another AI call.",
     "Local translation stays plain text; long AI translation inputs use sentence or block alignment and may cost more tokens.",
     "AI translation loading state is visual feedback only; it does not change the request timeout.",
-    "V1.4.191 and earlier use different settings and session structures; complete automatic migration is not provided. Back up old user data and check configuration after upgrading."
+    "V1.4.191 and earlier use different settings and session structures; complete automatic migration is not provided. Back up old user data and check configuration after upgrading.",
+    "Older conversations may have already lost per-round reasoning; start a new conversation if the same reasoning_content HTTP 400 persists."
   ],
   "release": {
-    "tag": "v1.4.3",
-    "baseTag": "v1.4.191",
-    "channel": "stable",
-    "promotedFrom": "1.4.239",
-    "asset": "AI.Tag.V1.4.3.7z"
-  }
+    "channel": "internal",
+    "baseTag": "v1.4.3",
+    "published": false
+  },
+  "templateVersion": "1.4.3",
+  "templateBackup": "work/desktop-template-v1.4.3"
 }
