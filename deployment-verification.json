@@ -1,8 +1,8 @@
 {
-  "version": "1.4.31",
+  "version": "1.4.32",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.31",
+  "desktopDirectory": "C:\\Users\\admin\\Desktop\\AI绘画Tag工具箱V1.4.32",
   "oldDesktopDirectoryRemovedFromDesktop": true,
   "archive": {
     "sourceFilesVerifiedField": "build-info.json:sourceFiles",
@@ -24,7 +24,12 @@
     "resultField": "build-info.json:checks",
     "reasoningRegressionFile": "tests/ai-reasoning.test.cjs",
     "slowUiSmokeRun": false,
-    "liveProviderVerified": false
+    "liveProviderVerified": false,
+    "characterRegressionFiles": [
+      "tests/generation-orchestrator.test.cjs",
+      "tests/assistant-flow.test.cjs",
+      "tests/ui-dom.test.cjs"
+    ]
   },
   "knownLimits": [
     "AniMadex official export token was not available; data is the pinned public upstream snapshot.",
@@ -37,13 +42,14 @@
     "Local translation stays plain text; long AI translation inputs use sentence or block alignment and may cost more tokens.",
     "AI translation loading state is visual feedback only; it does not change the request timeout.",
     "V1.4.191 and earlier use different settings and session structures; complete automatic migration is not provided. Back up old user data and check configuration after upgrading.",
-    "Older conversations may have already lost per-round reasoning; start a new conversation if the same reasoning_content HTTP 400 persists."
+    "Older conversations may have already lost per-round reasoning; start a new conversation if the same reasoning_content HTTP 400 persists.",
+    "Original-character intent classification still depends on the configured model; the confirmation card provides a direct original-character continuation action."
   ],
   "release": {
     "channel": "internal",
     "baseTag": "v1.4.3",
     "published": false
   },
-  "templateVersion": "1.4.3",
-  "templateBackup": "work/desktop-template-v1.4.3"
+  "templateVersion": "1.4.31",
+  "templateBackup": "work/desktop-template-v1.4.31"
 }

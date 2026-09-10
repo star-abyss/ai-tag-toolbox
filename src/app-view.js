@@ -2225,7 +2225,7 @@
       if (pending?.kind !== "character") return notice;
       const hint = doc.createElement("p");
       hint.className = "muted";
-      hint.textContent = `待确认：${str(pending.query)}。点击角色后继续原任务；没有合适的可重新搜索。`;
+      hint.textContent = `待确认：${str(pending.query)}。已有作品角色可点击候选或重新搜索；原创人物可直接继续。`;
       notice.appendChild(hint);
       const choices = doc.createElement("div");
       choices.className = "generation-character-choices";
@@ -2236,21 +2236,21 @@
         $$("button", notice).forEach(button => { button.disabled = disabled; });
         $$("input", notice).forEach(input => { input.disabled = disabled; });
       };
-      const choose = async option => {
+      const choose = async (option, original = false) => {
         if (selecting || ui.characterSelectionBusy) return;
         if (assistant?.snapshot?.().busy) return notify("当前请求仍在处理中");
         if (!assistant?.selectGenerationCharacter) return notify("当前版本不支持直接选择角色，请重新发送任务");
         const selectedId = str(option?.id);
-        if (!selectedId) return notify("该角色缺少可用标识");
+        if (!original && !selectedId) return notify("该角色缺少可用标识");
         selecting = true;
         ui.characterSelectionBusy = true;
         setDisabled(true);
         const label = $("#talkSendBtn")?.textContent || "📤 发送";
         setTalkBusy(true, label);
-        put("#talkStatus", "正在确认角色并恢复原任务…");
+        put("#talkStatus", original ? "正在按原创人物恢复原任务…" : "正在确认角色并恢复原任务…");
         let result;
         try {
-          result = await assistant.selectGenerationCharacter(message.id, selectedId, { onStart: renderTalk, onEvent: handleTalkToolEvent, selectedCharacter: option });
+          result = await assistant.selectGenerationCharacter(message.id, selectedId, { onStart: renderTalk, onEvent: handleTalkToolEvent, selectedCharacter: option, original });
         } catch (error) {
           result = { ok: false, error: { message: error?.message || "角色选择失败" } };
         } finally {
@@ -2276,6 +2276,12 @@
       };
       appendChoices(choices, pending.options);
       notice.appendChild(choices);
+      const originalButton = doc.createElement("button");
+      originalButton.type = "button";
+      originalButton.className = "generation-character-original btn btn-primary";
+      originalButton.textContent = "这是原创人物，继续";
+      originalButton.onclick = () => choose(null, true);
+      notice.appendChild(originalButton);
       if (characters?.page) {
         const search = doc.createElement("div");
         search.className = "generation-character-search-row";

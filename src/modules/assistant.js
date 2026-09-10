@@ -386,17 +386,20 @@ function createAssistant(options = {}) {
     const jobId = text(original?.result?.jobId);
     const pending = object(original?.result?.needsInput) ? original.result.needsInput : null;
     const selectedId = text(characterId);
+    const originalCharacter = options.original === true;
     if (!found || !jobId || original?.result?.status !== 'needs_input' || pending?.kind !== 'character') return failure('INPUT_EXPIRED', '角色选择已过期，请按当前提示重新选择');
-    if (!selectedId) return failure('INVALID_INPUT', '请选择一个角色');
+    if (originalCharacter && selectedId) return failure('INVALID_INPUT', '原创人物不能同时选择角色库角色');
+    if (!originalCharacter && !selectedId) return failure('INVALID_INPUT', '请选择一个角色或按原创人物继续');
     const current = generation?.uiSnapshot?.(jobId) || generation?.get?.(jobId);
     if (!current) return failure('JOB_NOT_FOUND', '原生成任务已不存在，请重新发送绘图要求');
     if (current.status !== 'needs_input' || current.needsInput?.kind !== 'character' || current.needsInput.query !== pending.query) return failure('INPUT_EXPIRED', '角色选择已过期，请按当前提示重新选择');
     const option = array(pending.options).find(item => text(item?.id) === selectedId) || (object(options.selectedCharacter) ? options.selectedCharacter : {});
     const name = text(option?.name || option?.nameZh, selectedId);
     const series = text(option?.series || option?.seriesName);
+    const characterSelection = { query: text(pending.query), ...(originalCharacter ? { original: true } : { characterId: selectedId }) };
     const session = found.session;
     const requestId = id('generation_character');
-    const user = append('user', `选择角色：${name}${series ? `（${series}）` : ''}`, { status: 'done' }, session.id);
+    const user = append('user', originalCharacter ? `按原创人物继续：${text(pending.query)}` : `选择角色：${name}${series ? `（${series}）` : ''}`, { status: 'done' }, session.id);
     const liveSnapshot = append('assistant', '', { status: 'streaming' }, session.id);
     const live = session.messages.find(message => message.id === liveSnapshot.id);
     const controller = new AbortController();
@@ -415,7 +418,7 @@ function createAssistant(options = {}) {
       persist(); observe(options.onEvent, clone(event));
     };
     try {
-      const args = { jobId, characterSelection: { query: text(pending.query), characterId: selectedId } };
+      const args = { jobId, characterSelection };
       const outcome = await runtime.callTool('generation.resume', args, { requestId, sessionId: session.id, messageId: live.id, signal: controller.signal, onEvent });
       if (!writable(job)) return { ...failure('CANCELLED', '请求已取消', requestId, session.id), data: cancelledPayload(job) };
       const publicPayload = object(outcome.data) ? outcome.data : {};
@@ -432,7 +435,7 @@ function createAssistant(options = {}) {
       ];
       if (!live.text && error) live.text = error.message;
       if (outcome.ok) {
-        original.result = { ...clone(original.result), status: 'resolved', needsInput: null, characterSelection: { query: text(pending.query), characterId: selectedId } };
+        original.result = { ...clone(original.result), status: 'resolved', needsInput: null, characterSelection };
         original.status = 'done';
       }
       session.updatedAt = Date.now(); state.status = ok ? 'idle' : live.status; state.lastError = error?.message || ''; persist();

@@ -677,6 +677,26 @@ test('empty character choices can be searched locally and selected without sendi
   } finally { app.dom.window.close(); }
 });
 
+test('original-character button bypasses an empty library and recovers after a failed resume', async () => {
+  let release;
+  const choices = [];
+  const app = boot({ initialMessages: [{ id: 'a1', role: 'assistant', text: '', status: 'done', result: { status: 'needs_input', jobId: 'job-oc', needsInput: { kind: 'character', query: '小星', options: [] } } }], selectGenerationCharacter: (messageId, characterId, options) => { choices.push({ messageId, characterId, original: options.original }); return new Promise(resolve => { release = resolve; }); } });
+  try {
+    const doc = app.window.document;
+    const button = doc.querySelector('.generation-character-original');
+    assert(button, '原创人物即使无匹配候选也必须能够继续');
+    assert.match(button.textContent, /原创.*继续/);
+    button.click(); button.click();
+    assert.deepEqual(choices, [{ messageId: 'a1', characterId: '', original: true }]);
+    assert.equal(button.disabled, true);
+    release({ ok: false, error: { code: 'JOB_NOT_FOUND', message: '任务不可用' } });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(doc.querySelector('.generation-character-original').disabled, false);
+    assert.equal(doc.querySelector('#talkSendBtn').disabled, false);
+    assert.equal(app.getRunCount(), 0);
+  } finally { app.dom.window.close(); }
+});
+
 test('conversation image clear button confirms and clears only current conversation images', () => {
   let clearedSession = '';
   const app = boot({ conversationItems: [{ refId: 'r1', imageId: 'img-1', slotNo: 1, source: 'upload', sent: true }], clearConversationImages: sessionId => { clearedSession = sessionId; } });

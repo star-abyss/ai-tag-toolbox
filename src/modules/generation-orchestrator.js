@@ -876,14 +876,18 @@ function createGenerationOrchestrator(options = {}) {
       const pending = job.needsInput;
       const query = text(selection.query);
       const characterId = text(selection.characterId);
+      const original = selection.original === true;
       if (job.status !== 'needs_input' || pending?.kind !== 'character' || query !== text(pending.query)) throw failure('INPUT_EXPIRED', '角色选择已过期，请按当前提示重新选择');
-      if (!characterId) throw failure('INVALID_INPUT', '请选择一个角色');
-      const rows = resolveCharacter ? characterRows(await resolveCharacter(characterId, { ...context, mode: 'id' })) : [];
-      if (rows.length !== 1 || text(rows[0]?.id) !== characterId) throw failure('CHARACTER_NOT_FOUND', '没有找到所选角色，请重新搜索后选择');
+      if (original && characterId) throw failure('INVALID_INPUT', '原创人物不能同时选择角色库角色');
+      if (!original && !characterId) throw failure('INVALID_INPUT', '请选择一个角色或按原创人物继续');
+      if (!original) {
+        const rows = resolveCharacter ? characterRows(await resolveCharacter(characterId, { ...context, mode: 'id' })) : [];
+        if (rows.length !== 1 || text(rows[0]?.id) !== characterId) throw failure('CHARACTER_NOT_FOUND', '没有找到所选角色，请重新搜索后选择');
+      }
       if (context.signal?.aborted) throw context.signal.reason || failure('CANCELLED', '请求已取消');
       // A second click or cancellation may have arrived while resolving data.
       if (job.needsInput !== pending || job.status !== 'needs_input' || active.has(job.jobId)) throw failure('INPUT_EXPIRED', '角色选择已过期，请按当前提示重新选择');
-      job.characterIds = strings([...job.characterIds.filter(id => id !== pending.requestedCharacterId), characterId], 8);
+      job.characterIds = strings([...job.characterIds.filter(id => id !== pending.requestedCharacterId), ...(original ? [] : [characterId])], 8);
       let consumed = false;
       job.characterQueries = job.characterQueries.filter(item => {
         if (!consumed && text(item) === query) { consumed = true; return false; }

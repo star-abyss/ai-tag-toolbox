@@ -641,6 +641,7 @@ body.aiview #catList,body.aiview #addTagBtn{display:none}
 .generation-character-choice strong{font-size:12px;line-height:1.35}
 .generation-character-choice span{color:var(--muted);font:10.5px/1.35 'Cascadia Code',Consolas,monospace;overflow-wrap:anywhere}
 .generation-character-search-row{display:flex;gap:6px;margin-top:9px}
+.generation-character-original{margin-top:9px;min-height:30px;padding:5px 10px;font-size:12px}
 .generation-character-search{min-width:0;flex:1;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px}
 .generation-character-search-button{flex:none;min-height:30px;padding:4px 9px;border-radius:6px;font-size:11px}
 .draw-activity{margin:8px 0 2px;padding:7px 9px;border:1px solid var(--border2);border-radius:9px;background:var(--well);font-size:11.5px;color:var(--muted)}

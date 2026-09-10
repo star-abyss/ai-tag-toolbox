@@ -236,6 +236,32 @@ async function testCharacterChoiceResumesStoredJobWithoutPrimary() {
   assistant.destroy();
 }
 
+async function testOriginalCharacterResumesStoredJobWithoutPrimary() {
+  const calls = [];
+  const paused = { status: 'needs_input', jobId: 'original-job', needsInput: { kind: 'character', query: '小星', options: [] }, candidates: [] };
+  let current = structuredClone(paused);
+  let primaryCalls = 0;
+  const assistant = modules.createAssistant({
+    storage: modules.createStorage(),
+    generation: { get: () => structuredClone(current), resume: async input => { calls.push(input); current = { ...paused, status: 'awaiting_feedback', needsInput: null }; return current; } },
+    primaryGateway: { complete: async () => { primaryCalls++; return { text: 'ok' }; } }
+  });
+  try {
+    assistant.importSessions({ format: 'ai-tag-sessions', version: 1, sessions: [{ id: 's1', messages: [{ id: 'a1', role: 'assistant', text: '', status: 'done', result: paused }] }] }, true);
+    const result = await assistant.selectGenerationCharacter('a1', '', { original: true });
+    assert.equal(result.ok, true, JSON.stringify(result.error));
+    assert.deepEqual(calls, [{ jobId: 'original-job', characterSelection: { query: '小星', original: true } }]);
+    assert.equal(primaryCalls, 0);
+    const messages = assistant.currentSession().messages;
+    assert.match(messages.at(-2).text, /原创.*小星/);
+    assert.equal(messages[0].result.needsInput, null);
+    assert.deepEqual(messages[0].result.characterSelection, { query: '小星', original: true });
+    assert.equal(messages.at(-1).result.status, 'awaiting_feedback');
+    assert.equal((await assistant.selectGenerationCharacter('a1', '', { original: true })).error.code, 'INPUT_EXPIRED');
+    assert.equal(calls.length, 1);
+  } finally { assistant.destroy(); }
+}
+
 (async () => {
   await testConversationTranscriptAndImageScope();
   await testCancellationAndBusyGuard();
@@ -245,5 +271,6 @@ async function testCharacterChoiceResumesStoredJobWithoutPrimary() {
   await testHighLevelGenerationPersistsCandidatesAndSelection();
   await testManualContinuationBypassesPrimaryAndReleasesConversation();
   await testCharacterChoiceResumesStoredJobWithoutPrimary();
+  await testOriginalCharacterResumesStoredJobWithoutPrimary();
   console.log('assistant-flow: ok');
 })().catch(error => { console.error(error); process.exitCode = 1; });
