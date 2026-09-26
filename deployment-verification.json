@@ -1,24 +1,23 @@
 {
-  "version": "1.4.355",
+  "version": "1.4.356",
   "buildEvidenceFile": "build-info.json",
   "evidenceLocation": "Desktop package root, outside resources/app.asar",
-  "desktopDirectory": "C:/Users/admin/Desktop/AI绘画Tag工具箱V1.4.355",
+  "desktopDirectory": "C:/Users/admin/Desktop/AI绘画Tag工具箱V1.4.356",
   "sourceBranch": "codex/drawing-feedback",
   "sourceCommitEvidence": "build-info.json.sourceCommit",
-  "scope": "Visible business-window launch and localized release lookup states with offline installed-version choices",
+  "scope": "PR #2: render AI vision description and structured error messages",
   "checks": {
     "command": "npm run check",
     "testsPassed": 763,
     "testsFailed": 0,
     "realElectronWindow": "Pending user acceptance; slow launch tests skipped per AGENTS.md",
     "realAiOrComfyGeneration": false,
-    "desktopIntegrity": "Package builder verifies source mirrors, ASAR contents, models and executable hashes; final desktop verification recorded in work/v14355-desktop-integrity.json"
+    "desktopIntegrity": "See work/release-v14356-ready for package and desktop integrity verification."
   },
   "knownLimits": [
-    "Actual first-click visibility needs desktop user acceptance.",
-    "Network error handling does not repair GitHub reachability; a working network or proxy is required for online updates.",
-    "Real online installation still requires user acceptance against the published Release and an available network."
+    "Error display fixes do not resolve provider network timeouts.",
+    "Real AI provider and desktop UI require user acceptance."
   ],
-  "published": true,
-  "pushed": true
+  "published": false,
+  "pushed": false
 }

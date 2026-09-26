@@ -44,12 +44,12 @@ function ok(value, message) { assert.equal(Boolean(value), true, message); }
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const launcherPackage = JSON.parse(fs.readFileSync(path.join(root, 'launcher', 'package.json'), 'utf8'));
-assert.equal(packageJson.version, '1.4.355', 'package version must be 1.4.355');
+assert.equal(packageJson.version, '1.4.356', 'package version must be 1.4.356');
 assert.equal(launcherPackage.main, 'launcher/main.js', 'launcher package must point to launcher/main.js');
 assert.equal(fs.existsSync(path.join(root, launcherPackage.main)), true, 'launcher entry is missing');
-assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.355\b/);
-assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.355\b/);
-assert.match(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /version:\s*['"]1\.4\.355['"]/);
+assert.match(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8'), /V1\.4\.356\b/);
+assert.match(fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8'), /V1\.4\.356\b/);
+assert.match(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /version:\s*['"]1\.4\.356['"]/);
 
 for (const name of ['createAgentRuntime', 'createRequestManager', 'createStatusManager', 'createCallMonitor', 'createFixedSubagents', 'createPrimaryTools']) {
   assert.equal(typeof modules[name], 'function', `${name} export missing`);

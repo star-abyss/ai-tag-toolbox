@@ -409,7 +409,7 @@ contextBridge.exposeInMainWorld('AppModules', {
   } : null,
   locales: localePacks,
   updates: updateBridge,
-  version: '1.4.355'
+  version: '1.4.356'
 });
 
 

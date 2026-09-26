@@ -2,9 +2,14 @@
 
 Windows 便携式 AI 绘画提示词工作台。它把 Tag 搜索、离线角色资料、AI 助手、ComfyUI 出图、图片管理和中英翻译放在一个本地应用里。
 
-当前发布版为 **V1.4.355**：修复启动器隐藏业务窗口、需要再次双击才显示的问题；版本面板将网络连接失败、暂无兼容发布包和没有新版本分别提示，并在离线时保留已安装版本。结构化版本包继续共用 `%APPDATA%` 中的图库、会话和设置。见 [V1.4.355 交付说明](交付说明-V1.4.355.md)和 GitHub Release。
+当前发布版为 **V1.4.356**：合并 PR #2，修复 AI 识图成功后不显示描述、请求失败显示 [object Object] 的问题。图库、会话和设置继续共用原数据目录。见 [V1.4.356 交付说明](交付说明-V1.4.356.md)。
 
 ## 下载
+
+- [下载 V1.4.356 Windows 测试版（7z）](https://github.com/star-abyss/ai-tag-toolbox/releases/download/v1.4.356/AI.Tag.V1.4.356.7z)
+- [查看 V1.4.356 发布页](https://github.com/star-abyss/ai-tag-toolbox/releases/tag/v1.4.356)
+
+V1.4.356 解压后双击根目录的 AI绘画Tag工具箱.exe。V1.4.355 用户也可点击左上角版本号，选择 V1.4.356 安装。
 
 - [下载 V1.4.3 Windows 便携包（7z）](https://github.com/star-abyss/ai-tag-toolbox/releases/download/v1.4.3/AI.Tag.V1.4.3.7z)
 - [下载 V1.4.32 Windows 测试版（7z）](https://github.com/star-abyss/ai-tag-toolbox/releases/download/v1.4.32/AI.Tag.V1.4.32.7z)
