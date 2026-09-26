@@ -1920,7 +1920,8 @@
         if (!result) throw new Error("统一 Agent Runtime 不可用");
         if (ui.visionRequestId === requestId) {
           ui.visionResult = result?.data || null;
-          ui.visionDescription = result?.data?.text || result?.text || result?.data?.error || result?.error || "没有返回描述";
+          const failure = result?.data?.error || result?.error;
+          ui.visionDescription = result?.data?.text || result?.data?.description || result?.text || (typeof failure === "string" ? failure : failure?.message) || "没有返回描述";
           if (result?.ok === false) notify(ui.visionDescription);
         }
       } catch (error) {
