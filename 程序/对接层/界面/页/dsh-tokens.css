@@ -1,0 +1,330 @@
+/**
+ * DSH 设计 token 桥 —— 把 DSH Web GUI 的 `--dsw-*` 别名映射到本项目的配色变量。
+ *
+ * 目的：**原子组件的 CSS 原样照搬 DSH**（类名统一 `dsh-` 前缀），配色只在这一个文件里
+ * 对到本项目的 `--*` 变量上。想调整整体观感就改这里，不用动任何组件。
+ *
+ * ─────────────────────────────────────────────────────────────────
+ * ⚠️ **每一档主题都要把桥重新绑一遍。**
+ *
+ * `var()` 是在**定义处**求值的：`--dsw-alias-label-primary: var(--text)` 写在 `:root`
+ * 里，取到的就是 `:root` 那一档的 `--text`（浅色）。而本项目的深色是在
+ * **`body.dark`** 上覆盖 `--text` 的 —— 那时桥已经解析完了，**不会再跟着变**。
+ *
+ * 后果（都真实发生过）：
+ *   · 深色下所有走桥的表面色是浅色值 → 禁用按钮亮得像一块斑；
+ *   · 参数/结果框的文字色是浅色的 `--text`，压在深色的代码块底上，
+ *     实测对比度只有 **1.16**（几乎看不见）。
+ *
+ * 所以规律很简单：**只要一个 token 的值引用了主题变量，`body.dark` 里就必须重绑一次。**
+ * `work/check-tokens.cjs` 会按这条规矩逐个核对，漏一个就红。
+ */
+
+:root {
+  /* ───────── 文字层级 ───────── */
+  --dsw-alias-label-primary: var(--text);
+  --dsw-alias-label-secondary: var(--muted);
+  --dsw-alias-label-tertiary: var(--muted);
+  --dsw-alias-label-caption: var(--muted);
+  /**
+   * 禁用态文字色。
+   *
+   * ⚠️ 原来映射到 `--control-border` —— 深色下那是 `#4c5461`，压在
+   * `--dsw-alias-bg-layer-2` 上实测对比度只有 **1.35**，等于看不见。
+   * 禁用态**必须仍然读得出来**（用户要知道那里有个什么按钮），所以给独立值。
+   * 两档都是按 `work/measure/contrast.js` 实测定出来的（底线 3.0）。
+   */
+  --dsw-alias-label-dimmed: #707887;
+  --dsw-alias-label-primary-foreground: #fff;
+  --dsw-alias-label-inverse: #fff;
+  /** 运行中高光的亮色（DSH 的 label-shimmer）。 */
+  --dsw-alias-label-shimmer: var(--pri-h);
+
+  /* ───────── 背景层级 ───────── */
+  --dsw-alias-bg-base: var(--bg);
+  --dsw-alias-bg-layer-1: var(--card);
+  --dsw-alias-bg-layer-2: var(--well);
+  --dsw-alias-bg-layer-3: var(--chip);
+  --dsw-alias-bg-module-platform: var(--well);
+  /** 叠在内容之上的一层底（序号小方块的底色用它）。 */
+  --dsw-alias-bg-overlay: var(--chip-h);
+  --dsw-alias-bg-mask-1: rgb(0 0 0 / .35);
+  --dsw-alias-markdown-code-block: var(--well);
+  --dsw-alias-markdown-code-block-banner: var(--chip);
+
+  /* ───────── 边框层级 ───────── */
+  --dsw-alias-border-l1: var(--border);
+  --dsw-alias-border-l2: var(--border);
+  --dsw-alias-border-l3: var(--border2);
+  --dsw-alias-border-l4: var(--control-border, var(--border2));
+  --dsw-alias-border-l2-darkmode-thin: var(--border2);
+
+  /* ───────── 交互态 ───────── */
+  --dsw-alias-interactive-bg-hover: var(--chip-h);
+  --dsw-alias-interactive-bg-hover-solid: var(--well);
+  --dsw-alias-interactive-bg-active: var(--chip);
+  --dsw-alias-interactive-bg-hover-danger: var(--neg-bg);
+
+  /* ───────── 按钮 ───────── */
+  --dsw-alias-button-primary-fill: var(--btn-primary-bg, var(--pri-btn));
+  --dsw-alias-button-primary-hover: var(--btn-primary-hover, var(--pri-btn-h));
+  --dsw-alias-button-tool-bar-fill: transparent;
+  --dsw-alias-button-tool-bar-hover: var(--chip-h);
+  --dsw-alias-button-ghost-active-fill: var(--pri-bg);
+  --dsw-alias-button-ghost-active-border: var(--pri);
+
+  /* ───────── 品牌与状态 ───────── */
+  --dsw-alias-brand-primary: var(--pri-btn);
+  --dsw-static-deepseek-400: var(--pri);
+  --dsw-static-deepseek-450: var(--pri);
+  --dsw-static-deepseek-500: var(--pri-btn);
+  --dsw-alias-state-business-primary: var(--pri);
+  --dsw-alias-state-success-primary: var(--cp);
+  --dsw-alias-state-success-tertiary: var(--cp-bg);
+  --dsw-alias-state-warn-primary: #d97706;
+  --dsw-alias-state-warn-label: #b45309;
+  --dsw-alias-state-warn-tertiary: rgb(217 119 6 / .12);
+  --dsw-alias-state-error-primary: var(--neg);
+  --dsw-alias-state-idle-primary: var(--muted);
+  --dsw-static-green-500: var(--cp);
+  --dsw-static-red-600: var(--neg);
+  --dsw-static-amber-400: #d97706;
+  --dsw-static-amber-500: #b45309;
+  --dsw-static-neutral-bluish-300: var(--muted);
+  --dsw-static-neutral-bluish-00: #fff;
+  --dsw-alias-code-diff-added: var(--cp);
+  --dsw-alias-code-diff-deleted: var(--neg);
+
+  /* ───────── 圆角 ───────── */
+  --dsw-radius-xs: 4px;
+  --dsw-radius-sm: var(--btn-radius-sm, 6px);
+  --dsw-radius-md: var(--btn-radius-md, 8px);
+  --dsw-radius-lg: 10px;
+  --dsw-radius-panel: 14px;
+
+  /* ───────── 阴影 ───────── */
+  --dsw-elevation-soft: var(--shadow);
+  --dsw-elevation-prominent: var(--pop-shadow);
+  --dsw-elevation-panel: var(--pop-shadow);
+  --dsw-shadow-lv3: var(--pop-shadow);
+
+  /* ───────── 浮层（菜单 / 提示 / toast） ───────── */
+  --dsw-alias-tooltip-bg: #1f2430;
+  --dsw-alias-tooltip-key-bg: rgb(255 255 255 / .14);
+  --dsw-alias-toast-bg: var(--card);
+  --dsw-alias-toast-label: var(--text);
+  --dsw-specific-menu: var(--card);
+  --dsw-menu-surface-fill: var(--card);
+  --dsw-hovercard-bg: var(--card);
+  --dsw-menu-backdrop-filter: none;
+  --dsw-mask-blur: 2px;
+  --dsw-alias-menu-icon: var(--muted);
+  --dsw-alias-menu-group-header-fill: var(--muted);
+  --dsw-alias-link: var(--pri);
+  --dsw-alias-switch-thumb: var(--card);
+  --dsw-alias-scrollbar-bg-l2: var(--border);
+  --dsw-alias-scrollbar-hover-l2: var(--border2);
+  --dsw-specific-input-major: var(--input-bg);
+
+  /* ───────── 焦点环 ───────── */
+  --dsw-focus-ring-width: 2px;
+  --dsw-focus-ring-color: var(--focus, var(--pri));
+
+  /* ───────── 静态色板（两档一致） ─────────
+   * 来源：DSH `ui-theme/src/styles/design-platform.css`。
+   *
+   * ⚠️ **静态层与语义层要一起补**。只补语义 token（如
+   * `--dsw-specific-bubble: var(--dsw-static-deepseek-50)`）而底层静态色板缺，
+   * `var()` 就落空、颜色还是不出来 —— 这一层是踩过才知道要一起查的。 */
+  --dsw-static-neutral-bluish-50: rgb(249, 250, 251);
+  --dsw-static-neutral-bluish-75: rgb(241, 243, 245);
+  --dsw-static-neutral-bluish-300: rgb(173, 178, 184);
+  --dsw-static-neutral-bluish-400: rgb(173, 178, 184);
+  --dsw-static-neutral-bluish-700: rgb(97, 102, 107);
+  --dsw-static-neutral-bluish-750: rgb(67, 69, 74);
+  --dsw-static-neutral-bluish-800: rgb(53, 54, 56);
+  --dsw-static-neutral-bluish-850: rgb(44, 44, 46);
+  --dsw-static-neutral-bluish-900: rgb(27, 27, 28);
+  --dsw-static-deepseek-50: rgb(237, 243, 254);
+  --dsw-static-blue-300: rgb(147, 197, 253);
+  --dsw-static-blue-450: rgb(77, 147, 248);
+  --dsw-static-blue-950: rgb(23, 37, 84);
+
+  /* ───────── 圆角（`design-platform.css` 之外，来自 `radius.css`） ───────── */
+  --dsw-radius-xl: 20px;
+
+  /* ───────── 会话区 / 输入卡 / 侧栏用到的语义 token ─────────
+   * 来源同上（`design-platform.css` 的 `body` 块）。缺了它们的后果：
+   *   `--dsw-specific-bubble`        → 用户气泡没有底色
+   *   `--dsw-specific-sidebar-fill`  → 侧栏与主区没有分界
+   *   `--dsw-alias-button-floating-*`→ "回到底部"圆钮透明
+   *   `--dsw-alias-label-deep-diving*`→ 底部"正在深入…"状态无色、高光不亮
+   *   `--dsw-alias-bg-skeleton`      → 骨架屏没有底
+   *   `--dsw-alias-button-elevated-fill` / `...-label-primary-inverted` → 浮起按钮与反色文字 */
+  --dsw-alias-bg-skeleton: rgba(0, 0, 0, 0.04);
+  --dsw-alias-button-elevated-fill: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-button-floating-fill: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-button-floating-hover: var(--dsw-static-neutral-bluish-75);
+  --dsw-alias-label-primary-inverted: var(--dsw-static-neutral-bluish-00);
+  /* 附件缩略图右上角那个删除圆钮的底色（浅色档 = neutral-bluish-700）。 */
+  --dsw-alias-button-contrast-fill: var(--dsw-static-neutral-bluish-700);
+  --dsw-alias-label-deep-diving: color-mix(in srgb, var(--dsw-static-deepseek-500) 70%, var(--dsw-static-blue-950));
+  --dsw-alias-label-deep-diving-shimmer: color-mix(in srgb, var(--dsw-static-deepseek-500) 30%, var(--dsw-static-blue-950));
+  --dsw-specific-bubble: var(--dsw-static-deepseek-50);
+  --dsw-specific-sidebar-fill: var(--dsw-static-neutral-bluish-50);
+
+  /* ───────── 发送钮 / 附件钮 / 队列预览 ─────────
+   * 来源：`design-platform.css:201-202`（发送钮 fill/hover）、`:219`（队列预览文字）、
+   * `:274`（`+` 附件圆钮填充）、`:241`（引用态 hover 底）。
+   * 缺了它们的后果很直白：发送圆钮背景透明（只剩白箭头）、`+` 钮透明、队列预览文字无色。 */
+  --dsw-alias-state-business-tertiary: rgb(228, 237, 253);
+  --dsw-alias-button-info-fill: var(--dsw-static-deepseek-500);
+  --dsw-alias-button-info-hover: var(--dsw-static-deepseek-400);
+  --dsw-alias-label-primary-dimmed: rgb(21, 21, 23);
+  --dsw-specific-selector: rgb(245, 246, 247);
+
+  /* ───────── 字体 ───────── */
+  --dsw-font-family: inherit;
+  --dsw-font-xs-13: 12px/1.5 inherit;
+  --dsw-font-sm-13: 13px/1.55 inherit;
+  --dsw-font-markdown-code-block: 12px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --dsw-font-markdown-code-block-small: 11.5px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --dsw-font-markdown-code-font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --ds-font-family-code: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* ───────── 动效 ───────── */
+  --ds-ease-in-out: cubic-bezier(.4, 0, .2, 1);
+  --ds-transition-duration: .12s;
+
+  /* ───────── 宿主配置值（组件里都写了 fallback，这里显式给一遍方便统一调） ───────── */
+  /* Electron 窗口没有自绘标题栏，所以"顶部内缩"为 0。 */
+  --dsh-frame-chrome-top: 0px;
+  --dsh-frame-overlay-top: 24px;
+  --dsh-hover-preview-fade: .12s;
+  /* toast 停留时长（`--dsh-toast-hold` 同时驱动卸载计时与淡出延迟）。 */
+  --dsh-toast-hold: 3200ms;
+  --dsh-menu-anchor: --dsh-menu;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 深色档：**凡是在 :root 里引用过主题变量的 token，这里都要重绑一遍**。
+ * 理由见文件头。缺一个，那个 token 在深色下就会退回浅色值。
+ * ═══════════════════════════════════════════════════════════════════ */
+body.dark {
+  /* 文字层级 */
+  --dsw-alias-label-primary: var(--text);
+  --dsw-alias-label-secondary: var(--muted);
+  --dsw-alias-label-tertiary: var(--muted);
+  --dsw-alias-label-caption: var(--muted);
+  /* 深色底上比浅色主题再亮一档（见 :root 里的说明）。 */
+  --dsw-alias-label-dimmed: #7c8595;
+  --dsw-alias-label-primary-foreground: #fff;
+  --dsw-alias-label-inverse: #fff;
+  --dsw-alias-label-shimmer: var(--pri-h);
+
+  /* 背景层级 */
+  --dsw-alias-bg-base: var(--bg);
+  --dsw-alias-bg-layer-1: var(--card);
+  --dsw-alias-bg-layer-2: var(--well);
+  --dsw-alias-bg-layer-3: var(--chip);
+  --dsw-alias-bg-module-platform: var(--well);
+  --dsw-alias-bg-overlay: var(--chip-h);
+  --dsw-alias-bg-mask-1: rgb(0 0 0 / .55);
+  --dsw-alias-markdown-code-block: var(--well);
+  --dsw-alias-markdown-code-block-banner: var(--chip);
+
+  /* 边框层级 */
+  --dsw-alias-border-l1: var(--border);
+  --dsw-alias-border-l2: var(--border);
+  --dsw-alias-border-l3: var(--border2);
+  --dsw-alias-border-l4: var(--control-border, var(--border2));
+  --dsw-alias-border-l2-darkmode-thin: var(--border2);
+
+  /* 交互态 */
+  --dsw-alias-interactive-bg-hover: var(--chip-h);
+  --dsw-alias-interactive-bg-hover-solid: var(--well);
+  --dsw-alias-interactive-bg-active: var(--chip);
+  --dsw-alias-interactive-bg-hover-danger: var(--neg-bg);
+
+  /* 按钮 */
+  --dsw-alias-button-primary-fill: var(--btn-primary-bg, var(--pri-btn));
+  --dsw-alias-button-primary-hover: var(--btn-primary-hover, var(--pri-btn-h));
+  --dsw-alias-button-tool-bar-hover: var(--chip-h);
+  --dsw-alias-button-ghost-active-fill: var(--pri-bg);
+  --dsw-alias-button-ghost-active-border: var(--pri);
+
+  /* 品牌与状态 */
+  --dsw-alias-brand-primary: var(--pri-btn);
+  --dsw-static-deepseek-400: var(--pri);
+  --dsw-static-deepseek-450: var(--pri);
+  --dsw-static-deepseek-500: var(--pri-btn);
+  --dsw-alias-state-business-primary: var(--pri);
+  --dsw-alias-state-success-primary: var(--cp);
+  --dsw-alias-state-success-tertiary: var(--cp-bg);
+  --dsw-alias-state-warn-primary: #f0b866;
+  --dsw-alias-state-warn-label: #f0b866;
+  --dsw-alias-state-warn-tertiary: rgb(240 184 102 / .16);
+  --dsw-alias-state-error-primary: var(--neg);
+  --dsw-alias-state-idle-primary: var(--muted);
+  --dsw-static-green-500: var(--cp);
+  --dsw-static-red-600: var(--neg);
+  --dsw-static-amber-400: #f0b866;
+  --dsw-static-amber-500: #f0b866;
+  --dsw-static-neutral-bluish-300: var(--muted);
+  --dsw-alias-code-diff-added: var(--cp);
+  --dsw-alias-code-diff-deleted: var(--neg);
+
+  /* 浮层 */
+  --dsw-alias-tooltip-bg: #2b303c;
+  --dsw-alias-tooltip-key-bg: rgb(255 255 255 / .16);
+  --dsw-alias-toast-bg: var(--card);
+  --dsw-alias-toast-label: var(--text);
+  --dsw-specific-menu: var(--card);
+  --dsw-menu-surface-fill: var(--card);
+  --dsw-hovercard-bg: var(--card);
+  --dsw-alias-menu-icon: var(--muted);
+  --dsw-alias-menu-group-header-fill: var(--muted);
+  --dsw-alias-link: var(--pri);
+  --dsw-alias-switch-thumb: #e8ebf1;
+  --dsw-alias-scrollbar-bg-l2: var(--border);
+  --dsw-alias-scrollbar-hover-l2: var(--border2);
+  --dsw-specific-input-major: var(--input-bg);
+  --dsw-static-neutral-bluish-00: #fff;
+
+  /* 焦点环 */
+  --dsw-focus-ring-color: var(--focus, var(--pri));
+
+  /* 阴影：深色下要更重（浅色的柔和阴影压在深色底上等于没有） */
+  --dsw-elevation-soft: var(--shadow);
+  --dsw-elevation-prominent: var(--pop-shadow);
+  --dsw-elevation-panel: var(--pop-shadow);
+  --dsw-shadow-lv3: var(--pop-shadow);
+
+  /* 发送钮 / 附件钮 / 队列预览（深色档）—— 来源 `design-platform.css:319-320 / :337 / :392`。
+   * `deepseek-100` 是浅色底上的淡蓝，深色档取 `design-platform` 的 `deepseek-800`。 */
+  --dsw-alias-button-info-fill: var(--dsw-static-deepseek-400);
+  --dsw-alias-button-info-hover: var(--dsw-static-deepseek-500);
+  --dsw-alias-label-primary-dimmed: rgb(235, 238, 242);
+  --dsw-specific-selector: rgb(53, 54, 56);
+  --dsw-alias-state-business-tertiary: rgb(52, 65, 91);
+
+  /* 会话区 / 输入卡 / 侧栏的语义 token（深色档）—— 值引用了静态色板或做色值计算的，
+   * **必须在这里重绑**：`var()` 在定义处解析，`:root` 上的那份不会跟着深色走。 */
+  --dsw-alias-bg-skeleton: rgba(255, 255, 255, 0.08);
+  --dsw-alias-button-elevated-fill: var(--dsw-static-neutral-bluish-750);
+  --dsw-alias-button-floating-fill: var(--dsw-static-neutral-bluish-850);
+  --dsw-alias-button-floating-hover: var(--dsw-static-neutral-bluish-800);
+  --dsw-alias-label-primary-inverted: var(--dsw-static-neutral-bluish-800);
+  /* 附件删除圆钮（深色档反转成浅色底 —— 深底上要用亮钮才看得见）。 */
+  --dsw-alias-button-contrast-fill: var(--dsw-static-neutral-bluish-50);
+  --dsw-alias-label-deep-diving: color-mix(in srgb, var(--dsw-static-deepseek-450) 55%, var(--dsw-static-neutral-bluish-400));
+  --dsw-alias-label-deep-diving-shimmer: color-mix(in srgb, var(--dsw-static-blue-300) 65%, var(--dsw-static-deepseek-400));
+  --dsw-specific-bubble: var(--dsw-static-neutral-bluish-850);
+  --dsw-specific-sidebar-fill: var(--dsw-static-neutral-bluish-900);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ds-transition-duration: 0s;
+  }
+}

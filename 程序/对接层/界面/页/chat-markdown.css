@@ -1,0 +1,129 @@
+.dsh-md-text.agent-markdown {
+  min-width: 0;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.dsh-md-text.agent-markdown > :first-child { margin-top: 0; }
+.dsh-md-text.agent-markdown > :last-child { margin-bottom: 0; }
+.dsh-md-text.agent-markdown p,
+.dsh-md-text.agent-markdown ul,
+.dsh-md-text.agent-markdown ol,
+.dsh-md-text.agent-markdown blockquote,
+.dsh-md-text.agent-markdown pre,
+.dsh-md-text.agent-markdown .agent-markdown-table-scroll,
+.dsh-md-text.agent-markdown hr { margin: .7em 0; }
+
+.dsh-md-text.agent-markdown h1,
+.dsh-md-text.agent-markdown h2,
+.dsh-md-text.agent-markdown h3,
+.dsh-md-text.agent-markdown h4,
+.dsh-md-text.agent-markdown h5,
+.dsh-md-text.agent-markdown h6 {
+  margin: 1.15em 0 .45em;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.dsh-md-text.agent-markdown h1 { font-size: 1.35em; }
+.dsh-md-text.agent-markdown h2 { font-size: 1.2em; }
+.dsh-md-text.agent-markdown h3 { font-size: 1.08em; }
+.dsh-md-text.agent-markdown h4,
+.dsh-md-text.agent-markdown h5,
+.dsh-md-text.agent-markdown h6 { font-size: 1em; }
+
+.dsh-md-text.agent-markdown ul,
+.dsh-md-text.agent-markdown ol { padding-inline-start: 1.6em; }
+.dsh-md-text.agent-markdown li + li { margin-top: .18em; }
+.dsh-md-text.agent-markdown blockquote {
+  padding: .1em 0 .1em .9em;
+  border-left: 3px solid var(--border2);
+  color: var(--muted);
+}
+.dsh-md-text.agent-markdown blockquote > :first-child { margin-top: 0; }
+.dsh-md-text.agent-markdown blockquote > :last-child { margin-bottom: 0; }
+.dsh-md-text.agent-markdown a { color: var(--cp); text-decoration: underline; text-underline-offset: .14em; }
+.dsh-md-text.agent-markdown img { max-width: 100%; height: auto; border-radius: 8px; }
+.dsh-md-text.agent-markdown hr { border: 0; border-top: 1px solid var(--border); }
+
+.dsh-md-text.agent-markdown :not(pre) > code {
+  padding: .12em .35em;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--well);
+  font: .9em ui-monospace, SFMono-Regular, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.dsh-md-text.agent-markdown .agent-markdown-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+.dsh-md-text.agent-markdown table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.dsh-md-text.agent-markdown th,
+.dsh-md-text.agent-markdown td {
+  padding: .45em .7em;
+  border: 1px solid var(--border2);
+  text-align: start;
+  vertical-align: top;
+}
+.dsh-md-text.agent-markdown th { background: var(--well); font-weight: 650; }
+
+.dsh-md-text.agent-markdown .agent-markdown-code {
+  max-width: 100%;
+  margin: .8em 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--well);
+}
+.dsh-md-text.agent-markdown .agent-markdown-code-head {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font: 12px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.dsh-md-text.agent-markdown .agent-markdown-copy {
+  padding: 3px 8px;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.dsh-md-text.agent-markdown .agent-markdown-copy:hover { background: var(--chip-h, var(--well)); }
+.dsh-md-text.agent-markdown .agent-markdown-code pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  overscroll-behavior-inline: contain;
+  color: var(--text);
+  font: .9em/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+  tab-size: 2;
+}
+.dsh-md-text.agent-markdown .agent-markdown-code pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: normal;
+}
+
+.dsh-md-text.agent-markdown-compact { font-size: .94em; line-height: 1.55; }
+.dsh-md-text.agent-markdown-compact p,
+.dsh-md-text.agent-markdown-compact ul,
+.dsh-md-text.agent-markdown-compact ol,
+.dsh-md-text.agent-markdown-compact blockquote,
+.dsh-md-text.agent-markdown-compact pre,
+.dsh-md-text.agent-markdown-compact .agent-markdown-table-scroll { margin-block: .45em; }

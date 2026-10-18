@@ -1,0 +1,14 @@
+{
+  "name": "image-module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "图片模块：存放与取回 · 三个存放地 · 图库的表 · 识图工作区",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js",
+    "test:接口": "node test/接口.js",
+    "test:all": "node test/run.js && node test/接口.js",
+    "验收": "node tools/验收.js",
+    "demo": "node tools/demo.js"
+  }
+}

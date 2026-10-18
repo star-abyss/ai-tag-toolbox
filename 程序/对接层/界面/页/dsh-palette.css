@@ -1,0 +1,164 @@
+/**
+ * Shared light and dark theme tokens for the workspace and embedded assistant.
+ */
+
+/* ── 浅色 ── */
+body,
+:root {
+  --bg: #f2f5fa;
+  --card: #ffffff;
+  --well: #e9eff7;
+  --chip: #f3f6fb;
+  --chip-h: #e8eef7;
+  --ai-bg: #f2f5fa;
+
+  --border: #dce4ef;
+  --border2: #c7d4e5;
+  --control-border: #aabbd1;
+
+  --text: #172334;
+  --muted: #596b82;
+  --pri: #2563eb;
+  --pri-h: #1d4ed8;
+  --pri-btn: #2563eb;
+  --pri-btn-h: #1d4ed8;
+  --pri-bg: #e8f0ff;
+
+  --shadow: 0 1px 2px rgb(16 24 40 / .04);
+  --shadow-up: 0 -1px 3px rgb(16 24 40 / .04);
+  --pop-shadow: 0 12px 32px rgb(16 24 40 / .12);
+  --glow: rgb(16 24 40 / .03);
+  --glow2: rgb(16 24 40 / .02);
+
+  --input-bg: #ffffff;
+  --input-border: #b9cbe2;
+  --input-inset: transparent;
+
+  --warn: #b45309;
+  --warn-bg: #fdf4e3;
+  --danger: #c0392b;
+  --red: #c0392b;
+  --line: var(--border);
+  --hover: rgb(127 127 127 / .08);
+  --focus: rgb(37 99 235 / .34);
+  --selected-text: #1e40af;
+}
+
+/* ── 深色 ── */
+body.dark {
+  --bg: #111315;
+  --card: #1a1d21;
+  --well: #20242a;
+  --chip: #20242a;
+  --chip-h: #292e35;
+  --ai-bg: #111315;
+
+  --border: #2c3138;
+  --border2: #3a424c;
+  --control-border: #53606f;
+
+  --text: #e7eef7;
+  --muted: #a4b3c6;
+  --pri: #60a5fa;
+  --pri-h: #93c5fd;
+  --pri-btn: #2563eb;
+  --pri-btn-h: #1d4ed8;
+  --pri-bg: rgb(59 130 246 / .17);
+
+  --shadow: 0 1px 3px rgb(0 0 0 / .28);
+  --shadow-up: 0 -1px 4px rgb(0 0 0 / .28);
+  --pop-shadow: 0 14px 40px rgb(0 0 0 / .45);
+  --glow: rgb(255 255 255 / .02);
+  --glow2: rgb(255 255 255 / .015);
+
+  --input-bg: #15181c;
+  --input-border: #424c58;
+  --input-inset: transparent;
+
+  --warn: #f0b866;
+  --warn-bg: rgb(240 184 102 / .14);
+  --danger: #ff8a8a;
+  --red: #ff8a8a;
+  --line: var(--border);
+  --hover: rgb(255 255 255 / .06);
+  --focus: rgb(96 165 250 / .5);
+  --selected-text: #bfdbfe;
+}
+
+body .nav-action[data-nav-tone],
+body.dark .nav-action[data-nav-tone] {
+  --nav-accent: var(--pri);
+}
+
+body input:where(:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="file"]):not([type="hidden"])),
+body select,
+body textarea {
+  min-height: 36px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background-color: var(--input-bg);
+  color: var(--text);
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+body input:where(:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="file"]):not([type="hidden"])),
+body select { height: 36px; padding: 7px 10px; }
+body textarea { padding: 8px 10px; }
+body input::placeholder,
+body textarea::placeholder { color: var(--muted); opacity: .82; }
+body :is(input, select, textarea):focus-visible {
+  border-color: var(--pri);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+body .btn.btn-primary,
+body .btn.btn-secondary,
+body .btn.btn-danger,
+body .btn.btn-ghost {
+  box-sizing: border-box;
+  min-height: 34px;
+  border-radius: 8px;
+}
+:where(body) #tabApi button:not([class*="btn-"]):not(.btn-icon),
+:where(body) #tabComfy button:not([class*="btn-"]):not(.btn-icon) {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+:where(body) #tabApi button:not([class*="btn-"]):not(.btn-icon):not(:disabled):hover,
+:where(body) #tabComfy button:not([class*="btn-"]):not(.btn-icon):not(:disabled):hover {
+  border-color: var(--pri);
+  background: var(--well);
+  color: var(--pri-h);
+}
+:where(body) .btn.btn-primary:not(:disabled),
+:where(body) .btn.btn-secondary:not(:disabled) { border-color: var(--control-border); }
+:where(body) .btn.btn-primary:not(:disabled) { border-color: var(--pri-btn); background: var(--pri-btn); color: #fff; }
+:where(body) .btn.btn-primary:not(:disabled):hover { border-color: var(--pri-btn-h); background: var(--pri-btn-h); }
+:where(body) .btn.btn-secondary:not(:disabled):hover { border-color: var(--pri); background: var(--well); color: var(--text); }
+:where(body) .btn.btn-danger:not(:disabled):hover { border-color: var(--neg); }
+:where(body) .btn.btn-ghost { border-color: transparent; background: transparent; }
+:where(body) .btn.btn-ghost:not(:disabled):hover { border-color: var(--border2); background: var(--well); }
+:where(body) .btn.btn-menu { min-height: 34px; border-radius: 7px; }
+:where(body) .pop { border-color: var(--border2); border-radius: 10px; background: var(--card); box-shadow: var(--pop-shadow); }
+:where(body) .popitem:not(:disabled):hover { background: var(--well); }
+body .search-submit.btn { background: var(--pri-btn); color: #fff; }
+body .search-submit.btn:hover { background: var(--pri-btn-h); }
+body .tp-identify-row .tp-act.btn { min-height: 36px; border-radius: 8px; }
+body .tp-model { min-height: 36px; height: 36px; padding: 7px 10px; border-radius: 8px; }
+body :is(.link-row, .form, .wdmodel, .translate-page-head) :is(input:where(:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="file"]):not([type="hidden"])), select, textarea),
+body .wfarea {
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+}
+body :is(.link-row, .form, .wdmodel, .translate-page-head) :is(input:where(:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="file"]):not([type="hidden"])), select) {
+  min-height: 36px;
+  height: 36px;
+}
+body :is(.link-row, .form, .wdmodel, .translate-page-head) :is(input, select, textarea):focus-visible,
+body .wfarea:focus-visible { border-color: var(--pri); outline: 2px solid var(--focus); outline-offset: 1px; }

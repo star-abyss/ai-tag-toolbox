@@ -1,0 +1,10 @@
+{
+  "name": "binding-module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "装订模块：切分 · 查词 · 交给 AI · 拼回",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

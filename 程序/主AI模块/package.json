@@ -1,0 +1,10 @@
+{
+  "name": "toolbox-main-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "主AI模块：预设保存模型配置与业务工具偏好；提示词和世界书由世界书模块管理",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

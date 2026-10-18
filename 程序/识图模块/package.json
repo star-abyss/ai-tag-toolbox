@@ -1,0 +1,10 @@
+{
+  "name": "toolbox-vision",
+  "version": "1.0.0",
+  "private": true,
+  "description": "工具箱 · 识图模块：本地打标 · 读元数据 · 交给模型看图",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

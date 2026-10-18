@@ -1,0 +1,97 @@
+/* ═══════════════════════════════════════════════════════════════════
+ * ComposerAttachments —— 输入卡片内的**待发图片轨**
+ *
+ * 逐字照抄 DSH `ui-attachment/src/client/ComposerAttachments.module.css`
+ * （`github.com/deepseek-ai/deepseek-harness`，MIT）。
+ * 类名加 `dsh-` 前缀，英文注释原样保留。
+ *
+ * ⚠️ 本文件是**从 DSH 抄来的 UI**，但"图片从哪来"接的是本项目自己的
+ * 缩略图管道（`fullImageFor(imageId).thumbnailDataUrl`）——
+ * DSH 那边是 `attachment.previewUrl`，来源不同，渲染结果一致。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+.dsh-attr-rail {
+  min-width: 0;
+  padding: 2px 10px 0;
+  /* The card's flex gap (12px) separates every row pair; the thumbnails sit
+     closer to the draft text than the other rows, so pull back 6 here. */
+  margin-bottom: -6px;
+}
+
+.dsh-attr-image-item {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+
+.dsh-attr-thumbnail {
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 0.5px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-interactive-bg-hover);
+  cursor: zoom-in;
+}
+
+.dsh-attr-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dsh-attr-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  corner-shape: round;
+  background: rgb(20 20 20 / 72%);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.dsh-attr-remove svg {
+  display: block;
+}
+
+.dsh-attr-image-item:hover .dsh-attr-remove,
+.dsh-attr-remove:focus-visible {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .dsh-attr-remove {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-attr-remove {
+    transition: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 多张时横向排开 —— **不是照抄**（原版把排布交给外层容器）。
+ *
+ * 原版 `ComposerAttachments` 的根是 `.rail`，多张时谁排开由宿主决定；
+ * 这里由本文件负责，所以补一条 flex。放最后，避免覆盖上面的规则。
+ * ═══════════════════════════════════════════════════════════════════ */
+.dsh-attr-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}

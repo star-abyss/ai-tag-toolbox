@@ -1,0 +1,289 @@
+{
+  "页名": "服装",
+  "配色": {
+    "background": "#5a4a84",
+    "foreground": "#f0ecfa"
+  },
+  "类列表": [
+    {
+      "ID": 52,
+      "类名": "默认",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 53,
+      "类名": "脖子",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 54,
+      "类名": "制服",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 55,
+      "类名": "和风",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 56,
+      "类名": "中式",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 57,
+      "类名": "洋装连衣裙",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 58,
+      "类名": "上衣",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 59,
+      "类名": "下装",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 60,
+      "类名": "内衣泳装",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 61,
+      "类名": "外套斗篷",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 62,
+      "类名": "特殊",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 63,
+      "类名": "服装",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 64,
+      "类名": "内衣",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 65,
+      "类名": "头饰",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 66,
+      "类名": "上装",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 67,
+      "类名": "泳装",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 68,
+      "类名": "外套",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 69,
+      "类名": "颈部",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 70,
+      "类名": "连体服",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 71,
+      "类名": "面部",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 72,
+      "类名": "帽子",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 73,
+      "类名": "睡衣",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 74,
+      "类名": "运动服",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 75,
+      "类名": "纹样",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 76,
+      "类名": "手臂",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 77,
+      "类名": "领口",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 78,
+      "类名": "主题服装",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 79,
+      "类名": "潜水服",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 80,
+      "类名": "袖子",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 81,
+      "类名": "连衣裙",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 82,
+      "类名": "盔甲",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 83,
+      "类名": "手套",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 84,
+      "类名": "材质",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 85,
+      "类名": "和服",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 86,
+      "类名": "绷带",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    }
+  ]
+}

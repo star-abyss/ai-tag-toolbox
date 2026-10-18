@@ -1,0 +1,1096 @@
+/**
+ * DSH 聊天区 —— **CSS 照搬** `packages/client/ui-chat/src/client/chat/`，
+ * 只做三处改动：① 类名统一加 `dsh-` 前缀；② `:global(...)` 去掉外层、内部类名
+ * 同样加前缀；③ `composes` 展开。原注释一并保留。
+ *
+ * 来源模块（按文件顺序）：
+ *   ChatView.module.css            （.frame / .root / .scroll / .column / .flowItem /
+ *                                   .running / .runningDivider / .toBottomSlot …）
+ *   MessageItem.module.css         （user 气泡、附件行、文件卡）
+ *   AssistantMarkdown.module.css   （assistant 正文，块间距 16）
+ *   MessageIconActions.module.css  （消息下方图标行）
+ *   ChatGroupSeat.module.css       （过程分组容器）
+ *   TurnProcessNodeView.module.css （轮次过程头「已完成，用时 3 秒」）
+ *
+ * accessibility.module.css 里的 `.dsh-a11y-hidden` / `.dsh-tool-visually-hidden`
+ * 已经在 `dsh-ui.css` 里，不重复。
+ *
+ * ─────────────────────────────────────────────────────────────
+ * ⚠️ **三条移植约定**（DOM 必须与这里的选择器严格对应）
+ *
+ * **① 行间距的**唯一**来源是 `.column > :not([hidden]) ~ :not([hidden])` 的
+ *    `margin-top: var(--dsh-chat-flow-gap)`。** 它靠 `data-chat-group-part="response"`
+ *    与 `data-chat-flow-kind="turn-process"` 把 gap 从 6px 改成 12px / 16px。
+ *    所以 `.column` 的**直接子元素只能是 `.dsh-flowItem`（和 `.dsh-chat-running`）**，
+ *    中间不能加任何包装层，否则整条流的间距全错。
+ *
+ * **② 不卸载，只切显示。** 原版用 `hidden` 属性 / `hidden="until-found"` 保留
+ *    零高节点 —— 这里的兄弟选择器大量用 `:not([hidden])`，`:has()` 也在算间距，
+ *    **删节点等于改间距**。`[hidden]` 必须显式 `display:none`（`dsh-ui.css` 里已有）。
+ *
+ * **③ `.dsh-flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty))`
+ *    被算作零高、不参与间距。** 原生版里"空座位"就是**没有子元素**的
+ *    `.dsh-flowItem`（原版靠一个空 slot 占位），所以内容被隐藏时要么留空元素、
+ *    要么给它 `hidden`，不要留一个空 `<div class="dsh-flowItem"><div></div></div>`。
+ *
+ * ─────────────────────────────────────────────────────────────
+ * ⚠️ **本文件依赖的 CSS 变量**（`dsh-tokens.css` 只桥接了 `--dsw-*`，下面这些
+ * 是 DSH 的**宿主轴**，由 ConversationRoot 发布；本项目没有那一层，所以：
+ * 要么由调用方在祖先上定义，要么走各自 fallback）：
+ *
+ *   --dsh-chat-content-width        消息列宽（fallback 748px，仅部分规则有）
+ *   --dsh-composer-side-clearance   输入卡两侧留白（`.scroll` 的 padding 用到，
+ *                                   无 fallback，见「存疑」清单）
+ *   --dsh-content-font-size         正文字号（fallback 14px）
+ *   --dsh-content-font-delta        字号增量（fallback 0px）
+ *   --dsh-content-font-size-secondary / --dsh-content-font-delta-secondary
+ *   --dsh-composer-height           `.toBottomSlot` 的 sticky 定位（fallback 152px）
+ */
+
+/* ═════════════ ChatView.module.css ═════════════ */
+.dsh-chat-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  /* Floating controls query this frame outside the clipped transcript. */
+  container-type: inline-size;
+}
+
+.dsh-chat-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+
+  overflow-x: visible;
+  overflow-y: clip;
+}
+
+.dsh-chat-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Sides = composer clearance + 16px: on narrow viewports the transcript
+     stays exactly 32px narrower than the input card (the shared width rule). */
+  padding: 16px calc(var(--dsh-composer-side-clearance) + 16px);
+  /* Inline-size query container: wide markdown tables size their breakout
+     against this box's content width (100cqw in AssistantMarkdown's
+     md-table-wide rule) — the CSS stand-in for deepsuite chat's JS-measured
+     --dsl-virtual-list-width. */
+  container-type: inline-size;
+}
+
+.dsh-chat-root[data-chat-following-tail] .dsh-chat-scroll,
+[data-conversation-scroll]:has(.dsh-chat-root[data-chat-following-tail]) {
+  overflow-anchor: none;
+}
+
+[data-conversation-scroll] .dsh-chat-frame,
+[data-conversation-scroll] .dsh-chat-root {
+  flex: 0 0 auto;
+  min-height: auto;
+  height: auto;
+}
+
+[data-conversation-scroll] .dsh-chat-scroll {
+  overflow: visible;
+  flex: 0 0 auto;
+  min-height: auto;
+}
+
+/* Message column: shared chat width (ConversationRoot --dsh-chat-content-width),
+   centered on the same axis as the input box (which caps at chat + 16px); the
+   scroller itself stays full-bleed. */
+.dsh-chat-column {
+  max-width: var(--dsh-chat-content-width);
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* `hidden="until-found"` retains a zero-height box so browser find can reveal
+   its subtree. Direct Chat Node Seats and auxiliary rows share one flow;
+   hidden and empty Seats do not contribute spacing. */
+.dsh-chat-column > :not([hidden]):not(.dsh-flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty)))
+  ~ :not([hidden]):not(.dsh-flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty))) {
+  margin-top: var(--dsh-chat-flow-gap, 6px);
+}
+
+/* Process rows sit 6px apart; an Assistant response is separated from its
+   neighbours by 12px. */
+.dsh-flowItem[data-chat-group-part="response"] {
+  --dsh-chat-flow-gap: 12px;
+}
+
+.dsh-chat-column > [data-chat-group-part="response"]:not([hidden]):not(:empty)
+  + :not([hidden]):not(.dsh-flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty))):not(.dsh-chat-running) {
+  --dsh-chat-flow-gap: 12px;
+}
+
+/* Settled-flow identity boundary. It is neutral until it becomes the natural
+   measurement/mount unit for a virtualizer without changing the column gap. */
+.dsh-flowItem {
+  min-width: 0;
+}
+
+/* The Turn header has 16px clearance from its input and following content. */
+.dsh-flowItem[data-chat-flow-kind="turn-process"],
+.dsh-flowItem[data-turn-process-answer],
+.dsh-chat-column > [data-chat-flow-kind="turn-process"] + :not([hidden]):not(.dsh-flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty))):not(.dsh-chat-running) {
+  --dsh-chat-flow-gap: 16px;
+}
+
+/* Empty Seats, including retained empty slot anchors, preserve Turn lookup
+   without contributing height or the sibling gap. */
+.dsh-flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty)) {
+  height: 0;
+}
+
+.dsh-chat-callRow {
+  border-radius: var(--dsw-radius-sm);
+}
+
+/* Selection still sets data-selected for details linkage; no outline —
+   tool rows match Think chrome (no selected ring). */
+
+.dsh-chat-hint {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(18px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+.dsh-chat-running {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  --dsh-chat-flow-gap: 12px;
+  --dsw-alias-label-shimmer: var(--dsw-alias-label-deep-diving-shimmer);
+  color: var(--dsw-alias-label-deep-diving);
+  font-size: calc(var(--dsh-content-font-size, 14px) - 2px);
+  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+}
+
+/* The last visible row before the status must contain output, not an input.
+   Hidden and empty seats do not separate a user message from the status. */
+.dsh-chat-column > :nth-last-child(2 of :not([hidden]):not(.dsh-flowItem:is(:empty, :has(> [data-slot="conversation.chat.node"]:empty)))):is(
+  .dsh-flowItem:not([data-chat-flow-kind="user"]):not([data-chat-flow-kind="steering"]):not([data-chat-flow-kind="turn-trigger"]),
+  [data-chat-group-key]
+) ~ .dsh-chat-running > .dsh-chat-runningDivider {
+  display: block;
+}
+
+.dsh-chat-runningDivider {
+  display: none;
+  width: 100%;
+  height: 0.5px;
+  margin: 8px 0 10px;
+  background: color-mix(in srgb, var(--dsw-alias-border-l1) 75%, var(--dsw-alias-border-l2));
+  pointer-events: none;
+}
+
+.dsh-chat-runningContent {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.dsh-chat-runningText {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.dsh-chat-runningIcon {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: calc(14px + var(--dsh-content-font-delta, 0px));
+  height: calc(14px + var(--dsh-content-font-delta, 0px));
+  /* The fixed footprint contains the animation's layout and paint. */
+  contain: strict;
+  overflow: hidden;
+}
+
+.dsh-chat-runningWhaleAnimated {
+  display: none;
+  position: absolute;
+  inset: 0;
+}
+
+.dsh-chat-runningWhaleStill {
+  display: initial;
+}
+
+@supports (mask-mode: alpha) and (mask-image: url('')) {
+  @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+    .dsh-chat-runningWhaleAnimated {
+      display: block;
+      background: currentColor;
+      /* ⚠️ 原版是 `url('./running-whale@2x.png')` —— 那是同一个 CSS 模块旁边的
+         APNG 资产。本项目 CSS 与资产不同目录，且**只允许新增文件**，所以那份
+         21,631 字节的图（MIT，来自 `ui-chat/src/client/chat/running-whale@2x.png`）
+         内联在 `dsh-chat-whale.css` 里，由 `.dsh-chat-runningWhaleAnimated` 取用。
+         本文件保留这条声明，asset 由那个文件提供。 */
+      mask: var(--dsh-chat-running-whale) center / 100% 100% no-repeat;
+      mask-mode: alpha;
+      /* Keep animated-mask repaints on an icon-sized composited layer. */
+      will-change: transform;
+    }
+
+    .dsh-chat-runningWhaleStill {
+      display: none;
+    }
+  }
+}
+
+.dsh-chat-openError {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(18px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+.dsh-chat-older {
+  display: flex;
+  justify-content: center;
+}
+
+.dsh-chat-older button {
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  cursor: pointer;
+}
+
+.dsh-chat-older button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Floating controls sit outside the clipped transcript. A standalone Chat
+   anchors them to its frame; the shared host supplies the sticky scrollport. */
+.dsh-chat-toBottomSlot {
+  position: absolute;
+  right: 0;
+  bottom: 16px;
+  left: 0;
+  /* Above the sticky composer (z-index 7) so the control stays clickable and
+     visible over the input card. Exception: while an @/slash menu is open the
+     seat lifts to 9 (ui-conversation ConversationRoot) so the menu is never
+     covered by this control. */
+  z-index: 8;
+  height: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: max(
+    calc(var(--dsh-composer-side-clearance) + 16px),
+    calc((100% - var(--dsh-chat-content-width)) / 2)
+  );
+  pointer-events: none;
+}
+
+[data-conversation-scroll] .dsh-chat-toBottomSlot {
+  position: sticky;
+  /* Clears the sticky composer stack (docks + input card + stats): the live
+     height rides --dsh-composer-height (ConversationRoot's seat observer) so
+     the control follows a growing textarea; the fallback covers the first
+     paint before the observer fires. */
+  bottom: calc(var(--dsh-composer-height, 152px) + 16px);
+}
+
+.dsh-chat-toBottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-top: -34px;
+  padding: 0;
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l3);
+  border-radius: 100px;
+  corner-shape: round;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-button-floating-fill);
+  box-shadow: var(--dsw-elevation-panel);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.dsh-chat-toBottom:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}
+
+/* Host open-path refusal: same dialog family as the workspace folder error. */
+.dsh-chat-modalAction {
+  min-width: 72px;
+}
+
+/* ═════════════ MessageItem.module.css ═════════════ */
+/* User messages align their bubble and action row to the right. */
+
+.dsh-msg-userRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.dsh-msg-userStack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+  /* The figma 525px cap held as a share of the width axis (525/748 ≈ 0.702):
+     resolves to the original 525px on the default column and widens with a
+     dragged or adaptive column. The 748px fallback covers mounts outside the
+     conversation column, where the axis variable is absent. */
+  max-width: min(calc(var(--dsh-chat-content-width, 748px) * 0.702), 82%);
+}
+.dsh-msg-bubble {
+  /* Figma's 525px cap held as a share of the width axis (525/748 ≈ 0.702) so
+     the bubble widens with a user-dragged or adaptive column; percentage
+     keeps narrow windows sane. */
+  max-width: 100%;
+  background: var(--dsw-specific-bubble);
+  border-radius: var(--dsw-radius-xl);
+  /* 42px single-line bubble at the default size: 22 line + 10 vertical
+     padding each side; the Settings font-size preference moves size and line
+     height together through the body-published axis. */
+  padding: 10px 16px;
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-primary);
+  /* The projected user text is inline runs; the bubble owns wrapping so a
+     decorated single-line message stays one line. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dsh-msg-referenceSummary {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(18px + var(--dsh-content-font-delta-secondary, 0px));
+}
+.dsh-msg-contextRow {
+  padding: 2px 0;
+}
+
+/* Compaction marker: one 24px row with a context icon at rest and a
+   hover/focus disclosure for the summary body. */
+.dsh-msg-compactionRow {
+  /* The toggle's line, and the band a pinned toggle occupies. The button's
+     height and the offset that holds a summary's code banner below that band
+     are the same measurement, so both read it from here. */
+  --dsh-compaction-header-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  padding: 2px 0;
+}
+
+.dsh-msg-compactionButton {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--dsh-compaction-header-height);
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  transition: color 100ms ease;
+  font: inherit;
+  text-align: left;
+}
+
+/* The summary body flows uncapped with the page, so a long checkpoint summary
+   carries this toggle off the top of the viewport. Pin it to the conversation
+   scroll container's top while the row is open (the body is a sibling rendered
+   only when expanded); the base background masks the prose scrolling under it.
+   The square corners apply for as long as the row is open, pinned or not: the
+   fill is what masks the prose, and rounded corners would leave that prose visible
+   in the corners. z-index outranks the markdown code block's own sticky banner
+   (z-index 6 in CodeBlock.module.css); that banner itself stops below this
+   toggle (rule below), so a summary's fenced code block never puts a control
+   inside the toggle's band. */
+.dsh-msg-compactionRow:has(.dsh-msg-compactionBody) .dsh-msg-compactionButton {
+  position: sticky;
+  top: 0;
+  z-index: 7;
+  border-radius: 0;
+  background: var(--dsw-alias-bg-base);
+}
+
+/* A fenced code block in the summary pins its banner at the scrollport top,
+   where this pinned toggle already sits, and the toggle's band covers the
+   banner's Copy control. Stop the banner below the toggle instead, on the same
+   measurement the toggle's own height uses. This rule beats CodeBlock's
+   `.bannerWrap { top: 0 }` by specificity (0,2,0 against 0,1,0), not by
+   declaration order: the two sheets load in their own packages. */
+.dsh-msg-compactionBody :has(> [data-code-block-banner]) {
+  top: var(--dsh-compaction-header-height);
+}
+
+/* Pinned, the toggle needs an opaque hover fill: the default translucent hover
+   token below would let the scrolling prose show through the moment the pointer
+   lands on the toggle to collapse it. */
+.dsh-msg-compactionRow:has(.dsh-msg-compactionBody) .dsh-msg-compactionButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.dsh-msg-compactionButton:not(:disabled) {
+  cursor: pointer;
+}
+
+.dsh-msg-compactionButton:hover {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-msg-compactionButton:not(:disabled):hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-msg-compactionLeading {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: calc(16px + var(--dsh-content-font-delta, 0px));
+  height: calc(16px + var(--dsh-content-font-delta, 0px));
+  margin-right: 6px;
+  color: inherit;
+}
+
+/* Same glyph-scaling rule as DisclosureRow's leading: the CSS edge overrides
+   the svg attributes so the 14px glyphs follow the font-size delta. */
+.dsh-msg-compactionLeading svg {
+  width: calc(14px + var(--dsh-content-font-delta, 0px));
+  height: calc(14px + var(--dsh-content-font-delta, 0px));
+}
+
+.dsh-msg-compactionContextIcon,
+.dsh-msg-compactionDisclosureIcon {
+  display: inline-flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  justify-content: center;
+}
+
+.dsh-msg-compactionDisclosureIcon {
+  opacity: 0;
+}
+
+.dsh-msg-compactionButton:not(:disabled):hover .dsh-msg-compactionContextIcon,
+.dsh-msg-compactionButton:not(:disabled):focus-visible .dsh-msg-compactionContextIcon {
+  opacity: 0;
+}
+
+.dsh-msg-compactionButton:not(:disabled):hover .dsh-msg-compactionDisclosureIcon,
+.dsh-msg-compactionButton:not(:disabled):focus-visible .dsh-msg-compactionDisclosureIcon {
+  opacity: 1;
+}
+
+.dsh-msg-compactionTitle {
+  flex: none;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: inherit;
+}
+
+.dsh-msg-compactionSep {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  margin: 0 8px;
+  border-radius: 1px;
+  background: var(--dsw-alias-label-caption);
+}
+
+.dsh-msg-compactionSummary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-msg-compactionBody {
+  /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
+  padding: 4px 0 4px calc(22px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+}
+
+.dsh-msg-retryRow {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+.dsh-msg-retrySummary {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 0;
+  gap: 7px;
+  border-radius: var(--dsw-radius-sm);
+  color: inherit;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.dsh-msg-retrySummary::-webkit-details-marker {
+  display: none;
+}
+
+.dsh-msg-retrySummary::after {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 2px;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  content: '';
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.dsh-msg-retrySummary:hover {
+  color: var(--dsw-alias-label-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-msg-compactionButton {
+    transition: none;
+  }
+}
+
+.dsh-msg-retrySummary:focus-visible {
+  outline: 1.5px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.dsh-msg-retryText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dsh-msg-retryRow[open] .dsh-msg-retrySummary::after {
+  transform: rotate(45deg);
+}
+
+.dsh-msg-retryDetails {
+  display: grid;
+  gap: 2px;
+  margin-top: 3px;
+  padding-left: 14px;
+  overflow-wrap: anywhere;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(18px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+.dsh-msg-retryDetailLabel {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-msg-turnErrorRow {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 2px 0;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+.dsh-msg-turnErrorDot {
+  margin-top: 5px;
+}
+
+.dsh-msg-turnErrorCopy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dsh-msg-turnErrorTitle {
+  margin-right: 6px;
+  color: var(--dsw-alias-state-error-primary);
+  font-weight: 600;
+}
+
+.dsh-msg-turnErrorMessage {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-msg-turnErrorCode {
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-markdown-code-block-small);
+}
+
+.dsh-msg-maxTokensTitle {
+  margin-right: 6px;
+  color: var(--dsw-alias-state-warn-primary);
+  font-weight: 600;
+}
+
+.dsh-msg-attachmentRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
+  gap: 8px;
+}
+
+.dsh-msg-fileCard {
+  display: inline-flex;
+  flex: 0 0 240px;
+  align-items: center;
+  gap: 10px;
+  width: 240px;
+  min-height: 64px;
+  padding: 8px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-specific-input-major, transparent);
+  box-sizing: border-box;
+}
+
+.dsh-msg-fileIcon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+.dsh-msg-fileContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dsh-msg-fileName {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.dsh-msg-fileMeta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-tertiary, rgba(0, 0, 0, 0.45));
+  font-size: 12px;
+  line-height: 15px;
+}
+
+/* ═════════════ AssistantMarkdown.module.css ═════════════ */
+/* Assistant flow body: full-width narration (figma 16/28 scaled 0.875 → 14/24
+   with the markdown token ladder), block gap 16. The Settings font-size
+   preference rides the body-published axis: size follows
+   --dsh-content-font-size and the line height keeps the 10px leading via the
+   shared px delta. IconActions sit below the body with an explicit 16px top
+   margin (figma 43:32997) — separate from the body's internal gap so the
+   footer spacing stays fixed when the body is a single block. */
+
+.dsh-md-root {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-md-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Wide markdown tables (the renderer's ≥4-column md-table-wide hook) span
+   the whole transcript width instead of clipping at the 748px message
+   column, while the table content keeps starting at its normal x (the lead
+   padding compensates the negative margin) — deepsuite chat TableWrapper
+   parity, with 100cqw (the ChatView scroll container) standing in for its
+   JS-measured --dsl-virtual-list-width. `--dsh-table-spare` clamps to zero
+   when the transcript is narrower than the message column, so narrow
+   viewports keep the plain in-column scroll with no sideways shift.
+   Percentages resolve against the wrapper's containing block, so a table
+   indented inside a list still reaches the same transcript edges. */
+.dsh-md-body .dsh-md-table-wide {
+  --dsh-table-spare: max(0px, calc((100cqw - var(--dsh-chat-content-width)) / 2));
+  --dsh-table-lead: calc(var(--dsh-table-spare) + min(var(--dsh-chat-content-width), 100cqw) - 100%);
+  box-sizing: border-box;
+  width: calc(100% + var(--dsh-table-lead) + var(--dsh-table-spare));
+  /* The base .tableScroll caps at the column (max-width: 100%); the breakout
+     is exactly the case that must exceed it. */
+  max-width: none;
+  margin-left: calc(-1 * var(--dsh-table-lead));
+  padding-left: var(--dsh-table-lead);
+}
+
+/* Only the painted table outranks Conversation's z-index 0 width handle. The
+   full-width scroll wrapper and its transparent alignment padding stay below,
+   so a fitting four-column table does not disable the surrounding gutter. */
+.dsh-md-body .dsh-md-table-wide > table {
+  position: relative;
+  z-index: 1;
+}
+
+/* hidden="until-found" keeps a zero-height reasoning box in flex layout.
+   Cancel the one gap that box would otherwise leave before the visible reply;
+   visible Assistant blocks retain the ordinary 16px rhythm. */
+.dsh-md-body > [data-turn-process-inline][hidden] {
+  margin-bottom: -16px;
+}
+
+/* Interrupted-turn terminal marker: quiet inline tag, no animation. Fixed
+   size like the small/code token variants — 11px is dense secondary text
+   that would fall to an illegible 9px at the 12px floor. */
+.dsh-md-stopped {
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+/* Finalized footer offset (figma 43:32997); chrome lives in MessageIconActions. */
+.dsh-md-actions {
+  margin-top: 16px;
+  /* Optical align with the 28px action hit targets. */
+  margin-left: -6px;
+}
+
+/* ═════════════ MessageIconActions.module.css ═════════════ */
+/* Shared message IconActions row (user + assistant). Parent modules own
+   layout offsets via the composed className. Row containers gate visibility
+   by recency through data-actions-reveal. */
+
+.dsh-iconactions-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: calc(28px + var(--dsh-content-font-delta, 0px));
+}
+
+/* The user clock keeps the secondary tier. */
+.dsh-iconactions-timeStart {
+  padding-right: 12px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+/* Assistant-tail metadata keeps the smaller information size while sharing
+   the action icons' resting color. */
+.dsh-iconactions-timeEnd {
+  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: inherit;
+  white-space: nowrap;
+}
+
+.dsh-iconactions-endInfo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-left: 8px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Earlier user-authored flow rows and opted-in turn tails reveal the complete
+   actions row on hover or focus-within. Opacity keeps layout stable, and
+   devices without hover keep every row visible. */
+@media (hover: hover) {
+  [data-actions-reveal='hover'] .dsh-iconactions-actions,
+  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):has(
+    ~ :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering'])
+  ) .dsh-iconactions-actions {
+    opacity: 0;
+    transition: opacity 80ms ease;
+  }
+
+  [data-actions-reveal='hover']:hover .dsh-iconactions-actions,
+  [data-actions-reveal='hover']:focus-within .dsh-iconactions-actions,
+  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):has(
+    ~ :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering'])
+  ):hover .dsh-iconactions-actions,
+  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):has(
+    ~ :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering'])
+  ):focus-within .dsh-iconactions-actions {
+    opacity: 1;
+  }
+}
+
+.dsh-iconactions-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(28px + var(--dsh-content-font-delta, 0px));
+  height: calc(28px + var(--dsh-content-font-delta, 0px));
+  padding: 6px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+/* Action glyphs follow the same px delta as the text they serve; the
+   assistant completion row gives them two extra pixels. */
+.dsh-iconactions-action svg {
+  width: calc(15px + var(--dsh-content-font-delta, 0px));
+  height: calc(15px + var(--dsh-content-font-delta, 0px));
+}
+
+.dsh-iconactions-actions[data-clock='end'] .dsh-iconactions-action svg {
+  width: calc(17px + var(--dsh-content-font-delta, 0px));
+  height: calc(17px + var(--dsh-content-font-delta, 0px));
+}
+
+.dsh-iconactions-action:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Unavailable stays focusable and hoverable so Tooltip can explain why. */
+.dsh-iconactions-action[data-unavailable] {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.dsh-iconactions-action[data-unavailable]:hover {
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-iconactions-visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ═════════════ ChatGroupSeat.module.css ═════════════ */
+.dsh-group-root {
+  min-width: 0;
+}
+
+.dsh-group-title {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: var(--dsh-content-font-size, 14px);
+  text-align: left;
+  cursor: pointer;
+  transition: color 100ms ease;
+}
+
+.dsh-group-title:hover {
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The leading box and its glyph ride the body font-size delta so the icon
+   keeps its optical share of the row at every Settings size. */
+.dsh-group-leading {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px + var(--dsh-content-font-delta, 0px));
+  height: calc(16px + var(--dsh-content-font-delta, 0px));
+  color: inherit;
+}
+
+.dsh-group-leading svg {
+  width: calc(14px + var(--dsh-content-font-delta, 0px));
+  height: calc(14px + var(--dsh-content-font-delta, 0px));
+}
+
+.dsh-group-leading svg[width="16"] {
+  width: calc(16px + var(--dsh-content-font-delta, 0px));
+  height: calc(16px + var(--dsh-content-font-delta, 0px));
+}
+
+.dsh-group-activityIcon,
+.dsh-group-chevron {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 100ms ease;
+}
+
+.dsh-group-activityIcon {
+  opacity: 1;
+}
+
+.dsh-group-chevron {
+  opacity: 0;
+}
+
+.dsh-group-title:is(:hover, :focus-visible) .dsh-group-activityIcon {
+  opacity: 0;
+}
+
+.dsh-group-title:is(:hover, :focus-visible) .dsh-group-chevron {
+  opacity: 1;
+}
+
+.dsh-group-title[aria-expanded="true"] .dsh-group-activityIcon {
+  opacity: 0;
+}
+
+.dsh-group-title[aria-expanded="true"] .dsh-group-chevron {
+  opacity: 1;
+}
+
+.dsh-group-title[aria-expanded="true"] {
+  padding-bottom: 8px;
+}
+
+.dsh-group-body {
+  --dsh-chat-flow-gap: 6px;
+  max-height: min(400px, 50vh);
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.dsh-group-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-group-fadeTop {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 24px, #000 100%);
+}
+
+.dsh-group-fadeBottom {
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 24px), transparent 100%);
+}
+
+.dsh-group-fadeTop.dsh-group-fadeBottom {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 24px,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-group-title,
+  .dsh-group-activityIcon,
+  .dsh-group-chevron {
+    transition: none;
+  }
+}
+
+.dsh-group-content {
+  display: flex;
+  flex-direction: column;
+}
+.dsh-group-content > * { flex-shrink: 0; }
+.dsh-group-content > :not([hidden]):not(:empty) ~ :not([hidden]):not(:empty) {
+  margin-top: var(--dsh-chat-flow-gap, 6px);
+}
+.dsh-group-expandedBody {
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
+
+/* ═════════════ TurnProcessNodeView.module.css ═════════════ */
+.dsh-turn-root {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: calc(33px + var(--dsh-content-font-delta, 0px));
+  padding: 0 0 8px;
+  border: none;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: var(--dsh-content-font-size, 14px);
+  cursor: pointer;
+  text-align: left;
+  transition: color 100ms ease;
+}
+
+.dsh-turn-root:disabled {
+  cursor: default;
+}
+
+.dsh-turn-root:hover:not(:disabled) {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-turn-chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  color: inherit;
+  transition: transform 100ms ease;
+}
+
+.dsh-turn-root[data-open] .dsh-turn-chevron {
+  transform: rotate(180deg);
+}
+
+.dsh-turn-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: inherit;
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-turn-durationNumber {
+  font-family: var(--ds-font-family-code);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-turn-root,
+  .dsh-turn-chevron {
+    transition: none;
+  }
+}

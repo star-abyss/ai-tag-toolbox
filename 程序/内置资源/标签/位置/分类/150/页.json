@@ -1,0 +1,177 @@
+{
+  "页名": "画风与风格",
+  "配色": {
+    "background": "#7a3f52",
+    "foreground": "#fdeef2"
+  },
+  "类列表": [
+    {
+      "ID": 151,
+      "类名": "艺术风格",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 152,
+      "类名": "内容类型",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 153,
+      "类名": "语言(人种)",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 154,
+      "类名": "分辨率",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 155,
+      "类名": "传媒",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 156,
+      "类名": "角色属性",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 157,
+      "类名": "构成",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 158,
+      "类名": "特殊效果",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 159,
+      "类名": "变迁类型",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 160,
+      "类名": "颜色主题",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 161,
+      "类名": "视图/角度",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 162,
+      "类名": "内容质量",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 163,
+      "类名": "模式",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 164,
+      "类名": "主题",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 165,
+      "类名": "背景类型",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 166,
+      "类名": "体裁",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 167,
+      "类名": "画风",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 168,
+      "类名": "上色",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 169,
+      "类名": "媒介",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 170,
+      "类名": "主题配色",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 171,
+      "类名": "默认",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    }
+  ]
+}

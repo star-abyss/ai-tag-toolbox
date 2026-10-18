@@ -1,9 +1,42 @@
-﻿models/
+# 操作系统产生的
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+
+# Node
 node_modules/
-*.exe
-*.7z
-*.zip
-*.png
-release/
-work/
-userdata/
+npm-debug.log*
+
+# 测试与演示自己造的数据（跑测试时会建、跑完会删；万一留下也不进库）
+**/test/.data/
+**/test/.data-mem/
+**/test/.probe/
+**/tools/.demo/
+# 工具跑出来的临时件：点开头的目录一个个单列（gitignore 的 `*` 不吃点开头的名字）
+**/tools/.工作流/
+**/tools/.实测/
+**/tools/.验收/
+
+# 临时文件：工作备份、探针、日志和截图，不进库
+临时/
+
+# 标签运行数据可能含用户修改，不进库；干净基础种子位于 程序/内置资源/标签/
+程序/tag模块/data/
+
+# 本机个人数据默认位于仓库外的 LOCALAPPDATA；仓库内旧版存档继续忽略。
+程序/工具箱数据/
+
+# 根目录模型：仅说明文档进库，用户模型、词表及配置都留在本机。
+模型/*
+!模型/识图/
+!模型/翻译/
+!模型/说明.md
+模型/识图/*
+模型/翻译/*
+!模型/识图/*.md
+!模型/翻译/*.md

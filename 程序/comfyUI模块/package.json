@@ -1,0 +1,17 @@
+{
+  "name": "comfyui-module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "comfyUI 模块：读入工作流 · 认正负图三个口 · 填进去跑图 · 取回图片",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js",
+    "test:接口": "node test/接口.js",
+    "test:all": "node test/run.js && node test/接口.js",
+    "造工作流": "node tools/造工作流.cjs",
+    "连真机": "node tools/连真机.cjs",
+    "扫工作流": "node tools/扫真实工作流.js",
+    "验进度条": "node tools/验进度条.cjs",
+    "联调": "node tools/联调.cjs"
+  }
+}

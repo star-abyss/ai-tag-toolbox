@@ -1,0 +1,199 @@
+/* 动作浏览器 · 样式。只是一块调试台，够看清就行。 */
+
+:root {
+  --底: #14161a;
+  --面: #1b1e24;
+  --面亮: #23272f;
+  --线: #2f343d;
+  --字: #dfe3ea;
+  --字淡: #98a0ae;
+  --主: #6ea8fe;
+  --好: #4ec9a0;
+  --坏: #e06c75;
+  --字宽: ui-monospace, "Cascadia Mono", "Consolas", "Noto Sans Mono CJK SC", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--底);
+  color: var(--字);
+  font: 14px/1.6 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+}
+
+#顶条 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--面);
+  border-bottom: 1px solid var(--线);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.牌 { font-weight: 600; letter-spacing: .5px; white-space: nowrap; }
+
+#搜 {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 12px;
+  background: var(--底);
+  color: var(--字);
+  border: 1px solid var(--线);
+  border-radius: 6px;
+  font: inherit;
+}
+#搜:focus { outline: none; border-color: var(--主); }
+
+.数 { color: var(--字淡); white-space: nowrap; font-size: 12px; }
+
+/* ---- 模型条：识图 / 翻译各一格，跑着换 ---- */
+#模型条 {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 7px 16px;
+  background: var(--面);
+  border-bottom: 1px solid var(--线);
+  font-size: 12px;
+  color: var(--字淡);
+}
+#模型条 .等 { opacity: .7; }
+#模型条 .一格 { display: flex; align-items: center; gap: 6px; }
+#模型条 .类 { color: var(--字淡); }
+#模型条 select {
+  padding: 3px 6px;
+  background: var(--底);
+  color: var(--字);
+  border: 1px solid var(--线);
+  border-radius: 4px;
+  font: inherit;
+  max-width: 260px;
+}
+#模型条 select:focus { outline: none; border-color: var(--主); }
+#模型条 .状态 { color: var(--字淡); }
+#模型条 .状态.好 { color: var(--好); }
+#模型条 .状态.坏 { color: var(--坏); }
+#模型条 .目录 { margin-left: auto; font-family: var(--字宽); opacity: .6; }
+
+#身 {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  height: calc(100% - 49px - 35px);
+}
+
+#列 {
+  overflow-y: auto;
+  border-right: 1px solid var(--线);
+  padding: 8px 0 40px;
+}
+
+#列 .组 {
+  padding: 12px 16px 4px;
+  color: var(--字淡);
+  font-size: 12px;
+  letter-spacing: 1px;
+  position: sticky;
+  top: 0;
+  background: var(--底);
+}
+#列 .组 .数 { margin-left: 6px; }
+
+#列 .条 {
+  padding: 7px 16px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  display: block;
+}
+#列 .条:hover { background: var(--面); }
+#列 .条.选 { background: var(--面亮); border-left-color: var(--主); }
+#列 .条 .名 { font-family: var(--字宽); font-size: 13px; }
+#列 .条 .摘 { color: var(--字淡); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#详 { overflow-y: auto; padding: 20px 24px 60px; }
+
+h2 { margin: 0 0 2px; font-family: var(--字宽); font-size: 18px; font-weight: 600; }
+.模块名 { color: var(--字淡); font-size: 12px; font-family: var(--字宽); }
+.摘要 { color: var(--字淡); margin: 8px 0 20px; }
+
+.参 { margin: 0 0 16px; }
+.参 > label { display: block; margin-bottom: 4px; font-family: var(--字宽); font-size: 13px; }
+.参 .可选 { color: var(--字淡); font-size: 11px; margin-left: 6px; }
+.参 .说 { color: var(--字淡); font-size: 12px; margin: 0 0 6px; }
+
+.参 textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  background: var(--面);
+  color: var(--字);
+  border: 1px solid var(--线);
+  border-radius: 6px;
+  font: 13px/1.5 var(--字宽);
+  resize: vertical;
+}
+.参 textarea:focus { outline: none; border-color: var(--主); }
+
+.行 { display: flex; align-items: center; gap: 12px; margin: 22px 0 14px; }
+
+button {
+  padding: 8px 20px;
+  background: var(--主);
+  color: #0d1117;
+  border: none;
+  border-radius: 6px;
+  font: 600 14px/1 inherit;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.1); }
+button:disabled { opacity: .5; cursor: default; filter: none; }
+
+.耗时 { color: var(--字淡); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.回执 {
+  background: var(--面);
+  border: 1px solid var(--线);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.回执 > .头 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--面亮);
+  border-bottom: 1px solid var(--线);
+  font-size: 12px;
+  color: var(--字淡);
+}
+.回执 > .头 .判 { font-weight: 600; }
+.回执 > .头 .判.好 { color: var(--好); }
+.回执 > .头 .判.坏 { color: var(--坏); }
+.回执 > .头 .拷 { margin-left: auto; cursor: pointer; border: 0; background: none; color: var(--字淡); font: inherit; padding: 2px 6px; }
+.回执 > .头 .拷:hover { color: var(--字); }
+
+pre {
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  max-height: 60vh;
+  font: 13px/1.55 var(--字宽);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.预览 { padding: 14px; }
+.预览 img { max-width: 100%; max-height: 60vh; border-radius: 6px; border: 1px solid var(--线); }
+.预览 .说 { color: var(--字淡); font-size: 12px; margin-top: 8px; }
+
+.失败块 { padding: 14px; }
+.失败块 .码 { font-family: var(--字宽); color: var(--坏); }
+.失败块 .人话 { margin-top: 6px; }
+
+.空 { padding: 20px; color: var(--字淡); }
+.警 { margin: 0 0 16px; padding: 8px 12px; border-left: 3px solid var(--坏); background: var(--面); color: var(--字淡); font-size: 12px; }

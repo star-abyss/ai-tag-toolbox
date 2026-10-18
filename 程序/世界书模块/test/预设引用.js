@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { createWorldbookModule } = require('../index.js');
+const { createMemoryAdapter } = require('../adapter-memory.js');
+const moduleFace = createWorldbookModule({ port: createMemoryAdapter({ 默认: { 知识: { name: '知识', entries: [{ id: 'e1', label: '身份补充', text: '独立已知正文', always: true, enabled: true }] } } }) });
+const result = moduleFace.run('执行', { 请求: '主AI', 文本: '', 启用: ['$default:知识'] });
+assert.equal(result.ok, true);
+assert.equal(result.data.命中[0]?.文本, '独立已知正文');
+assert.equal(moduleFace.执行({ 请求: '主AI', 文本: '', 启用: [] }).命中.length, 0);
+assert.equal(moduleFace.执行({ 请求: '主AI', 文本: '' }).命中.length, 0);
+console.log('预设世界书引用：显式书标识参与命中，空列表不挂书，不改请求存档');

@@ -1,0 +1,10 @@
+{
+  "name": "worldbook-module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "世界书模块：管一批世界书，按条件挑出这次要用的条目连落点交出去",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

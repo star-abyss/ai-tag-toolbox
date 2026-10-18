@@ -1,0 +1,25 @@
+{
+  "页名": "wd_general",
+  "配色": {
+    "background": "#5c5c2e",
+    "foreground": "#f7f7e8"
+  },
+  "类列表": [
+    {
+      "ID": 225,
+      "类名": "其他",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 226,
+      "类名": "默认",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    }
+  ]
+}

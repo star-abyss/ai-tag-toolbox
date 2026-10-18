@@ -1,0 +1,81 @@
+{
+  "页名": "头发",
+  "配色": {
+    "background": "#3f6b4a",
+    "foreground": "#eef7f0"
+  },
+  "类列表": [
+    {
+      "ID": 37,
+      "类名": "长度",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 38,
+      "类名": "辫子",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 39,
+      "类名": "默认",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 40,
+      "类名": "发型",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 41,
+      "类名": "头饰",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 42,
+      "类名": "颜色",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 43,
+      "类名": "刘海",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 44,
+      "类名": "发色",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 45,
+      "类名": "其他",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    }
+  ]
+}

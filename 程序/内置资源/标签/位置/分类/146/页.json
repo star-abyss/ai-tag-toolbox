@@ -1,0 +1,33 @@
+{
+  "页名": "视角与镜头",
+  "配色": {
+    "background": "#287ea4",
+    "foreground": "#f2f8fb"
+  },
+  "类列表": [
+    {
+      "ID": 147,
+      "类名": "角度",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 148,
+      "类名": "景别",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 149,
+      "类名": "视线",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    }
+  ]
+}

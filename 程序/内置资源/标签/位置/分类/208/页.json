@@ -1,0 +1,81 @@
+{
+  "页名": "其他",
+  "配色": {
+    "background": "#5c5c2e",
+    "foreground": "#f7f7e8"
+  },
+  "类列表": [
+    {
+      "ID": 209,
+      "类名": "其他",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 210,
+      "类名": "乐器",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 211,
+      "类名": "运动器材",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 212,
+      "类名": "道具",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 213,
+      "类名": "武器",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 214,
+      "类名": "标志",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 215,
+      "类名": "武器配件",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 216,
+      "类名": "泳具",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 217,
+      "类名": "纸牌",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    }
+  ]
+}

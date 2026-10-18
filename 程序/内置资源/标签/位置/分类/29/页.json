@@ -1,0 +1,57 @@
+{
+  "页名": "眼睛",
+  "配色": {
+    "background": "#8a5a2b",
+    "foreground": "#fdf3e7"
+  },
+  "类列表": [
+    {
+      "ID": 30,
+      "类名": "颜色",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 31,
+      "类名": "默认",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 32,
+      "类名": "其他相关",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 33,
+      "类名": "状态",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 34,
+      "类名": "瞳孔",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 35,
+      "类名": "妆容",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    }
+  ]
+}

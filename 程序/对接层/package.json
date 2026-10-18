@@ -1,0 +1,25 @@
+{
+  "name": "dsh-toolbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "工具箱的对接层：装配业务工具、请求世界书与模型设置，提供会话和界面服务",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node test/run.js"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "onnxruntime-node": "1.21.0",
+    "sharp": "^0.34.1",
+    "js-yaml": "~4.2.0"
+  }
+}

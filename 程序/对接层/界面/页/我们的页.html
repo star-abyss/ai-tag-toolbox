@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具箱</title>
+<script>window.__令牌__ = /*令牌*/null;</script>
+<link rel="stylesheet" href="/页/页.css">
+<link rel="stylesheet" href="/页/组件.css">
+</head>
+<body>
+<div id="壳" class="壳">
+  <aside id="侧栏" class="侧栏">
+    <div class="牌">
+      <span class="标" aria-hidden="true"></span>
+      <span class="字">
+        <span class="名">工具箱</span>
+        <span class="副" id="牌副">本地 AI 绘画</span>
+      </span>
+    </div>
+    <nav id="导航" class="导航"></nav>
+    <div id="脚注" class="脚注"></div>
+  </aside>
+
+  <div class="右边">
+    <header id="顶条" class="顶条">
+      <span id="顶标题" class="顶标题"></span>
+      <span id="顶副" class="顶副"></span>
+      <span class="伸"></span>
+      <span id="模型条" class="模型条"></span>
+      <button id="重读" class="钮" title="重新向宿主要一次动作表（模块装了/换了之后用）">重读动作表</button>
+    </header>
+
+    <main id="身" class="身">
+      <div class="等">正在向宿主要动作表…</div>
+    </main>
+  </div>
+</div>
+
+<template id="回执模子">
+  <div class="回执">
+    <div class="回执头">
+      <span class="判"></span>
+      <span class="码"></span>
+      <span class="伸"></span>
+      <button class="钮 小 折">收起</button>
+      <button class="钮 小 拷">复制回执</button>
+    </div>
+    <div class="回执人话"></div>
+    <div class="回执体"></div>
+  </div>
+</template>
+
+<div id="吐司们" class="吐司们"></div>
+
+<noscript>这个界面要 JavaScript。</noscript>
+<script type="module" src="/页/壳.js"></script>
+</body>
+</html>

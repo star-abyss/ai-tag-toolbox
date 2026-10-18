@@ -1,0 +1,41 @@
+{
+  "页名": "时间与天气",
+  "配色": {
+    "background": "#3f6b4a",
+    "foreground": "#eef7f0"
+  },
+  "类列表": [
+    {
+      "ID": 173,
+      "类名": "时间",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 174,
+      "类名": "天气",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 175,
+      "类名": "季节",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 176,
+      "类名": "天体",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    }
+  ]
+}

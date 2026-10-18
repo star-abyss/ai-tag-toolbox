@@ -1,0 +1,17 @@
+{
+  "页名": "作品",
+  "配色": {
+    "background": "#7a3f52",
+    "foreground": "#fdeef2"
+  },
+  "类列表": [
+    {
+      "ID": 15,
+      "类名": "作品",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    }
+  ]
+}

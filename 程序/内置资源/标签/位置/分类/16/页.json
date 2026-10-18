@@ -1,0 +1,73 @@
+{
+  "页名": "身材与身体",
+  "配色": {
+    "background": "#5c5c2e",
+    "foreground": "#f7f7e8"
+  },
+  "类列表": [
+    {
+      "ID": 17,
+      "类名": "胸",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 18,
+      "类名": "身材",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 19,
+      "类名": "胸围",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    },
+    {
+      "ID": 20,
+      "类名": "皮肤细节",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 21,
+      "类名": "脚部",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 22,
+      "类名": "穿孔",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 23,
+      "类名": "肢体",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 24,
+      "类名": "腿部",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    }
+  ]
+}

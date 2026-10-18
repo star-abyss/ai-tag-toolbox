@@ -1,0 +1,25 @@
+{
+  "页名": "负面提示词",
+  "配色": {
+    "background": "#3f6b4a",
+    "foreground": "#eef7f0"
+  },
+  "类列表": [
+    {
+      "ID": 5,
+      "类名": "默认",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 6,
+      "类名": "负面",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    }
+  ]
+}

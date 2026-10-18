@@ -1,0 +1,144 @@
+/**
+ * 按钮 —— **只补 DSH 的观感差异，不重复定义模板**。
+ *
+ * 项目里已经有一套统一的按钮模板，规矩写在 `app.css`（「工具箱按钮只使用以下语义模板」）：
+ *
+ *   `.btn` 是**唯一基类**，负责结构（inline-flex / 居中 / gap / 圆角 / 过渡）；
+ *   `.btn-primary` `.btn-secondary` `.btn-ghost` `.btn-danger` `.btn-icon`
+ *   `.btn-segment` `.btn-menu` `.btn-chip` 负责**颜色与状态**；
+ *   旧类名（`abtn` / `hbtn` / `cico` / `tp-act` …）只负责**组件布局与尺寸**。
+ *
+ * 所以这个文件**不重新定义按钮长相** —— 那是 `app.css` 的职责。它只做两件事：
+ *
+ *   ① 把模板的观感对齐 DSH：去掉悬停位移与彩色投影（`app.css` 的模板带
+ *      `translateY(-1px)` 和 `--btn-shadow`，DSH 的按钮不位移、不投影）；
+ *   ② 修掉模板里两个在**深色模式下不可读**的问题（ghost 的文字色、禁用态）。
+ *
+ * ⚠️ 新加按钮时**用 `.btn` + `.btn-*`**，不要另建基类（`.dsh-button` 那套已删除）。
+ * 尺寸由组件自己的类给（例如 `.talkbar .btn`），颜色由 `btn-*` 给。
+ */
+
+/* ═════════ ① 对齐 DSH：不位移、不投影 ═════════ */
+.btn:not(:disabled):hover,
+.btn:not(:disabled):active {
+  transform: none;
+}
+/** 模板给主/次级按钮都挂了彩色投影，DSH 不用投影分层 —— 全部收掉。 */
+.btn.btn-primary,
+.btn.btn-primary:not(:disabled):hover,
+.btn.btn-secondary:not(:disabled):hover {
+  box-shadow: none;
+}
+
+/* ═════════ ② 修深色模式下的可读性 ═════════ */
+
+/**
+ * `.btn-ghost` 的文字色原来是 `var(--muted)`。
+ * 深色底（`#16181d`）上配 `#9aa3b0`、再乘一遍禁用透明度，就淡到读不出来 ——
+ * 用户报的「深色模式下这个 UI 还是不可见」很大一部分来自这里。
+ * 改用 token 桥的二级标签色，并把悬停升到一级。
+ */
+.btn.btn-ghost {
+  color: var(--dsw-alias-label-secondary);
+  border-color: transparent;
+  background: transparent;
+}
+.btn.btn-ghost:not(:disabled):hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/**
+ * **禁用态：不靠透明度压暗，直接给禁用色。**
+ *
+ * 模板原来只有 `opacity:.52`，我又加了颜色 → 两者叠加。实测（`work/measure/contrast.js`，
+ * WCAG 对比度）深色模式下：
+ *
+ *   `.btn-primary` 白字 + 蓝底 + opacity .45  →  **1.05**   （等于看不见）
+ *   `.btn-danger`  错误色文字 + 透明底        →  **2.83**
+ *   ghost / secondary                        →  3.28
+ *
+ * 根因是 `opacity` **会同时压暗前景与背景**，两者一起往底色靠，比值就崩了；
+ * 主按钮因为底色本身是亮的，掉得最狠。
+ *
+ * 现在改成每个变体给一组**明确的禁用色**（中性底 + 中性字），完全不用 `opacity`：
+ * 形状、边框、字号都还看得清，只把"颜色"这一维收掉 —— 这才是"不可用"该有的样子。
+ */
+.btn:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  color: var(--dsw-alias-label-dimmed);
+  background: var(--dsw-alias-bg-layer-2);
+  border-color: var(--dsw-alias-border-l2);
+  box-shadow: none;
+}
+/** ghost / 纯文字型：禁用时连底也不要，只留中性字。 */
+.btn.btn-ghost:disabled,
+.btn.btn-menu:disabled,
+.btn.btn-chip:disabled,
+.btn.btn-segment:disabled {
+  background: transparent;
+  border-color: transparent;
+  color: var(--dsw-alias-label-dimmed);
+}
+/** 危险操作：禁用时收掉错误色（它还"红着"会让人以为可点）。 */
+.btn.btn-danger:disabled {
+  background: var(--dsw-alias-bg-layer-2);
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-dimmed);
+}
+/** 图标按钮：禁用时保持方形描边，只是变灰。 */
+.btn.btn-icon:disabled {
+  background: transparent;
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* ═════════ ③ 焦点环统一到 token 桥（模板用的是裸 --pri） ═════════ */
+.btn:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+/* ═════════ ④ 自绘「新增」按钮（`app.css` 里是虚线框，别被模板的实线盖掉） ═════════ */
+.btn.addbtn,
+.addbtn.btn-secondary,
+.addbtn {
+  background: transparent;
+  border: 1.5px dashed color-mix(in srgb, var(--pri) 45%, var(--border2));
+  color: var(--pri);
+  font-weight: 600;
+  box-shadow: none;
+}
+.btn.addbtn:not(:disabled):hover,
+.addbtn:not(:disabled):hover {
+  background: var(--pri-bg);
+  border-color: var(--pri);
+  color: var(--pri-h);
+  box-shadow: none;
+}
+
+/* ═════════ ⑤ 「停止」按钮：可取消时必须显眼 ═════════
+ *
+ * 它是这一屏里**唯一能打断 AI 的操作**，用低调的 ghost 会让用户看不出它能按。
+ * `syncStopButton()` 在"确实能取消"时给它加 `.btn-danger`，这里只把危险态
+ * 调成"实心可点"的样子 —— 与旁边那些次要操作明确区分开。
+ *
+ * 注意：`:not(:disabled)` 限定住 —— 禁用时不能还显得能按。 */
+.btn.btn-danger.stop-active:not(:disabled) {
+  background: var(--dsw-alias-state-error-primary);
+  border-color: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-weight: 600;
+}
+.btn.btn-danger.stop-active:not(:disabled):hover {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 82%, #000);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 82%, #000);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: none; }
+}

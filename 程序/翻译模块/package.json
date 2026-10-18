@@ -1,0 +1,10 @@
+{
+  "name": "toolbox-translate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "工具箱 · 翻译模块（本地档）：切分 · 查词 · 查不到的交给本地模型 · 拼回",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

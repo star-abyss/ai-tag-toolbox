@@ -1,0 +1,17 @@
+{
+  "页名": "内容分级",
+  "配色": {
+    "background": "#287ea4",
+    "foreground": "#f2f8fb"
+  },
+  "类列表": [
+    {
+      "ID": 219,
+      "类名": "默认",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    }
+  ]
+}

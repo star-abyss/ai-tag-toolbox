@@ -1,0 +1,374 @@
+/**
+ * 提问卡 + 排队条 —— 照搬 DSH 的尺寸与层次。
+ *
+ * 量值来源（DSH 各包 bundle 内嵌的 CSS 模块，逐条抄，详见 `work/dsh-design-notes.cjs`）：
+ *   提问卡  @deepseek-ai/dsh-client-ui-user-questions
+ *   排队条  @deepseek-ai/dsh-client-ui-conversation（QueueDock）
+ *
+ * 只换类名前缀与颜色 token，尺寸/间距/圆角/字号一律照原值。
+ */
+
+/* ══════════════════════════════════════════════════════════════
+ * 提问卡
+ *
+ * 结构：card > [eyebrow + title] / options / customRow / footer
+ * 布局要点：卡片定宽居中，最高 60vh / 520px，选项区自己滚动、头尾不滚。
+ * ══════════════════════════════════════════════════════════════ */
+.dsh-ask {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 720px;
+  max-height: min(60vh, 520px);
+  padding: 0 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 14px;
+  background: var(--dsh-specific-input-major, var(--card));
+  box-shadow: var(--dsw-elevation-panel);
+  color: var(--dsw-alias-label-primary);
+}
+.dsh-ask, .dsh-ask * { box-sizing: border-box; }
+
+/* 头部：标题块在左，操作在右 */
+.dsh-ask-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 16px 0 24px;
+}
+.dsh-ask-heading { min-width: 0; }
+.dsh-ask-eyebrow {
+  margin-bottom: 5px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+.dsh-ask-title { margin: 0; font-size: 16px; font-weight: 500; line-height: 22px; }
+.dsh-ask-detail { margin: 0 2px 8px; }
+.dsh-ask-head-actions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; }
+
+/* 圆形小图标按钮（翻页 / 收起） */
+.dsh-ask-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+.dsh-ask-icon:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.dsh-ask-icon:disabled { color: var(--dsw-alias-label-dimmed); cursor: default; }
+
+/* 正文：只有这一段滚动 */
+.dsh-ask-body {
+  display: flex;
+  flex: auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 选项列表 */
+.dsh-ask-options { display: flex; flex-direction: column; gap: 1px; margin: 8px 0 0; padding: 4px 12px; }
+.dsh-ask-option {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .12s, border-color .12s;
+}
+.dsh-ask-option:hover:not(:disabled), .dsh-ask-option-selected { background: var(--dsw-alias-interactive-bg-hover); }
+.dsh-ask-option-selected { border-color: var(--dsw-alias-border-l2); }
+.dsh-ask-option:disabled { cursor: default; }
+
+/* 序号：20×20 小方块 */
+.dsh-ask-number {
+  display: grid;
+  flex: 0 0 20px;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+/* 勾选框：20×20 槽位里放 14×14 的方框 */
+.dsh-ask-check {
+  display: grid;
+  flex: 0 0 20px;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+}
+.dsh-ask-check::before {
+  content: '';
+  grid-area: 1 / 1;
+  width: 14px;
+  height: 14px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-xs);
+  transition: background-color .12s, border-color .12s;
+}
+.dsh-ask-check > span { grid-area: 1 / 1; font-size: 11px; line-height: 1; color: var(--dsw-alias-label-primary-foreground); }
+.dsh-ask-check-on { color: var(--dsw-alias-label-primary-foreground); }
+.dsh-ask-check-on::before { border-color: var(--dsw-alias-label-primary); background: var(--dsw-alias-label-primary); }
+
+.dsh-ask-copy { flex: 1; min-width: 0; }
+.dsh-ask-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.dsh-ask-label { font-size: 14px; font-weight: 500; line-height: 24px; }
+.dsh-ask-desc { color: var(--dsw-alias-label-tertiary); font-size: 14px; font-weight: 400; line-height: 24px; }
+.dsh-ask-badge {
+  padding: 0 4px;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--pri-bg);
+  color: var(--pri-h);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+/* 自定义回答行 */
+.dsh-ask-custom {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: background-color .12s, border-color .12s;
+}
+.dsh-ask-custom:hover, .dsh-ask-custom:focus-within, .dsh-ask-custom-active {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.dsh-ask-custom:focus-within, .dsh-ask-custom-active { border-color: var(--dsw-alias-border-l2); }
+.dsh-ask-field { display: flex; flex: 1; min-width: 0; }
+.dsh-ask-field > textarea {
+  flex: 1;
+  min-width: 0;
+  max-height: 144px;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--dsw-alias-label-primary);
+  caret-color: var(--dsw-alias-state-business-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 24px;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.dsh-ask-field > textarea::placeholder { color: var(--dsw-alias-label-caption); }
+
+/* 块级自定义回答（多行时用，margin 与选项对齐） */
+.dsh-ask-block {
+  flex-shrink: 0;
+  min-height: 64px;
+  margin: 0 12px;
+  padding: 8px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+.dsh-ask-block:focus-within { border-color: var(--dsw-alias-state-business-primary); }
+
+/* 页脚 */
+.dsh-ask-foot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 0 10px 0 18px;
+}
+.dsh-ask-feedback {
+  flex: 1;
+  min-height: 16px;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: right;
+}
+.dsh-ask-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
+.dsh-ask-wait { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 24px; white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .dsh-ask-head { padding: 10px 12px 0 18px; }
+  .dsh-ask-options { padding: 4px 8px; }
+  .dsh-ask-title { font-size: 15px; line-height: 21px; }
+  .dsh-ask-option, .dsh-ask-custom { padding: 8px 6px; }
+  .dsh-ask-foot { align-items: flex-end; padding: 0 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dsh-ask-option, .dsh-ask-custom, .dsh-ask-check::before { transition: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 排队条（QueueDock）
+ *
+ * 贴在输入框正上方：只有上两角是圆角，和下边的输入框连成一体。
+ * 空队列不渲染；一条直接显示该条；多条显示可折叠的计数头。
+ * ══════════════════════════════════════════════════════════════ */
+.dsh-queue { width: 100%; margin: 0 0 8px; }
+.dsh-queue[hidden] { display: none; }
+
+.dsh-queue-panel {
+  position: relative;
+  width: 100%;
+  padding: 2px 0;
+  border-radius: 10px 10px 0 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+/* 底与边框分开画：底是柔化的浮层材质，边框只画上、左、右（**没有下边框**），
+   这样它和下面的输入框视觉上是连续的。 */
+.dsh-queue-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--dsh-menu-surface-fill, var(--card));
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  pointer-events: none;
+}
+.dsh-queue-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-bottom: none;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* 计数头（仅多于一條时出现；整行可点，展开/收起列表） */
+.dsh-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.dsh-queue-head:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+.dsh-queue-head:disabled { cursor: default; }
+.dsh-queue-lead { display: grid; flex: none; place-items: center; color: var(--dsw-alias-label-tertiary); }
+.dsh-queue-count { flex: auto; min-width: 0; font-size: 13px; font-weight: 500; line-height: 24px; }
+.dsh-queue-chevron { display: grid; flex: none; place-items: center; width: 14px; height: 14px; color: var(--dsw-alias-label-tertiary); }
+
+/* 列表：最多 180px，超出自己滚 */
+.dsh-queue-list { max-height: 180px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.dsh-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 5px 4px 12px;
+  border-radius: 8px;
+}
+/* 相邻行之间的分隔线用内阴影画，不占高度 */
+.dsh-queue-row + .dsh-queue-row { box-shadow: inset 0 1px 0 var(--dsw-alias-border-l1); }
+
+.dsh-queue-thumbs { display: flex; flex: none; gap: 4px; min-width: 0; max-width: 55%; overflow: hidden; }
+.dsh-queue-thumb {
+  width: 24px;
+  height: 24px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-bg-base);
+  object-fit: cover;
+}
+.dsh-queue-preview {
+  flex: auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-queue-editor {
+  flex: auto;
+  min-width: 0;
+  min-height: 28px;
+  max-height: 127px;
+  padding: 3px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+}
+.dsh-queue-editor:focus { border-color: var(--dsw-alias-state-business-primary); }
+
+.dsh-queue-actions { display: flex; flex: none; align-items: center; gap: 10px; }
+.dsh-queue-status { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; white-space: nowrap; }
+.dsh-queue-action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+.dsh-queue-action:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.dsh-queue-action:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+.dsh-queue-action:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-dimmed);
+  background: transparent;
+}

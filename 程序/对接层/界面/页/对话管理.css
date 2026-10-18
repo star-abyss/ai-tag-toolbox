@@ -1,0 +1,12 @@
+.conversation-list { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.conversation-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 6px; padding:8px; border:1px solid transparent; border-radius:8px; cursor:pointer; }
+.conversation-row:hover { background:var(--well); }
+.conversation-row.selected { background:var(--pri-bg); border-color:var(--border2); }
+.conversation-title { grid-column:1 / -1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0; text-align:left; border:0; background:transparent; color:var(--text); font:inherit; cursor:pointer; }
+.conversation-meta { align-self:center; color:var(--muted); font-size:10px; }
+.conversation-date { display:none; }
+.conversation-actions { display:flex; gap:2px; }
+.conversation-actions button { width:22px; height:22px; padding:0; border:0; border-radius:4px; background:transparent; color:var(--muted); cursor:pointer; }
+.conversation-actions button:hover { background:var(--card); color:var(--text); }
+.conversation-actions [data-row-action="delete"]:hover { color:var(--neg); }
+.conversation-title:focus-visible, .conversation-actions button:focus-visible { outline:1px solid var(--pri); outline-offset:2px; }

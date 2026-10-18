@@ -1,0 +1,41 @@
+{
+  "页名": "特效与魔法",
+  "配色": {
+    "background": "#5a4a84",
+    "foreground": "#f0ecfa"
+  },
+  "类列表": [
+    {
+      "ID": 180,
+      "类名": "元素魔法",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    },
+    {
+      "ID": 181,
+      "类名": "文字特效",
+      "配色": {
+        "background": "#8a5a2b",
+        "foreground": "#fdf3e7"
+      }
+    },
+    {
+      "ID": 182,
+      "类名": "粒子光效",
+      "配色": {
+        "background": "#7a3f52",
+        "foreground": "#fdeef2"
+      }
+    },
+    {
+      "ID": 183,
+      "类名": "发光",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    }
+  ]
+}

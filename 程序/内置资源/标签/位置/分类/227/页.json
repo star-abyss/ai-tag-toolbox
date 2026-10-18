@@ -1,0 +1,17 @@
+{
+  "页名": "角色专属词",
+  "配色": {
+    "background": "#5a4a84",
+    "foreground": "#f0ecfa"
+  },
+  "类列表": [
+    {
+      "ID": 228,
+      "类名": "默认",
+      "配色": {
+        "background": "#3f6b4a",
+        "foreground": "#eef7f0"
+      }
+    }
+  ]
+}

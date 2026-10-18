@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
+    />
+    <!--
+      令牌必须第一个到手：适配层每一句话都要带它。
+      走同源脚本而不是内联，因为上面那条 CSP 是 `script-src 'self'`。
+      下面那个注释里的标记是给服务认的（它连着注释一起换掉），页面自己不用它。
+    -->
+    <script src="我们的令牌.js"></script>
+    <!-- /*令牌*/null -->
+    <title>AI 绘画 Tag 工具箱 · Danbooru 标签选择器</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
+    />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="characters.css" />
+    <link rel="stylesheet" href="favorites.css" />
+    <link rel="stylesheet" href="tag-editor.css" />
+    <link rel="stylesheet" href="workspace-theme.css" />
+    <link rel="stylesheet" href="prompt-workspace.css" />
+  <!-- DSH 设计系统：token 桥必须排在组件之前，组件里全是对它的 var() 引用。 -->
+  <link rel="stylesheet" href="dsh-tokens.css" />
+  <link rel="stylesheet" href="dsh-ui.css" />
+  <!-- 按钮模板跟随组件之前加载；统一色板放在所有页面样式之后，作为最终令牌来源。 -->
+  <link rel="stylesheet" href="dsh-buttons.css" />
+  <!-- 提问卡 + 排队条（照 DSH 尺寸）。 -->
+  <link rel="stylesheet" href="dsh-ask.css" />
+  <!--
+    照抄 DSH 的布局与组件样式。**顺序有讲究**：都排在 `dsh-ui.css` 之后，
+    因为它们里面有对 `dsh-ui.css` 那套原子组件的覆写（如行间距、宽度轴）。
+
+      dsh-layout.css    整体框架 + 左侧历史会话区（原 ui-layout / ui-sidebar / ui-workspace）
+      dsh-chat.css      聊天区（原 ui-chat：ChatView / MessageItem / AssistantMarkdown / ChatGroupSeat）
+      dsh-composer.css  输入卡片 + 底部信息条（原 ui-conversation：InputBar / ContextMeter /
+                        TodoPanel / QueueDock）
+  -->
+  <link rel="stylesheet" href="dsh-layout.css" />
+  <link rel="stylesheet" href="dsh-chat.css" />
+  <link rel="stylesheet" href="dsh-composer.css" />
+  <link rel="stylesheet" href="对话管理.css" />
+  <!-- 输入卡片内的待发图片轨（原 ui-attachment 的 ComposerAttachments）。 -->
+  <link rel="stylesheet" href="dsh-attachment.css" />
+  <link rel="stylesheet" href="workspace-refresh.css" />
+  <link rel="stylesheet" href="dsh-palette.css" />
+  <link rel="stylesheet" href="chat-markdown.css" />
+  <link rel="stylesheet" href="agent-chat.css" />
+  <style>
+    #storageSettings { margin: 6px 0; padding: 6px 14px; }
+    #storageSettings h3 { margin: 2px 0 4px; }
+    #storageSettings .hint { margin: 2px 0; line-height: 1.35; }
+    #storageSettings .row { align-items: center; gap: 8px; margin-top: 4px; }
+    #storageSettings .row label { flex: 1 1 250px; min-width: 0; margin: 0; }
+    #storageSettings input, #storageSettings select { box-sizing: border-box; width: 100%; min-height: 32px; }
+    #storageSettings .row button { align-self: center; flex: none; height: 32px; }
+  </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-side-left">
+        <div class="header-left">
+          <button class="hbtn btn btn-icon btn-nav" id="menuBtn" data-i18n-title="ui.header.menu">☰</button>
+          <div class="brand">
+            <span class="logo" aria-hidden="true"><svg class="workspace-icon" viewBox="0 0 24 24"><use href="../assets/icons/workspace.svg#palette"></use></svg></span><span data-i18n="ui.header.brand">AI 绘画 Tag 工具箱</span
+            ><small id="brandSub" class="brand-version" role="button" tabindex="0" aria-label="版本管理" data-i18n="ui.common.loading"></small>
+          </div>
+        </div>
+        <div class="header-leading" id="headerLeading">
+          <button class="hbtn sponsor btn btn-sponsor nav-action nav-compact" id="sponsorBtn" data-nav-action="sponsor" data-nav-tone="sponsor" data-i18n="ui.header.sponsor" data-i18n-title="ui.header.sponsor"></button>
+          <div class="popwrap">
+            <button class="hbtn btn btn-nav btn-secondary nav-action nav-compact" id="themeBtn" data-nav-action="theme" data-nav-tone="style" data-i18n="ui.header.style" data-i18n-title="ui.header.styleTitle"></button>
+            <div class="pop" id="themePop" hidden>
+              <button class="popitem btn btn-menu" data-theme="light">
+                <span class="ck">✓</span><span data-i18n="ui.header.light"></span>
+              </button>
+              <button class="popitem btn btn-menu" data-theme="dark">
+                <span class="ck"></span><span data-i18n="ui.header.dark"></span>
+              </button>
+              <button class="popitem btn btn-menu" data-theme="auto">
+                <span class="ck"></span><span data-i18n="ui.header.autoTheme"></span>
+              </button>
+            </div>
+          </div>
+          <div class="popwrap" id="localeWrap">
+            <button
+              class="hbtn btn btn-nav btn-secondary nav-action nav-compact"
+              id="localeBtn"
+              data-nav-action="locale"
+              data-nav-tone="language"
+              data-i18n="ui.header.language"
+              data-i18n-title="ui.header.languageTitle"
+            ></button>
+            <div class="pop" id="localePop" hidden></div>
+          </div>
+          <button class="hbtn btn btn-nav btn-toggle nav-action nav-toggle" id="nsfwBtn" data-nav-action="adult" data-nav-tone="adult" data-i18n="ui.header.adult" aria-pressed="false"></button>
+        </div>
+      </div>
+      <div class="header-workspace" id="headerWorkspace">
+        <div id="workspaceContext" class="workspace-context" hidden></div>
+        <div class="search" id="searchWrap" data-i18n-title="ui.header.searchHelp">
+          <label class="search-query" for="q">
+            <svg class="search-query-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.8" cy="10.8" r="6.4"></circle><path d="m16 16 4.2 4.2"></path></svg>
+            <input
+              id="q"
+              class="search-query-input"
+              type="text"
+              data-i18n-title="ui.header.searchTitle"
+              data-i18n-placeholder="ui.header.searchPlaceholder"
+              autocomplete="off"
+            />
+          </label>
+          <button id="searchBtn" class="search-submit btn btn-icon" type="button" data-i18n-title="ui.header.searchSubmitTitle" data-i18n-aria="ui.header.searchSubmit">
+            <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="10.8" cy="10.8" r="6.4"></circle>
+              <path d="m16 16 4.2 4.2"></path>
+            </svg>
+            <span class="sr-only" data-i18n="ui.header.searchSubmit">搜索</span>
+          </button>
+        </div>
+        <div
+          id="aiCfgBtns"
+          class="ai-module-switcher"
+          role="tablist"
+          data-i18n-aria="ui.header.aiModules"
+          style="display: none"
+        >
+          <span class="ai-module-thumb" aria-hidden="true"></span>
+          <button
+            class="ai-module-tab btn btn-segment on"
+            id="aiModuleTalk"
+            data-panel="talk"
+            role="tab"
+            aria-selected="true"
+            data-i18n="ui.header.talkPage"
+          ></button>
+          <button
+            class="ai-module-tab btn btn-segment"
+            id="aiModulePrompt"
+            data-panel="prompt"
+            role="tab"
+            aria-selected="false"
+            data-i18n="ui.header.promptPage"
+          ></button>
+          <button
+            class="ai-module-tab btn btn-segment"
+            id="aiModuleApi"
+            data-panel="api"
+            role="tab"
+            aria-selected="false"
+            data-i18n="ui.header.apiPage"
+          ></button>
+          <button
+            class="ai-module-tab btn btn-segment"
+            id="aiModuleComfy"
+            data-panel="comfy"
+            role="tab"
+            aria-selected="false"
+            data-i18n="ui.header.comfyPage"
+          ></button>
+        </div>
+      </div>
+      <div class="header-trailing" id="headerTrailing">
+        <button class="hbtn btn btn-nav btn-secondary nav-action nav-toggle" id="aiBtn" data-nav-action="ai" data-nav-tone="ai" data-i18n="ui.header.aiAssistant" aria-pressed="false"></button>
+        <button
+          class="hbtn btn btn-nav btn-secondary nav-action nav-toggle"
+          id="translateBtn"
+          data-nav-action="translation"
+          data-nav-tone="translation"
+          data-i18n-title="ui.translation.title"
+          data-i18n="ui.header.translation"
+        ></button>
+      <button class="hbtn btn btn-nav btn-secondary nav-action nav-toggle" id="visionBtn" data-nav-action="vision" data-nav-tone="vision" data-i18n="ui.header.vision" aria-controls="tagPane" aria-expanded="false"></button>
+      <button class="hbtn btn btn-nav btn-secondary nav-action nav-toggle" id="galleryBtn" data-nav-action="gallery" data-nav-tone="gallery" aria-pressed="false"></button>
+      <button class="hbtn btn btn-nav btn-secondary nav-action nav-toggle" id="favBtn" data-nav-action="favorites" data-nav-tone="favorites" data-i18n="ui.header.favorites" aria-controls="favoritesView" aria-pressed="false"></button>
+      </div>
+    </header>
+
+    <div class="wrap" id="wrapEl">
+      <aside class="sidebar" id="sidebar">
+        <div class="library-nav-head"><span>标签分类</span><small>按主题探索</small></div>
+        <div class="slist" id="catList"></div>
+        <button class="addbtn btn btn-secondary" id="addTagBtn" data-i18n="ui.custom.title"></button>
+        <button class="addbtn btn btn-secondary" id="addGroupBtn" type="button">新建标签组</button>
+        <div id="sideAi" class="ai-sidebar-grid" style="display: none">
+          <section class="ai-session-column" aria-label="对话管理">
+            <button id="talkNew" class="tnew btn btn-primary" data-i18n="ui.ai.newChat"></button>
+            <button id="talkManage" class="tnew btn btn-secondary" type="button">🗂 对话管理</button>
+            <div class="tsidehead" style="padding: 8px 8px 2px">📚 对话记录</div>
+            <div id="talkSessionList" class="tlist" style="flex: 1"></div>
+          </section>
+          <div id="talkColumnResize" role="separator" tabindex="0" aria-label="调整对话列表宽度" aria-orientation="vertical" title="拖动调整对话列表宽度；双击恢复默认"></div>
+          <section class="ai-conversation-repository" aria-label="当前对话图片仓库" data-i18n-aria="ui.ai.conversationImages" data-image-context="conversation" tabindex="0">
+            <div class="repo-head">
+              <strong data-i18n="ui.ai.conversationImages"></strong>
+              <span id="talkImageRepositoryCount" class="repo-count"></span>
+            </div>
+            <div class="repo-controls">
+              <select id="talkRepositoryColumns" aria-label="图片列数" data-i18n-aria="ui.ai.repositoryColumns"><option value="two" data-i18n="ui.ai.twoColumns"></option><option value="single" data-i18n="ui.ai.singleColumn"></option></select>
+              <button id="talkRepositoryClearPending" class="repo-clear btn btn-ghost" type="button" data-i18n="ui.ai.clearPending"></button>
+            </div>
+            <div id="talkImageRepository" class="conversation-repository-grid" data-columns="two"></div>
+          </section>
+        </div>
+      </aside>
+      <main class="main">
+        <div id="workspaceModeBar" class="workspace-mode-bar">
+          <nav id="tagModeTabs" class="tag-mode-tabs" aria-label="标签视图">
+            <button type="button" class="tag-mode-tab btn btn-secondary on" data-tag-mode="tags"><span class="mode-label">标签</span></button>
+            <button type="button" class="tag-mode-tab btn btn-secondary" data-tag-mode="groups"><span class="mode-label">标签组</span></button>
+            <button type="button" class="tag-mode-tab btn btn-secondary" data-tag-mode="characters"><span class="mode-label">角色库</span></button>
+          </nav>
+        </div>
+        <div id="tagLibraryView" class="tag-library-view">
+          <div class="toolbar">
+            <div class="library-title"><span class="library-eyebrow">绘画标签库</span><h2 id="catTitle">质量词</h2></div>
+            <span class="cnt" id="catCnt"></span>
+            <span class="sp"></span>
+            <button class="abtn ghost btn btn-ghost" id="clearQ" style="display: none">✕ 清除搜索</button>
+          </div>
+          <div id="subcatNav" class="subcat-nav" role="tablist" aria-label="子分类" hidden></div>
+          <div class="content" id="content">
+            <div id="chips"></div>
+            <section id="favoriteSearchResults" class="favorite-global-results" hidden></section>
+          </div>
+        </div>
+        <section id="charactersView" class="characters-view" aria-label="角色库" hidden>
+          <div class="characters-toolbar">
+            <div>
+              <h2>角色库</h2>
+              <span class="character-count"><b id="characterCount">0</b></span>
+            </div>
+            <div class="character-series-controls">
+              <label for="characterSeriesQuery">搜索作品</label>
+              <input id="characterSeriesQuery" type="search" placeholder="输入作品 / 来源" autocomplete="off" />
+              <select id="characterSeries" aria-label="作品 / 来源"></select>
+            </div>
+          </div>
+          <div class="characters-layout">
+            <section class="character-browser" aria-label="角色列表">
+              <div id="characterList" class="character-list"></div>
+              <nav class="character-paging" aria-label="角色分页">
+                <button id="characterPrev" class="abtn ghost btn btn-ghost" type="button"></button>
+                <span id="characterPage"></span>
+                <button id="characterNext" class="abtn ghost btn btn-ghost" type="button"></button>
+              </nav>
+            </section>
+            <article id="characterDetail" class="character-detail" aria-live="polite"></article>
+          </div>
+        </section>
+        <section id="translateView" class="translate-view" aria-label="翻译模块" hidden>
+          <div class="translate-page-head">
+            <div>
+              <h2 data-i18n="ui.translation.title"></h2>
+              <span id="translateStatus" data-i18n="ui.translation.statusIdle"></span>
+                <small id="translateMeta" class="translate-meta" aria-live="polite"></small>
+            </div>
+            <span class="sp"></span>
+            <select id="translateDirection" aria-label="翻译方向">
+              <option value="auto" data-i18n="ui.translation.directionAuto"></option>
+              <option value="zh-en" data-i18n="ui.translation.directionZhToTag"></option>
+              <option value="en-zh" data-i18n="ui.translation.directionTagToZh"></option>
+            </select>
+            <button class="abtn ghost btn btn-ghost" id="translateClear" data-i18n="ui.common.clear"></button>
+            <button class="abtn btn btn-secondary" id="translateBack" data-i18n="ui.translation.back"></button>
+          </div>
+          <div class="translate-grid">
+            <section class="translate-pane">
+              <div class="translate-pane-head">
+                <span data-i18n="ui.translation.input"></span><span id="translateInputCount">0 字</span>
+              </div>
+              <div class="translation-input-wrap">
+              <div id="translateSourceMirror" class="translation-source-mirror" aria-hidden="true" hidden></div>
+              <textarea
+                id="translateInput"
+                class="translate-input"
+                spellcheck="false"
+                aria-label="原文"
+                data-i18n-placeholder="ui.translation.inputPlaceholder"
+              ></textarea>
+              </div>
+            </section>
+            <section class="translate-pane">
+              <div class="translate-pane-head">
+                <span data-i18n="ui.translation.result"></span>
+                <span class="translate-actions">
+                  <button class="abtn pri btn btn-primary" id="translateAi" data-i18n="ui.translation.aiTranslate"></button>
+                    <button class="abtn btn btn-secondary" id="translateRetry" type="button" hidden data-i18n="ui.translation.retry"></button>
+                  <button class="abtn btn btn-secondary" id="translateCopy" data-i18n="ui.common.copy"></button>
+                </span>
+              </div>
+              <textarea
+                id="translateOutput"
+                class="translate-output"
+                readonly
+                data-i18n-placeholder="ui.translation.outputPlaceholder"
+              ></textarea>
+              <div id="translateAlignedOutput" class="translate-output translation-alignment-output" hidden tabindex="0" role="textbox" aria-readonly="true" aria-label="译文对照"></div>
+            </section>
+          </div>
+          <p id="translateAlignmentHint" class="translation-alignment-hint" role="status" hidden></p>
+          <section class="translate-tags">
+            <div class="translate-tags-head">
+              <span data-i18n="ui.translation.matched"></span><span id="translateTagCount">0 个</span
+              ><span class="sp"></span
+              ><button class="abtn ghost btn btn-ghost" id="translateCopyTags" data-i18n="ui.translation.copyTags"></button>
+            </div>
+            <div id="translateTags" class="translate-tag-list">
+              <span class="translate-empty">输入内容后会在这里显示相关 Tag</span>
+            </div>
+          </section>
+        </section>
+        <section id="galleryView" class="gallery-view" aria-label="图片库" hidden>
+          <div class="gallery-toolbar">
+            <h2 data-i18n="ui.gallery.title"></h2><span id="galleryCount" class="cnt"></span><span class="sp"></span>
+            <button class="abtn btn btn-secondary" id="galleryUpload" data-i18n="ui.gallery.upload"></button>
+            <button class="abtn btn btn-secondary" id="galleryDownload" data-i18n="ui.gallery.download"></button>
+            <button class="abtn btn btn-primary" id="gallerySend">发送到对话仓库</button>
+            <button class="abtn btn btn-danger" id="galleryDelete">删除</button>
+            <select id="galleryOrder" aria-label="排序" data-i18n-aria="ui.gallery.order"><option value="oldest" data-i18n="ui.gallery.oldest"></option><option value="newest" data-i18n="ui.gallery.newest"></option></select>
+            <input id="galleryQuery" type="search" data-i18n-placeholder="ui.gallery.filter" />
+          </div>
+          <input id="galleryFile" type="file" accept="image/*" multiple hidden />
+          <div id="galleryGrid" class="gallery-grid"></div>
+        </section>
+        <section id="favoritesView" class="favorites-view" aria-label="快捷收藏" hidden></section>
+      </main>
+      <div class="tag-vision-slot" id="tagVisionSlot">
+        <aside class="tkpane" id="tagPane" data-image-context="vision" tabindex="0" aria-label="单图识图区域">
+          <div class="tp-headbar">
+            <div class="tphead" data-i18n="ui.ai.currentImage"></div>
+            <div class="tp-head-actions">
+              <button class="tp-icon danger btn btn-icon btn-danger" id="tpClearImg" type="button" title="清空识图图片" aria-label="清空识图图片" data-i18n-title="ui.ai.clearImage" data-i18n-aria="ui.ai.clearImage">🗑</button>
+            </div>
+          </div>
+          <div id="tpImg" class="tp-img" data-image-context="vision"><div class="tp-empty" data-i18n="ui.ai.notUploaded"></div></div>
+          <button class="tp-act btn btn-secondary" id="tpUpload" data-i18n="ui.ai.uploadImage"></button>
+          <input type="file" id="tpFile" accept="image/*" hidden />
+          <div class="tp-identify-row">
+            <button class="tp-act pri btn btn-primary" id="tpIdentify" data-i18n="ui.ai.identify"></button>
+            <select id="tpWdModel" class="tp-model" aria-label="识图模型" title="选择识图模型" data-i18n-title="ui.ai.visionModel" data-i18n-aria="ui.ai.visionModel">
+              <option value="eva02">EVA02 Canary</option>
+            </select>
+          </div>
+          <button class="tp-act btn btn-secondary" id="tpDescribe" data-i18n="ui.ai.aiVision"></button>
+          <button class="tp-act ghost btn btn-ghost" id="tpStop" data-i18n="ui.ai.stop" style="display: none"></button>
+          <div id="tpModes" class="tp-mods"></div>
+          <div class="tp-empty" id="tpPlaceholder" style="display: none" data-i18n="ui.ai.imageHint"></div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="bar">
+      <span class="label">已选 <b id="selCount">0</b> 个</span>
+      <div class="barmid">
+        <div class="selbox" id="selbox"></div>
+        <div class="preview" id="preview"></div>
+      </div>
+      <div class="acts">
+        <button class="abtn pri btn btn-primary" id="copyAll">复制</button>
+        <button class="abtn btn btn-secondary" id="saveFav">收藏</button>
+        <button class="abtn btn btn-secondary" id="tagGroupCreateFromSelection" hidden>创建组</button>
+        <button class="abtn ghost danger btn btn-danger" id="clearSel">清空</button>
+      </div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+
+    <div class="modal" id="helpModal">
+      <div class="box">
+        <button class="hbtn close btn btn-icon" id="helpClose">✕</button>
+        <h3 id="helpTitle" data-i18n="uiExtra.help.title"></h3>
+        <div id="helpBody" class="helpbody" style="white-space: pre-line" data-i18n="uiExtra.help.body"></div>
+      </div>
+    </div>
+
+    <div class="modal" id="sponsorModal">
+      <div class="box sponsor-box">
+        <button class="hbtn close btn btn-icon" id="sponsorClose">✕</button>
+        <h3>❤️ 赞助作者</h3>
+        <div class="sponsor-card">
+          <div class="savatar">🎨</div>
+          <div class="sname">star_abyss</div>
+          <div class="ssub">如果这个工具箱对你有帮助，欢迎赞助作者，支持持续更新 🌟</div>
+          <a
+            class="abtn pri slink btn btn-primary btn-sponsor-link"
+            id="sponsorGo"
+            href="https://ifdian.net/a/AI-Tag-Toolbox"
+            target="_blank"
+            rel="noopener"
+            >💖 前往爱发电赞助</a
+          >
+          <div class="surl">ifdian.net/a/AI-Tag-Toolbox</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="aiView" style="display: none">
+      <div class="aibody">
+        <div class="aitop slim">
+          <span style="flex: 1"></span>
+          <button class="hbtn close btn btn-icon" id="aiClose" title="返回标签页">✕</button>
+        </div>
+        <div id="tabApi" style="display: none">
+          <div class="aitop slim2">
+            <button class="abtn ghost backbtn btn btn-ghost" id="apiBack" data-i18n="ui.settings.apiBack"></button>
+            <span style="font-weight: 700; font-size: 14px" data-i18n="ui.settings.apiTitle"></span>
+          </div>
+          <div class="apibody">
+            <div class="form">
+              <section class="aiset" id="storageSettings" aria-labelledby="storageSettingsTitle">
+                <h3 id="storageSettingsTitle">存储位置与本地模型</h3>
+                <div class="hint">个人数据会放在同一个数据目录。修改后从下次启动生效，程序不会自动搬动已有数据。</div>
+                <div class="hint">当前数据目录：<code id="storageDataPath">读取中…</code></div>
+                <div class="hint">模型目录固定跟随程序目录：<code id="storageModelPath">读取中…</code></div>
+                <div class="row">
+                  <label class="grow">下次启动使用的数据目录<input id="storageDataInput" type="text" autocomplete="off" /></label>
+                  <button class="abtn btn btn-secondary" id="storageDataSave" type="button">保存位置</button>
+                </div>
+                <div class="hint" id="storageDataNext" role="status"></div>
+                <div class="row">
+                  <label>识图模型<select id="storageVisionModel"></select></label>
+                  <label>翻译模型<select id="storageTranslationModel"></select></label>
+                  <button class="abtn btn btn-secondary" id="storageModelRefresh" type="button">刷新模型列表</button>
+                </div>
+                <div class="hint" id="storageStatus" role="status"></div>
+              </section>
+              <div class="hint" data-i18n="ui.settings.linkOrderHint"></div>
+              <div class="hint">API 配置位于个人数据目录下的 API 子目录：<code id="linkStorePath">…</code>（位置见上方存储设置。）</div>
+              <!-- 链路表：一行 = 一条链路，**行序 = 优先级**。行由 app-view.js 渲染 ——
+                   服务商预设只在那一份常量表里维护，不要再在这里抄第二份
+                   （旧界面就是抄了两份，加一个服务商要改两处）。 -->
+              <div id="linkList" class="link-list"></div>
+              <div class="row">
+                <button class="abtn btn btn-secondary" id="linkAdd" type="button" data-i18n="ui.settings.linkAdd"></button>
+              </div>
+              <div class="hint" data-i18n="ui.settings.linkAbilityHint"></div>
+              <div class="hint" id="linkStatus" role="status"></div>
+              <div class="opts">
+                <label class="opt"
+                  ><input type="checkbox" id="aiStrict" checked />
+                  严格从标签库选取（智能按需发送：识图复刻只发识图得到的 Tag；无图时按你的描述关键词匹配相关标签发给
+                  AI，Token 消耗小）</label
+                >
+                <button class="abtn pri btn btn-primary" id="aiTest" data-i18n="ui.settings.testConnection"></button>
+                <button class="abtn ghost danger btn btn-danger" id="aiClearCfg" data-i18n="ui.settings.restoreDefault"></button>
+              </div>
+              <div class="hint">
+                · 兼容所有 OpenAI 格式接口（<code>…/models</code> 与 <code>…/chat/completions</code>），请求由本机界面服务直接发到你填的地址。<br />· <b>Key 以明文写在
+                本机存档</b>；界面上只显示"存没存过"。<br />· 模型那一格<b>点一下就现去服务商那边取清单</b>：候选里只有这家真的提供的模型，型号也可以自己填。<br />· 「👁 探测」用一张
+                1×1 的图问服务商本人这个模型吃不吃图，结论按（地址 + 模型）记在本机存档里；没结论就如实显示
+                <b>👁?</b>。<br />· 助手、AI 识图与 AI 翻译使用这里保存的链路；模型与世界书在提示词页配置。
+              </div>
+              <details class="aiset agent-settings">
+                <summary>🧩 固定 Agent Runtime</summary>
+                <div class="hint">主 AI 只使用固定工具，页面不开放外部 Agent 写权限。</div>
+                <div class="secret-status" id="agentStatus">固定工具就绪</div>
+                <button class="abtn btn btn-secondary" id="openCallMonitor" type="button">🧪 调用摘要</button>
+                <button class="abtn btn btn-secondary" id="openAgentInspector" type="button">🔎 完整提示词与调度</button>
+              </details>
+            </div>
+          </div>
+        </div>
+        <div id="tabComfy" data-comfy-view="true" style="display: none">
+          <div class="aitop slim2">
+            <button class="abtn ghost backbtn btn btn-ghost" id="comfyBack" data-i18n="ui.settings.comfyBack"></button>
+            <span style="font-weight: 700; font-size: 14px" data-i18n="ui.settings.comfyWorkspaceTitle"></span>
+          </div>
+          <div class="comfy-workspace">
+            <div class="form">
+              <div class="comfy-status-row">
+                <div class="hint" id="comfyConfigStatus" role="status">ComfyUI 状态检查中…</div>
+                <button class="abtn btn btn-secondary" id="comfyTest" data-i18n="ui.settings.comfyTest"></button>
+              </div>
+              <div class="opts runtime-options">
+                <label class="opt"><input id="comfyOn" type="checkbox" /> <span data-i18n="ui.settings.comfyEnable"></span></label>
+              </div>
+              <label><span data-i18n="ui.settings.comfyAddress"></span><input id="comfyBase" placeholder="http://127.0.0.1:8188" /></label>
+              <div class="row" id="comfyImportActions">
+                <button class="abtn btn btn-secondary" id="comfyWfJson" data-i18n="ui.settings.workflowUpload"></button>
+                <button class="abtn btn btn-secondary" id="comfyWfPng" data-i18n="ui.settings.workflowPng"></button>
+                <button class="abtn btn btn-secondary" id="comfyWfExport" type="button">导出 JSON</button>
+                <button class="abtn btn btn-secondary" id="comfyWfCopy" data-i18n="ui.settings.workflowCopy"></button>
+                <button class="abtn btn btn-secondary" id="comfyWfOpen" data-i18n="ui.settings.workflowOpen"></button>
+              </div>
+              <input type="file" id="comfyWfJsonFile" accept=".json,application/json" hidden />
+              <input type="file" id="comfyWfPngFile" accept="image/png" hidden />
+              <details class="comfy-advanced-json"><summary>高级工作流 JSON（编辑后点保存才生效）</summary><label><span>工作流 JSON</span><textarea id="comfyWf" class="wfarea" placeholder="ComfyUI API workflow JSON"></textarea></label><button class="abtn btn btn-secondary" id="comfyWfSave" type="button">保存工作流 JSON</button></details>
+              <section class="comfy-parameter-panel"><h3>工作流节点参数</h3><p class="hint">这些参数仅供本机用户调整；AI 不会读取参数值。出图时提示词、参考图按请求填入，批量入口以“每轮绘制数量”为准。</p><div id="comfyParameters" aria-live="polite"></div></section>
+              <section class="generation-settings-panel"><h3>生成设置</h3><label><span>每轮绘制数量</span><input id="settingsImagesPerRound" type="number" min="1" step="1" value="1" /></label><label><span>最多自动生成轮数</span><input id="maxAutoRounds" type="number" min="1" step="1" value="3" /></label><label class="opt"><input id="generationAutoRun" type="checkbox" checked /> <span>允许自动迭代</span></label></section>
+              <div class="row">
+                <button class="abtn ghost danger btn btn-danger" id="comfyWfClear" data-i18n="ui.settings.workflowClear"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="tabTalk" data-image-context="conversation">
+          <div class="tkshell">
+            <section class="talkmain" data-image-context="conversation">
+              <div class="tkbody">
+                <div class="tkconv">
+                  <div class="tk-statusline">
+                    <div class="tk-comfy-module" id="comfyUiModule">
+                      <label class="opt comfy-inline-toggle"><input id="talkComfyOn" type="checkbox" /> <span data-i18n="ui.ai.comfyMaster">启用绘图</span></label>
+                    </div>
+                    <div class="generation-controls" role="group" data-i18n-title="ui.ai.generationControls">
+                      <span>每轮</span>
+                      <input id="imagesPerRound" type="number" min="1" step="1" value="1" data-i18n-title="ui.ai.imagesPerRound" aria-label="每轮生成张数" />
+                    </div>
+                    <button id="talkCallMonitor" class="btn btn-secondary" type="button">调用监视器</button>
+                    <div class="talk-scroll-actions" role="group" aria-label="对话滚动">
+                      <button id="talkScrollTop" class="btn btn-icon btn-ghost" type="button" title="回到对话顶部" aria-label="回到对话顶部">↑</button>
+                      <button id="talkScrollBottom" class="btn btn-icon btn-ghost" type="button" title="回到最新对话" aria-label="回到最新对话">↓</button>
+                    </div>
+                    <div class="cstatus talk-status" id="talkStatus" aria-live="polite"></div>
+                  </div>
+                  <section id="agentInteractionPanel" class="agent-interaction-panel" hidden aria-live="polite"></section>
+                  <div class="comfyconv talkconv" id="talkConv" data-conversation-view="true" data-image-context="conversation">
+                    <div class="workspace-welcome">
+                      <svg class="workspace-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons/workspace.svg#sparkles"></use></svg>
+                      <h2 data-i18n="ui.ai.welcomeTitle">从一个灵感开始</h2>
+                      <p data-i18n="ui.ai.welcomeDescription">描述你想画的角色、场景或画风，让 AI 帮你整理成绘画提示词。</p>
+                      <small data-i18n="ui.ai.welcomeHint">也可以拖入参考图片 · Enter 发送 · Shift + Enter 换行</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="imgsrow talkimgs" id="talkPendingStrip" data-image-context="conversation" style="display: none"><div id="talkImgRow" class="pending-image-list"></div><button type="button" id="talkPendingClear" class="btn btn-icon" title="清空发送区草稿">❌</button></div>
+              <div class="comfyin talkin" data-image-context="conversation">
+                <!-- 待发队列（照 DSH 的 QueueDock）：放在输入框容器的**内部**，
+                     这样它天然继承 .talkin 的宽度与居中，不会撑破外层把操作按钮挤出去。 -->
+                <div class="dsh-queue" id="talkQueue" hidden></div>
+                <textarea
+                  id="talkIn"
+                  rows="2"
+                  placeholder="描述你的需求…（Enter 发送，Shift+Enter 换行；可直接粘贴 / 拖入图片）"
+                ></textarea>
+                <div class="talkbar">
+                  <button class="abtn btn btn-secondary" id="talkImgBtn" data-i18n="ui.ai.uploadImage"></button>
+                  <span class="tgrow"></span>
+                  <button class="abtn pri btn btn-primary" id="talkSendBtn" data-i18n="ui.ai.send"></button>
+                  <!-- 变体类（btn-ghost / btn-danger）由 syncStopButton() 按真实状态切换，
+                       不写死在这里 —— 写死会与 JS 加的类同时生效，颜色打架。 -->
+                  <button class="abtn btn" id="talkStopBtn" data-i18n="ui.ai.stop" hidden></button>
+                  <button class="abtn danger btn btn-danger" id="talkClearImagesBtn" data-i18n="ui.ai.clearConversationImages"></button>
+                  <button class="abtn danger btn btn-danger" id="talkClearBtn" data-i18n="ui.ai.clearChat"></button>
+                </div>
+                <input type="file" id="talkImgFile" accept="image/*" multiple hidden />
+                <div class="hint">
+                  · 🔍 识图模块一次只保留一张图片，不会进入 AI 对话；主标签页和 AI 页面共用同一张当前识图图片。<br />· 🎨 在 API 设置中启用 ComfyUI 并配置工作流后，主 AI 可按需要调用出图工具。
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div id="tabPrompt" data-prompt-view="true" style="display: none"></div>
+        <div class="modal" id="imgViewer">
+          <div class="box imgviewer-box">
+            <button class="hbtn close btn btn-icon" id="imgViewerClose" title="关闭" aria-label="关闭">✕</button>
+            <div class="imgviewer-body"><img id="imgViewerImage" alt="" /></div>
+            <div class="imgviewer-meta" id="imgViewerMeta"></div>
+            <div class="form-acts imgviewer-actions">
+              <button class="abtn btn btn-secondary" id="imgViewerDownload">⬇ 下载</button>
+              <button class="abtn btn btn-secondary" id="imgViewerToConversation">💬 保存到对话区</button>
+              <button class="abtn btn btn-secondary" id="imgViewerToGallery">⭐ 保存到图库</button>
+            </div>
+          </div>
+        </div>
+        <div id="imgCtxMenu" class="ctxmenu" style="display: none">
+          <button type="button" class="ctx-item" data-ctx="download">⬇ 下载</button>
+          <button type="button" class="ctx-item" data-ctx="gallery">⭐ 保存到图库</button>
+        </div>
+        <div id="tabMgr" style="display: none">
+          <div class="manager-head">
+            <div><span class="manager-eyebrow">本机对话</span><h1>对话档案</h1><p>找到之前的灵感，接着聊。</p></div>
+            <button class="btn btn-secondary" id="mgrBack" type="button">返回助手</button>
+          </div>
+          <div class="manager-overview">
+            <div><span>已保存对话</span><strong id="mgrSessionCount">0</strong></div>
+            <div><span>全部消息</span><strong id="mgrMessageCount">0</strong></div>
+            <div class="manager-current"><span>当前对话</span><strong id="mgrGenCur"></strong><small id="mgrChatCur"></small></div>
+          </div>
+          <section class="manager-library">
+            <div class="manager-library-head"><h2>所有对话</h2><div id="mgrActions">
+              <button class="btn btn-secondary" id="mgrExport" type="button">导出对话</button>
+              <button class="btn btn-secondary" id="mgrImport" type="button">导入对话</button>
+              <button class="btn btn-danger" id="mgrClear" type="button">清空当前</button>
+              <input id="mgrImportFile" type="file" accept=".json,application/json" hidden>
+            </div></div>
+            <div id="mgrGenList"></div>
+            <p class="manager-footnote">对话保存在本机。导出会话文件可同时保存消息与图片。</p>
+          </section>
+    </div>
+
+  </div>
+      </div>
+    <div class="modal" id="cfmModal">
+      <div class="box cfb">
+        <div id="cfmIcon">⚠️</div>
+        <div class="cfmsg" id="cfmText"></div>
+        <label id="cfmRetainImagesWrap" hidden><input type="checkbox" id="cfmRetainImages" /> <span data-i18n="ui.ai.retainConversationImages"></span></label>
+        <div class="form-acts">
+          <button class="abtn ghost btn btn-ghost" id="cfmNo">取消</button>
+          <button class="abtn pri danger btn btn-danger" id="cfmYes">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="versionModal" role="dialog" aria-modal="true" aria-labelledby="versionModalTitle" aria-hidden="true">
+      <div class="box version-box">
+        <button class="hbtn close btn btn-icon" id="versionModalClose" type="button" aria-label="关闭">✕</button>
+        <h3 id="versionModalTitle" data-i18n="ui.updates.title">版本管理</h3>
+        <p class="hint" id="versionCurrent"></p>
+        <p class="version-status" id="versionStatus" role="status"></p>
+        <progress id="versionProgress" max="100" value="0" hidden></progress>
+        <div id="versionList" class="version-list"></div>
+      </div>
+    </div>
+
+    <div class="modal" id="callMonitorModal" role="dialog" aria-modal="true" aria-labelledby="callMonitorTitle" aria-hidden="true">
+      <div class="box call-monitor-box">
+        <button class="hbtn close btn btn-icon" id="callMonitorClose" type="button" aria-label="关闭">✕</button>
+        <div class="call-monitor-head">
+          <div><h3 id="callMonitorTitle">AI 调用监视器</h3><div class="hint">记录调用状态、耗时、Token 用量和错误摘要。详细调度过程保留在对话中。</div></div>
+          <span class="secret-status" id="callMonitorCount">0 条调用</span>
+        </div>
+        <div class="form-acts call-monitor-actions">
+          <label>请求 <select id="callMonitorFilter" aria-label="筛选调用请求"><option value="">全部请求</option></select></label>
+          <button class="abtn btn btn-secondary" id="callMonitorRefresh" type="button">刷新</button>
+          <button class="abtn btn btn-secondary" id="callMonitorCopy" type="button">复制 JSON</button>
+          <button class="abtn btn btn-secondary" id="callMonitorExport" type="button">导出日志</button>
+          <button class="abtn ghost danger btn btn-danger" id="callMonitorClear" type="button">清空记录</button>
+        </div>
+        <div class="hint" id="callMonitorRetention">自动刷新；最多保留 200 条摘要 / 512 KiB。复制和导出采用当前请求筛选。</div>
+        <div id="callMonitorList" class="call-monitor-list"></div>
+      </div>
+    </div>
+    <div class="modal" id="agentInspectorModal" role="dialog" aria-modal="true" aria-labelledby="agentInspectorTitle" aria-hidden="true">
+      <div class="box agent-inspector-box">
+        <button class="hbtn close btn btn-icon" id="agentInspectorClose" type="button" aria-label="关闭">✕</button>
+        <div class="call-monitor-head">
+          <div><h3 id="agentInspectorTitle">完整提示词与调度</h3><div class="hint">查看本次有效提示词、模型请求、工具和事件时间线。API Key 不会保存。</div></div>
+          <span class="secret-status" id="agentInspectorCount">0 条完整记录</span>
+        </div>
+        <div class="form-acts call-monitor-actions">
+          <label>运行 <select id="agentInspectorRun" aria-label="选择完整运行记录"></select></label>
+          <button class="abtn btn btn-secondary" id="agentInspectorExport" type="button">导出当前记录</button>
+          <button class="abtn ghost danger btn btn-danger" id="agentInspectorReset" type="button">恢复提示词默认</button>
+        </div>
+        <div id="agentInspectorList" class="agent-inspector-list"></div>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script type="text/x-lazy" data-lazy-view="settings" data-src="views/settings-view.js"></script>
+    <script src="views/tag-location-view.js"></script>
+    <script src="存储设置.js"></script>
+    <script src="views/tag-editor-view.js"></script>
+    <script src="views/tag-group-editor-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="favorites-transfer" data-src="views/favorites-transfer-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="favorites" data-depends="favorites-transfer" data-src="views/favorites-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="comfy" data-src="views/comfy-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="prompt" data-src="views/prompt-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="agent-status" data-src="views/agent-status-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="call-monitor" data-src="views/call-monitor-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="agent-inspector" data-src="views/agent-inspector-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="interaction" data-src="views/interaction-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="characters" data-src="views/characters-view.js"></script>
+    <script type="text/x-lazy" data-lazy-view="translation" data-src="views/translation-view.js"></script>
+    <script src="view-loader.js"></script>
+    <script src="tool-presentation.js"></script>
+    <!--
+      DSH 轨迹行的原生 JS 实现 —— 逐行对照 `@deepseek-ai/dsh-client-ui-primitives`
+      与 `dsh-client-ui-tool`（源码见仓库 README 的来源说明）。
+
+      ⚠️ **必须在 `app-view.js` 之前加载**：`app-view.js` 直接读全局的
+      `window.dshPrimitives` / `window.dshRows` 来建行。本项目没有构建步骤，
+      所以加载顺序就是依赖顺序。
+    -->
+    <script src="dsh-primitives.js"></script>
+    <script src="dsh-rows.js"></script>
+    <!--
+      消息区与输入卡的组件、状态投影和挂载脚本。
+    -->
+    <script src="vendor/markdown-it.min.js"></script>
+    <script src="chat-markdown.js"></script>
+    <script src="dsh-chat.js"></script>
+    <!--
+      DSH 输入区**状态层**（状态机 + 草稿权威入口 + 提交策略 + 汇流）。
+
+      ⚠️ **必须排在 `dsh-composer.js` 之前**：`dsh-mount.js` 建输入卡时用
+      `dshInputState.createDraftFacade()` 建**唯一的权威草稿**，提交（正文 + 附件
+      一起清、失败一起还原）全部交给它；组件层与挂载层都只是它的视图。
+    -->
+    <script src="dsh-input-state.js"></script>
+    <script src="dsh-composer.js"></script>
+    <script src="view-bridge.js"></script>
+    <script src="dsh-mount.js"></script>
+    <!--
+      我们这一层：把 `window.AppModules` 造出来，接到本项目的 `/toolbox/调` 上。
+      必须排在 `app.js` **之前** —— 那一份开篇就读 `global.AppModules`。
+    -->
+    <script src="对话管理.js"></script>
+    <script src="views/translation-workspace.js"></script>
+    <script src="我们的模块.js"></script>
+    <script src="app-view.js"></script>
+    <script src="app.js"></script>
+</html>

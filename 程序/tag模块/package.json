@@ -1,0 +1,10 @@
+{
+  "name": "tag-module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "标签模块：四个库 · 位置 · 检索（查库 / 认词）· 隐藏与还原",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

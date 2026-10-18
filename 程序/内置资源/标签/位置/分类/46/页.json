@@ -1,0 +1,41 @@
+{
+  "页名": "角色特征",
+  "配色": {
+    "background": "#7a3f52",
+    "foreground": "#fdeef2"
+  },
+  "类列表": [
+    {
+      "ID": 47,
+      "类名": "兽耳兽尾",
+      "配色": {
+        "background": "#3a5560",
+        "foreground": "#eaf3f6"
+      }
+    },
+    {
+      "ID": 48,
+      "类名": "翅膀与角",
+      "配色": {
+        "background": "#5c5c2e",
+        "foreground": "#f7f7e8"
+      }
+    },
+    {
+      "ID": 49,
+      "类名": "其他特征",
+      "配色": {
+        "background": "#2b2f36",
+        "foreground": "#e8e8ea"
+      }
+    },
+    {
+      "ID": 50,
+      "类名": "角色特征",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    }
+  ]
+}

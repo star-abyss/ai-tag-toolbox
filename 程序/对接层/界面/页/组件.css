@@ -1,0 +1,805 @@
+/* 页/组件.css —— 界面的零件。
+ *
+ * 两份文件的分工：
+ *   页.css   令牌（颜色 / 尺寸 / 动效 / 图标）、元素基线、外壳（侧栏 · 顶条 · 模型条）、回执
+ *   组件.css 本文档：按钮 · 输入 · 选择 · 显示 · 浮层 · 布局，以及面板用的容器
+ *
+ * 零件清单与"什么场合用哪个"在 ../组件.md。**面板只准用那一份里列过的类名。**
+ * 面板要加新零件：先改 组件.md，再改这里，最后才轮到面板。
+ */
+
+/* ══════════════════════════════════════════════════════════════
+ * 一、按钮
+ * ══════════════════════════════════════════════════════════════ */
+
+.钮,
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--行);
+  padding: 0 12px;
+  background: var(--板硬);
+  color: var(--字);
+  border: 1px solid var(--线亮);
+  border-radius: var(--圆);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--影1);
+  transition: background var(--快), border-color var(--快), color var(--快),
+              box-shadow var(--快), transform var(--快);
+}
+
+.钮:hover:not([disabled]),
+button:hover:not([disabled]) {
+  background: var(--点亮);
+  border-color: rgb(255 255 255 / .22);
+  box-shadow: var(--影2);
+}
+
+.钮:active:not([disabled]),
+button:active:not([disabled]) { transform: translateY(1px); box-shadow: none; }
+
+.钮[disabled],
+button[disabled] {
+  opacity: .4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* 一块面板只给一个：这块最想让人按的那个。 */
+.钮.主,
+button.主 {
+  background: var(--主);
+  border-color: transparent;
+  color: var(--主字);
+  font-weight: 500;
+  box-shadow: 0 2px 10px rgb(110 121 218 / .35);
+}
+.钮.主:hover:not([disabled]),
+button.主:hover:not([disabled]) {
+  background: var(--主亮);
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgb(110 121 218 / .45);
+}
+
+/* 不可逆、会删东西。 */
+.钮.危,
+button.危 {
+  background: var(--错bg);
+  border-color: var(--错线);
+  color: var(--错字);
+  box-shadow: none;
+}
+.钮.危:hover:not([disabled]),
+button.危:hover:not([disabled]) {
+  background: var(--错bg亮);
+  border-color: var(--错);
+}
+
+/* 小一号：列表行里、卡片角上。 */
+.钮.小,
+button.小 {
+  height: var(--行小);
+  padding: 0 9px;
+  font-size: 11.5px;
+  box-shadow: none;
+}
+
+/* 幽灵：一排里次要的那些、图标钮。 */
+.钮.幽灵,
+button.幽灵 {
+  background: transparent;
+  border-color: transparent;
+  color: var(--字淡);
+  box-shadow: none;
+}
+.钮.幽灵:hover:not([disabled]),
+button.幽灵:hover:not([disabled]) {
+  background: var(--板硬);
+  border-color: transparent;
+  color: var(--字);
+  box-shadow: none;
+}
+
+/* 一整条：里面是分段 + 搜索 + 筛选。 */
+.分段条 {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.分段条 .搜框 { flex: 1; min-width: 220px; }
+
+/* 一排同级动作。 */
+.钮组 {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 二、输入
+ * ══════════════════════════════════════════════════════════════ */
+
+input[type=text],
+input[type=number],
+input[type=search],
+input[type=password],
+textarea,
+select {
+  background: var(--板硬);
+  color: var(--字);
+  border: 1px solid var(--线亮);
+  border-radius: var(--圆);
+  padding: 0 9px;
+  height: var(--行);
+  font: inherit;
+  font-size: 12.5px;
+  width: 100%;
+  box-shadow: var(--内凹);
+  transition: border-color var(--快), box-shadow var(--快), background var(--快);
+}
+
+input[type=text]:hover,
+input[type=number]:hover,
+input[type=search]:hover,
+input[type=password]:hover,
+textarea:hover,
+select:hover { border-color: rgb(255 255 255 / .22); }
+
+input[type=text]:focus,
+input[type=number]:focus,
+input[type=search]:focus,
+input[type=password]:focus,
+textarea:focus,
+select:focus {
+  outline: 0;
+  border-color: var(--主);
+  box-shadow: 0 0 0 3px var(--主bg);
+}
+
+select { padding-right: 6px; cursor: pointer; }
+select.窄 { width: auto; min-width: 100px; }
+
+textarea {
+  height: auto;
+  min-height: 68px;
+  padding: 7px 9px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: Consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
+  font-size: 12px;
+}
+
+input::placeholder,
+textarea::placeholder { color: var(--字更淡); }
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+.钮:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--主);
+  outline-offset: 1px;
+}
+
+input[type=checkbox] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--主);
+  cursor: pointer;
+  vertical-align: -2px;
+}
+
+label { font-size: 12.5px; color: var(--字淡); }
+
+/* 搜索框：放大镜位 + 输入 + 可选的清空钮。 */
+.搜框 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--行大);
+  padding: 0 11px;
+  background: var(--板硬);
+  border: 1px solid var(--线亮);
+  border-radius: var(--圆);
+  box-shadow: var(--内凹);
+  min-width: 0;
+  transition: border-color var(--快), box-shadow var(--快);
+}
+.搜框:hover { border-color: rgb(255 255 255 / .22); }
+.搜框:focus-within { border-color: var(--主); box-shadow: 0 0 0 3px var(--主bg); }
+.搜框 > input {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.搜框 > input:hover { border-color: transparent; }
+.搜框 > input:focus,
+.搜框 > input:focus-visible { outline: 0; box-shadow: none; }
+/* 里面那个 `⌕` 字形换成遮罩图标：字缩到 0 让出位置。 */
+.搜框 .镜 {
+  flex: 0 0 auto;
+  display: block;
+  width: var(--标);
+  height: var(--标);
+  font-size: 0;
+  background: var(--字更淡);
+  -webkit-mask: var(--图-search) center / contain no-repeat;
+  mask: var(--图-search) center / contain no-repeat;
+}
+.搜框:focus-within .镜 { background: var(--主亮); }
+
+/* 字段：名字 + 那句说明 + 控件。输入框一律包在这里面。 */
+.字段 {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.字段 > .标 {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--字淡);
+  font-weight: 500;
+}
+.字段 > .标 .可选 { font-size: 11px; color: var(--字更淡); font-weight: 400; }
+.字段 > .说 { margin: 0; font-size: 11px; color: var(--字更淡); }
+.字段.窄 { max-width: 160px; }
+.字段.宽 { max-width: 340px; }
+.字段.满 { width: 100%; }
+
+/* 一行里并排几个字段。 */
+.字段排 {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 三、选择
+ * ══════════════════════════════════════════════════════════════ */
+
+/* 分段：2–5 个互斥视图之间切。选中态走 aria，读屏与样式同一个来源。 */
+.分段 {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--板硬);
+  border: 1px solid var(--线);
+  border-radius: 9px;
+  box-shadow: var(--内凹);
+}
+.段 {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 11px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--字淡);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--快), color var(--快);
+}
+.段:hover { color: var(--字); }
+.段[aria-selected="true"] {
+  background: var(--点亮);
+  color: var(--字);
+  font-weight: 500;
+  box-shadow: var(--影1);
+}
+.段 .数 { font-size: 11px; color: var(--字更淡); font-variant-numeric: tabular-nums; }
+.段[aria-selected="true"] .数 { color: var(--字淡); }
+
+/* ══════════════════════════════════════════════════════════════
+ * 四、显示
+ * ══════════════════════════════════════════════════════════════ */
+
+/* 小圆角片：状态、计数、#ID。 */
+.标签 {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--点亮);
+  color: var(--字淡);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.标签.成 { background: var(--成bg); color: var(--成字); }
+.标签.错 { background: var(--错bg); color: var(--错字); }
+.标签.警 { background: var(--警bg); color: var(--警字); }
+.标签.主 { background: var(--主bg); color: var(--主亮); }
+
+/* 一整条横贯的说明。 */
+.提示 {
+  display: block;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  border: 1px solid;
+  border-radius: var(--圆);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.提示.淡 { background: var(--板); border-color: var(--线); color: var(--字淡); }
+.提示.警 { background: var(--警bg); border-color: var(--警线); color: var(--警字); }
+.提示.错 { background: var(--错bg); border-color: var(--错线); color: var(--错字); }
+.提示.成 { background: var(--成bg); border-color: var(--成线); color: var(--成字); }
+.提示 .伸 { flex: 1; }
+
+/* 键值对。 */
+.细节 { font-size: 12.5px; color: var(--字淡); }
+.细节 dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; }
+.细节 dt { color: var(--字更淡); white-space: nowrap; }
+.细节 dd { margin: 0; color: var(--字); overflow-wrap: anywhere; }
+
+/* 真正的表格。 */
+.表 { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.表 th,
+.表 td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--线); vertical-align: top; }
+.表 th {
+  color: var(--字淡);
+  font-weight: 500;
+  position: sticky;
+  top: 0;
+  background: var(--板);
+  z-index: 1;
+}
+.表 tr:hover td { background: rgb(255 255 255 / .025); }
+.表 td.窄 { white-space: nowrap; }
+.表 td.数 { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* 等宽小字：ID、码、字节数、耗时。 */
+.码,
+.说.码 {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11px;
+  color: var(--字更淡);
+  font-variant-numeric: tabular-nums;
+}
+.耗时 { font-size: 11px; color: var(--字更淡); font-variant-numeric: tabular-nums; }
+.好 { color: var(--成字); }
+.坏 { color: var(--错字); }
+
+/* 空态与读取中。 */
+.空,
+.等 {
+  display: block;
+  padding: 22px;
+  text-align: center;
+  color: var(--字更淡);
+}
+.装填 {
+  display: block;
+  padding: 12px;
+  border: 1px dashed var(--线亮);
+  border-radius: var(--圆);
+  color: var(--字更淡);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+/* 一栏的小标题 + 右侧计数。 */
+.栏头 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  min-height: var(--行小);
+}
+.栏头 h2,
+.栏头 h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.栏头 .数 { font-size: 11px; color: var(--字更淡); font-variant-numeric: tabular-nums; }
+
+/* 一行，中间用 .伸 顶开。 */
+.条 {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--线);
+}
+.条:last-child { border-bottom: 0; }
+.条 .伸 { flex: 1; }
+.条 .名 { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; }
+/* 表头行：与 .条 同宽，用来对齐几列的名字。 */
+.条头 {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--线);
+  font-size: 11px;
+  color: var(--字更淡);
+}
+
+/* 纵向列表：有前后顺序、要逐条读的东西。 */
+.清单 {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 62vh;
+  overflow: auto;
+}
+.清单.无高 { max-height: none; }
+.清单项 {
+  padding: 8px 11px;
+  background: var(--板);
+  border: 1px solid var(--线);
+  border-radius: var(--圆);
+  cursor: pointer;
+  transition: background var(--快), border-color var(--快);
+}
+.清单项:hover { background: var(--板硬); border-color: var(--线亮); }
+.清单项[aria-selected="true"],
+.清单项.选 { background: var(--主bg); border-color: var(--主线); }
+.清单项 .主行 { display: flex; gap: 8px; align-items: baseline; }
+.清单项 .主行 .伸 { flex: 1; }
+.清单项 .副行 {
+  font-size: 11.5px;
+  color: var(--字更淡);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 卡片网格：有名字、要扫一眼看很多个的东西（标签墙、图库、产出）。 */
+.卡片们 {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--卡宽, 210px), 1fr));
+}
+.卡片们.标签墙 { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 9px; }
+.卡片 {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 11px 9px 12px;
+  background: var(--板硬);
+  border: 1px solid var(--线);
+  border-left: 3px solid var(--线亮);
+  border-radius: var(--圆);
+  box-shadow: var(--影1);
+  cursor: pointer;
+  transition: background var(--快), border-color var(--快),
+              box-shadow var(--快), transform var(--快);
+}
+.卡片:hover {
+  background: var(--点亮);
+  border-color: var(--线亮);
+  box-shadow: var(--影2);
+  transform: translateY(-1px);
+}
+.卡片[aria-selected="true"],
+.卡片.选 {
+  background: var(--主bg);
+  border-color: var(--主线);
+  border-left-color: var(--主);
+  box-shadow: 0 0 0 1px var(--主线), var(--影1);
+}
+.卡片 .名 {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12.5px;
+  color: var(--字);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.卡片 .译 {
+  font-size: 11.5px;
+  color: var(--字更淡);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.卡片 .角 {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--快);
+}
+.卡片:hover .角,
+.卡片[aria-selected="true"] .角 { opacity: 1; }
+.卡片 .角 .钮 { height: 19px; padding: 0 6px; font-size: 11px; }
+.卡片 .底行 { display: flex; gap: 6px; align-items: center; }
+
+/* 切分后的格（装订用）：一块一格，配色来自切分结果。 */
+.格 {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  background: var(--板硬);
+  border: 1px solid var(--线);
+  border-left: 3px solid var(--线亮);
+  border-radius: var(--圆);
+}
+.格 .序 {
+  font-size: 11px;
+  color: var(--字更淡);
+  font-variant-numeric: tabular-nums;
+}
+.格 .字 {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+/* 有内容的格与空格的分别：空格只留个影子。 */
+.格.空格 { opacity: .45; border-left-color: var(--线); }
+
+/* 格墙：一堆格铺开，一屏能扫完。 */
+.格墙 {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+
+/* 一块带框的内容区。 */
+.块 {
+  background: var(--板);
+  border: 1px solid var(--线);
+  border-radius: var(--圆大);
+  padding: 14px;
+  box-shadow: var(--影1);
+}
+.块 + .块 { margin-top: 12px; }
+.块 > h3 {
+  margin: 0 0 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--线);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+/* 一块里的动作行：贴在这块自己的底上（决定在做出决定的地方执行）。 */
+.块底 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--线);
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 五、浮层
+ * ══════════════════════════════════════════════════════════════ */
+
+/* 要人填完了才能继续。 */
+.对框 {
+  width: min(580px, 92vw);
+  max-height: 84vh;
+  padding: 0;
+  background: var(--浮);
+  color: var(--字);
+  border: 1px solid var(--线亮);
+  border-radius: var(--圆大);
+  box-shadow: var(--浮影);
+  overflow: hidden;
+}
+.对框::backdrop { background: rgb(6 7 11 / .62); }
+.对框头 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--线);
+  font-size: 14px;
+  font-weight: 600;
+}
+.对框身 { padding: 16px; overflow: auto; max-height: 62vh; }
+.对框脚 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--线);
+  background: var(--板);
+}
+
+/* 一句反馈，自己走。 */
+.吐司们 {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+.吐司 {
+  max-width: 360px;
+  padding: 10px 14px;
+  background: var(--浮);
+  border: 1px solid var(--线亮);
+  border-left: 3px solid var(--线亮);
+  border-radius: var(--圆);
+  box-shadow: var(--浮影);
+  font-size: 12.5px;
+  animation: 吐司进 var(--慢) ease-out;
+}
+.吐司.成 { border-left-color: var(--成); }
+.吐司.错 { border-left-color: var(--错); }
+.吐司.警 { border-left-color: var(--警); }
+@keyframes 吐司进 {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 六、布局
+ * ══════════════════════════════════════════════════════════════ */
+
+.横排 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.竖排 { display: flex; flex-direction: column; gap: 10px; }
+.伸 { flex: 1; min-width: 0; }
+
+/* 左边一列 + 右边详情。宽度按用途挑：分类栏要窄、对照两栏要对半。 */
+.两栏 {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.两栏.宽左 { grid-template-columns: 400px 1fr; }
+.两栏.窄左 { grid-template-columns: 236px 1fr; }
+.两栏.对半 { grid-template-columns: 1fr 1fr; }
+.两栏.宽右 { grid-template-columns: 1fr 1.4fr; }
+
+/* 面板自己的三段：顶条 / 身子（唯一滚动的地方）/ 底栏。 */
+.墙 {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.墙顶 {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--线);
+}
+.墙身 {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 0;
+}
+.墙底 {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--线);
+}
+/* 底栏是窄的一条：里面的说明与输入框按内容占位，剩下的才给 `.伸`。
+ * 控件默认 `width:100%`，在 flex 行里会把同排的说明挤成竖排字。 */
+.墙底 > label,
+.墙底 > .标 { flex: 0 0 auto; white-space: nowrap; }
+.墙底 > input[type=text],
+.墙底 > input[type=number],
+.墙底 > input[type=search] {
+  flex: 0 1 260px;
+  width: auto;
+  min-width: 150px;
+}
+.墙底 > select { flex: 0 0 auto; width: auto; min-width: 120px; }
+
+/* 分类栏：一列可滚的项，每项一行字 + 计数。 */
+.类栏 { display: flex; flex-direction: column; gap: 2px; }
+.类项 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--圆);
+  background: transparent;
+  color: var(--字淡);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  box-shadow: none;
+  transition: background var(--快), color var(--快);
+}
+.类项:hover { background: var(--板硬); color: var(--字); }
+.类项[aria-selected="true"] { background: var(--主bg); color: var(--字); font-weight: 500; }
+.类项 .点 {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--线亮);
+}
+.类项 .名 { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.类项 .数 { font-size: 11px; color: var(--字更淡); font-variant-numeric: tabular-nums; }
+.类项[aria-selected="true"] .数 { color: var(--字淡); }
+
+/* 工作区：面板左边那一块"现在手上这件东西"（识图的图、装订的原文）。 */
+.工作区 {
+  background: var(--板);
+  border: 1px solid var(--线);
+  border-radius: var(--圆大);
+  padding: 14px;
+  box-shadow: var(--影1);
+}
+.工作区 > h3 {
+  margin: 0 0 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--线);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* 图框：一张图摆正（contain），底是比牌面更深的那一档。 */
+.图框 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 130px;
+  background:
+    repeating-conic-gradient(rgb(255 255 255 / .022) 0% 25%, transparent 0% 50%) 50% / 18px 18px,
+    #0a0b10;
+  border: 1px solid var(--线);
+  border-radius: var(--圆);
+  overflow: hidden;
+}
+.图框 img { max-width: 100%; max-height: 46vh; object-fit: contain; display: block; }
+.图框 .无 { padding: 22px; font-size: 12.5px; color: var(--字更淡); text-align: center; }
+/* 图框上的角标：尺寸 / 大小 / 来源那一行。 */
+.图说明 {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--字更淡);
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 七、窄屏
+ * ══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1100px) {
+  .两栏,
+  .两栏.宽左,
+  .两栏.窄左,
+  .两栏.对半,
+  .两栏.宽右 { grid-template-columns: 1fr; }
+  .清单 { max-height: none; }
+}

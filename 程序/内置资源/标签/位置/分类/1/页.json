@@ -1,0 +1,25 @@
+{
+  "页名": "质量词",
+  "配色": {
+    "background": "#2b2f36",
+    "foreground": "#e8e8ea"
+  },
+  "类列表": [
+    {
+      "ID": 2,
+      "类名": "默认",
+      "配色": {
+        "background": "#287ea4",
+        "foreground": "#f2f8fb"
+      }
+    },
+    {
+      "ID": 3,
+      "类名": "质量词",
+      "配色": {
+        "background": "#5a4a84",
+        "foreground": "#f0ecfa"
+      }
+    }
+  ]
+}

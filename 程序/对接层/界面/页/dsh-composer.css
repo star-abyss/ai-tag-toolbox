@@ -1,0 +1,1331 @@
+/**
+ * DSH 输入卡片 + 底部信息条 —— **CSS 逐字照抄**（类名统一加 `dsh-` 前缀）。
+ *
+ * 源码：`github.com/deepseek-ai/deepseek-harness`（MIT）
+ *       `packages/client/ui-conversation/src/client/`
+ *
+ * 来源模块（一一对应，顺序同源码目录）：
+ *   skeleton/InputBar.module.css               → 输入卡片（`.dsh-inputbar-*`）
+ *   skeleton/ContextMeter.module.css           → 上下文占用环 + 分解面板（`.dsh-ctxmeter-*`）
+ *   skeleton/TodoPanel.module.css              → 待办面板（`.dsh-todopanel-*`）
+ *   queue/QueueDock.module.css                 → 待发队列停靠栏（`.dsh-queuedock-*`）
+ *   input/editor/composer-editor.module.css    → 内联引用样式（`.dsh-composerref-*`）
+ *   skeleton/ConversationRoot.module.css       → **只抄 `--dsh-composer-*` /
+ *                                                `--dsh-chat-content-width` 那几段**
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * 照抄时只做了这四类机械改动（不改任何声明值与英文注释）：
+ *   ① 类名前缀 `dsh-`（`.root` → `.dsh-inputbar-root`）；
+ *   ② `@keyframes input-pending` 改名 `dsh-input-pending`（原版靠 CSS Modules
+ *      给动画名做哈希，纯 CSS 里没有哈希，不改名会和其它 `input-pending` 撞）；
+ *   ③ 原版 InputBar.module.css:265 的注释说 `@container` 匿名查询"按模块哈希
+ *      container-name"—— 这里仍然匿名，所以该注释描述的行为不变；
+ *   ④ 本文件不含任何 `:global()`（原版这几张表里也没有）；`composes` 也不存在
+ *      （原始 5 张表里 composes 计数为 0，无需展开）。
+ *
+ * ⚠️ **变量是布局的命根子。** `--dsh-composer-card-max-width`（卡片宽度）、
+ * `--dsh-composer-side-clearance`（两侧留白）、`--dsh-composer-dock-inset`
+ * （停靠栏内缩）、`--dsh-composer-stack-gap`、`--dsh-composer-text-max-height`
+ * 少一个，卡片、Todo 面板、队列停靠栏的宽度与间距就全散。定义在下面
+ * 「共享宽度轴」一节，原样来自 `ConversationRoot.module.css`。
+ */
+
+/* ═══════════════════════════════════════════════════════════════════
+ * token 补桥 —— **已搬到 `dsh-tokens.css`**
+ *
+ * 本表用到 7 个 `dsh-tokens.css` 原先没有的 `--dsw-*`（发送钮填充、两个分解色块、
+ * 队列预览文字、`+` 钮填充、引用态 hover 底）。它们最初补在这里，后来搬进了
+ * **共享 token 层** —— 同一份 token 只能有一处定义，否则两边会各自漂移。
+ *
+ * ⚠️ `--dsw-elevation-stroke-color`（hairline 描边）本项目**没有 elevation 混入层**，
+ * 所以下面各表里的那条声明只当变量传递，机器上不产生描边 ——
+ * 与 `dsh-ui.css` 的 `.dsh-menu-list` 现状一致。这属于已知缺口，不是抄错。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+ * ConversationRoot.module.css —— 共享宽度轴与 composer 座
+ *
+ * 从 `skeleton/ConversationRoot.module.css` 里**只**摘出与 composer / 底部
+ * 相关的规则（该文件 545 行，其余是头部、宽度手柄、tag 行等）。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* 原 `.viewArea`（ConversationRoot.module.css:1-6）—— 会话列主体。 */
+.dsh-convroot-view-area {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Composer context stack (Figma 9:937): standalone dock cards share one
+   rhythm above the input card. */
+.dsh-composer-stack {
+  /* Horizontal geometry (card width, clearance, dock inset) rides the shared
+     .root variables above so takeover siblings match the stack. */
+  --dsh-composer-stack-gap: 6px;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-composer-stack-gap);
+}
+
+/* Common seat for the composer chain (fallback + elected overlay siblings). */
+.dsh-composer-seat {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  /* One cap for every scrolling text region a composer seat can hold: the
+     InputBar draft (figma Input 75:8208 max 14 lines × 24px line) and the
+     takeover panels' bodies top out at the same height, so electing a
+     takeover never grows the footer past the card it replaces. Declared on
+     the seat because it is the chain's only shared ancestor — fallback and
+     elected overlay are siblings — and custom properties inherit down to
+     whichever entry is mounted. */
+  --dsh-composer-text-max-height: 336px;
+}
+
+/* 原 `.body`（ConversationRoot.module.css:374-391）—— **共享宽度轴的定义处**。 */
+.dsh-convroot-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+
+  /* Shared width axis for the transcript, dock cards, composer, and takeover
+     cards. Main width controls publish the live body width and optional user
+     preference; embedded occurrences override this adaptive axis below. */
+  --dsh-chat-content-width: var(
+    --dsh-chat-user-width,
+    clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px)
+  );
+  --dsh-composer-card-max-width: calc(var(--dsh-chat-content-width) + 32px);
+  --dsh-composer-side-clearance: 16px;
+  --dsh-composer-dock-inset: 8px;
+}
+
+/* 原 `.embeddedBody`（ConversationRoot.module.css:393-399）—— 嵌入式一档。 */
+.dsh-convroot-embedded-body {
+  overflow: hidden;
+  --dsh-chat-content-width: min(calc(100% - 32px), 920px);
+  --dsh-composer-card-max-width: min(calc(100% - 16px), 952px);
+  --dsh-composer-side-clearance: 8px;
+  --dsh-composer-dock-inset: 8px;
+}
+
+/* 原 `.scrollBody`（ConversationRoot.module.css:401-422）—— 会话滚动宿主。
+   ⚠️ `--dsh-composer-height` 由 JS 的 ResizeObserver 写到**这个**元素上，
+   `.dsh-chatview-to-bottom` 靠它定位。 */
+.dsh-convroot-scroll-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  /* The product-wide 2px scrollbar offset (ui-workspace WorkspaceBrowser
+     `.list`, ui-sidebar-files FilesBody `.body`): the bar sits 2px clear of
+     the column's edge instead of flush against it. */
+  margin-right: 2px;
+  overflow-y: auto;
+  /* Reserved unconditionally: the composer seat rides this box's content box in
+     Chat and its padding box under a view's composer overlay, so an `auto`
+     gutter moves the input card sideways by the bar's width whenever the two
+     differ. */
+  scrollbar-gutter: stable;
+}
+
+/* The bar also stops 2px short of the scroller's ends, matching its 2px edge
+   offset. WebKit-only: the Firefox path has no track to inset. */
+.dsh-convroot-scroll-body::-webkit-scrollbar-track {
+  margin: 2px;
+}
+
+/* 原 `.root[data-phase='active'] .viewArea` 一族。 */
+.dsh-convroot-root[data-phase='active'] .dsh-convroot-view-area,
+.dsh-convroot-embedded-body[data-content-phase='active'] .dsh-convroot-view-area {
+  flex: 1 0 auto;
+  min-height: auto;
+}
+
+/* 原 `.root[data-phase='active'] .composerSeat`（ConversationRoot.module.css:4676-4699）。
+   ⚠️ 这里**保留** `--dsh-composer-height` 的消费者——它就是"回到底部"按钮读的量。 */
+.dsh-convroot-root[data-phase='active'] .dsh-composer-seat,
+.dsh-convroot-embedded-body[data-content-phase='active'] .dsh-composer-seat {
+  position: sticky;
+  bottom: 0;
+  /* Above markdown CodeBlock sticky banners (z-index 6) so the footer never
+     paints under a sticking code header while scrolling. The pinned compaction
+     header (MessageItem.module.css, ui-chat) and the turn-navigation rail slot
+     (TurnNavigator.module.css, ui-chat) also take 7 to clear the same banners.
+     Among elements of equal rank the later one in DOM order wins, so the
+     composer stays above the pinned header on the extreme small-viewport
+     overlap and the pinned header stays above the rail. */
+  z-index: 7;
+  /* Input mask (figma 1205:27463): transcript fades out under a FIXED 36px
+     band at the seat's top (the figma 24% of the resting ~150px composer),
+     solid below — px stops, not %, so a growing draft only widens the solid
+     region and the fade band never stretches. The 0px stop is bg-base at
+     zero alpha (not white, which the figma export hardcodes) so both themes
+     fade from their own base. */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dsw-alias-bg-base) 0%, transparent) 0px,
+    var(--dsw-alias-bg-base) 36px
+  );
+}
+
+/* An open @/slash menu (data-trigger-menu, ui-input-trigger) renders inside the
+   input card, so the seat's stacking context caps its z-index; lift the
+   seat above the back-to-bottom control (z-index 8, ui-chat ChatView) while
+   the menu is open. The steady state stays 7 so the control keeps painting
+   over the card. */
+.dsh-convroot-root[data-phase='active'] .dsh-composer-seat:has([data-trigger-menu]) {
+  z-index: 9;
+}
+
+/* Hero phase: the composer stack (hero chrome + workspace row + card) is
+   flex-centered in the column; composer phase docks it at the bottom. Flex,
+   NOT absolute+transform: a transform would make this box the containing
+   block for position:fixed descendants (pickers/modals), shrinking them. */
+.dsh-composer-hero {
+  align-self: center;
+  /* figma 75:8208 drew 12 between all three rows; the workspace row now sits
+     8 above the card (its margin-top restores 12 under the hero chrome). */
+  gap: 8px;
+  /* Foot inside the centered box floats the stack a bit above true center. */
+  padding-bottom: 32px;
+  /* Card cap + both clearances: the hero input card lands at exactly the same
+     width as the docked composer at every viewport. */
+  width: min(calc(var(--dsh-composer-card-max-width) + 2 * var(--dsh-composer-side-clearance)), 100%);
+  z-index: 1;
+}
+
+/* Hero: the composer sits inside the session scroll body; center there so
+   the tree seat matches active (sticky footer) without a Root remount. */
+.dsh-convroot-root[data-phase='hero'] .dsh-convroot-scroll-body,
+.dsh-convroot-embedded-body[data-content-phase='hero'] .dsh-convroot-scroll-body {
+  justify-content: center;
+  overflow-y: auto;
+}
+
+/* Settling (session replaying, hero/docked unknown): keep the composer seat
+   mounted but invisible so no wrong layout flashes before the phase lands.
+   ⚠️ 这是"不卸载只切显示"的一处：`visibility`，节点留着。 */
+.dsh-convroot-root[data-phase='settling'] .dsh-composer-seat,
+.dsh-convroot-embedded-body[data-content-phase='settling'] .dsh-composer-seat {
+  visibility: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * ChatView.module.css —— 「回到底部」按钮的定位（`--dsh-composer-height` 消费者）
+ *
+ * 只有这一条和 `--dsh-composer-height` 有关：原版 `.toBottomSlot` 的
+ * `:global([data-conversation-scroll])` 在这里落成普通后代选择器。
+ * ═══════════════════════════════════════════════════════════════════ */
+[data-conversation-scroll] .dsh-chatview-to-bottom-slot {
+  position: sticky;
+  /* Clears the sticky composer stack (docks + input card + stats): the live
+     height rides --dsh-composer-height (ConversationRoot's seat observer) so
+     the control follows a growing textarea; the fallback covers the first
+     paint before the observer fires. */
+  bottom: calc(var(--dsh-composer-height, 152px) + 16px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * InputBar.module.css（全量 418 行）
+ * ═══════════════════════════════════════════════════════════════════ */
+
+.dsh-inputbar-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Side pads ride the shared clearance (figma Input_Bottom drew L32/R32/B8;
+     the sides narrow with the shared width axis); the bottom gradient mask
+     is owned by the chat scroller. No top pad: the composer stack's gap owns
+     the space above; the status strip still carries its own margin. */
+  padding: 0 var(--dsh-composer-side-clearance) 4px;
+}
+
+.dsh-inputbar-dock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 100%;
+  padding-top: 4px;
+}
+
+.dsh-inputbar-hero .dsh-inputbar-dock:empty {
+  display: none;
+}
+
+.dsh-inputbar-hero {
+  /* No bottom pad in the centered hero, but the side clearance must survive:
+     the hero wrapper is full-width on narrow viewports, so this padding is
+     the only thing keeping the card off the edges there. */
+  padding: 0 var(--dsh-composer-side-clearance);
+}
+
+.dsh-inputbar-notice {
+  width: 100%;
+  max-width: var(--dsh-composer-card-max-width);
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.dsh-inputbar-card {
+  box-sizing: border-box;
+  position: relative; /* overlay anchor positioning context */
+  display: flex;
+  flex-direction: column;
+  /* figma Input 75:8208: 12px between the text area and the button row; the
+     card's top pad before .InputText tightened from the drawn 10 to 8. */
+  gap: 12px;
+  width: 100%;
+  max-width: var(--dsh-composer-card-max-width);
+  padding-top: 8px;
+  /* Input stroke: the light neutral (l2, one step above the menus' l1),
+     drawn as the elevation hairline so it costs no layout; the shadow is the
+     soft elevation tier. Fill: the input surface token (elevated in dark). */
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-panel);
+  background: var(--dsw-specific-input-major);
+  box-shadow: var(--dsw-elevation-soft);
+  /* The draft text follows the Settings font-size preference (the textarea,
+     mirror, and backdrop all inherit from here, so the three layers stay in
+     step); the line height keeps the default 10px leading via the shared px
+     delta. */
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  /* Elevated surface in dark, same as the menus: the draft scrollport inside
+     scrolls once the composer hits its height cap, so the thumb takes the l2
+     pair. Declared on the card because the elevation belongs to the surface,
+     and the custom properties inherit down to the box that actually scrolls
+     (see ui-theme styles/scrollbar.css for the rebinding contract). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* No-workspace trigger state: an inset 1px dashed outline marks the card as a
+   workspace picker rather than a live composer. Keeping the complete stroke
+   inside the rounded box prevents clipped corner pixels from reading heavier. */
+.dsh-inputbar-card-workspace-trigger {
+  --dsw-elevation-stroke-color: transparent;
+  cursor: pointer;
+}
+
+.dsh-inputbar-card-workspace-trigger::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 1px dashed currentColor;
+  border-radius: var(--dsw-radius-panel);
+  color: var(--dsw-alias-border-l4);
+  transition: color 100ms ease;
+  pointer-events: none;
+}
+
+/* Disabled toolbar controls neither receive nor swallow clicks in the trigger
+   state: pointer events fall through to the card's own click handler, making
+   the whole card one pick target. */
+.dsh-inputbar-card-workspace-trigger :disabled {
+  pointer-events: none;
+}
+
+.dsh-inputbar-card-workspace-trigger:hover::after {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.dsh-inputbar-accessory {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+
+/* Floating overlay anchor (menu / popupSelect shell): entries position
+   themselves against the card (bottom: 100% + gap); closed entries render null. */
+.dsh-inputbar-overlay-anchor {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0;
+}
+
+/* The draft's scrollport, and the ONLY scrolling box in the composer. The
+   contenteditable grows with its content inside; the 14-line cap lives here
+   because this is the box the cap describes. */
+.dsh-inputbar-scroll {
+  max-height: var(--dsh-composer-text-max-height);
+  overflow-y: auto;
+  /* Keeps the bar off the card's right border; .input's right pad gives the
+     4px back so the text column is unchanged. */
+  margin-right: 4px;
+}
+
+/* The card's corner arc still overlaps the scrollport's top (8px top
+   pad reaches only y=8): start the thumb's travel below the arc so it never
+   pokes outside the capsule. WebKit-path only; Firefox's thin bar has no
+   track margin, an accepted remainder. */
+.dsh-inputbar-scroll::-webkit-scrollbar-track {
+  margin-top: 8px;
+}
+
+/* Auto-grow anchor: the contenteditable is in normal flow and sets the
+   draft's height; the placeholder rides it absolutely. */
+.dsh-inputbar-grow {
+  position: relative;
+}
+
+/* Machine pending dot (adjudicating / submitting). */
+.dsh-inputbar-pending {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-state-business-primary);
+  animation: dsh-input-pending 1s ease-in-out infinite alternate;
+}
+
+@keyframes dsh-input-pending {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+/* The contenteditable draft surface (grows with its content; .scroll caps
+   and scrolls it). figma .InputText 34:10434 drew pl 16 / pr 12 / pt 4; the
+   left pad tightened to 14, and the right pad is 8 here plus .scroll's 4px
+   bar inset. */
+.dsh-inputbar-input {
+  box-sizing: border-box;
+  /* Docked floor: one 24px line + 4px top pad = 28 content height; 36 leaves
+     an 8px breath below the line (the hero keeps its own 52px floor below). */
+  min-height: 36px;
+  padding: 4px 8px 0 14px;
+  font-family: var(--dsw-font-family);
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  outline: none;
+  color: var(--dsw-alias-label-primary);
+  /* Business blue, not brand-primary: that token resolves to ink in this sheet. */
+  caret-color: var(--dsw-alias-state-business-primary);
+}
+
+/* Lexical paragraphs are <p> blocks: strip the UA margins so the surface
+   keeps the textarea's line rhythm.
+   ⚠️ 原生 JS 版同样只用 <p> 承载文本（见 `dsh-composer.js` 的
+   `setInputText`），所以这条规则原样生效。 */
+.dsh-inputbar-input p {
+  margin: 0;
+}
+
+/* Claim ghost hint as generated content after the last paragraph: the bar
+   sets --dsh-composer-hint (a quoted string) while the claim's args are
+   blank; without the variable the declaration is invalid and nothing shows. */
+.dsh-inputbar-input p:last-child::after {
+  content: var(--dsh-composer-hint);
+  color: var(--dsw-alias-label-caption);
+}
+
+.dsh-inputbar-input[data-composer-composing] p:last-child::after {
+  content: none;
+}
+
+.dsh-inputbar-input[data-composer-composing] + .dsh-inputbar-placeholder {
+  visibility: hidden;
+}
+
+/* figma 34:10434: #ADB2B8 light / #81858C dark — the caption pair exactly.
+   Insets mirror .input's pads (the other right 4px sits on .scroll). One
+   ellipsized line: a wrapped second line would clip against the docked
+   36px floor. */
+.dsh-inputbar-placeholder {
+  position: absolute;
+  inset: 4px 8px auto 14px;
+  color: var(--dsw-alias-label-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  user-select: none;
+}
+
+.dsh-inputbar-input-disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: not-allowed;
+}
+
+.dsh-inputbar-input[aria-haspopup='menu'] {
+  cursor: pointer;
+}
+
+/* Hero (centered empty-state) keeps the 2-line floor (figma min-h 52 = ~2 × 24
+   line + 4pt); the docked composer collapses to the content height. */
+.dsh-inputbar-hero .dsh-inputbar-input {
+  min-height: 52px;
+}
+
+/* The hero's 52px floor fits two lines, so its placeholder clamps at two
+   instead of the docked single line. */
+.dsh-inputbar-hero .dsh-inputbar-placeholder {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Toolbar: attach + Plan + Read-only on the left; model + send on the right
+   (figma Input_Bottom chrome). */
+.dsh-inputbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* 2px moved from the bottom pad to the top: the whole control row sits 2px
+     lower in the card (it read too high against the textarea) while the
+     controls' own centering stays untouched. */
+  padding: 2px 8px 6px;
+  min-width: 0;
+  /* Size container so the chips inside can collapse to icon-only when the
+     card runs out of row width (PermissionSelect @container rule). Anonymous
+     on purpose: CSS modules hash container-name per module, so a name declared
+     here can never match a query in another module's sheet. */
+  container-type: inline-size;
+}
+
+.dsh-inputbar-row[data-model-compact] {
+  --dsh-composer-model-text-display: none;
+  --dsh-composer-model-icon-display: block;
+}
+
+.dsh-inputbar-tools,
+.dsh-inputbar-modes,
+.dsh-inputbar-trailing {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* figma 75:8208 drew 16 between + and the mode chips and 4 between Plan /
+   Read-only; both gaps settled on 12 so the pill chips read as separate
+   controls without drifting from the + control. */
+.dsh-inputbar-tools {
+  gap: 12px;
+}
+
+.dsh-inputbar-modes {
+  gap: 12px;
+}
+
+.dsh-inputbar-trailing {
+  flex: none;
+  /* Wrap keeps the left mode chips and the right controls apart when the card
+     runs out of row width: the trailing group (model + send) moves to its own
+     line instead of the left group shrinking until its chip overlaps the
+     model trigger (external:107). The auto margin re-anchors it right on the
+     wrapped line; on a single line space-between already pins it right. */
+  margin-left: auto;
+  gap: 12px;
+}
+
+/* Compact spacing preserves room for the fixed-width controls in narrow cards. */
+@container (max-width: 560px) {
+  .dsh-inputbar-tools,
+  .dsh-inputbar-modes,
+  .dsh-inputbar-trailing {
+    gap: 8px;
+  }
+}
+
+/* Attach circle (figma + control): 28px, selector fill, primary glyph. */
+.dsh-inputbar-add {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-specific-selector);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.dsh-inputbar-add:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.dsh-inputbar-add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Plan / Read-only / model — native <select>, chip-like closed chrome
+   (figma ToggleButton: 13/20 medium secondary, 12px chevron). */
+.dsh-inputbar-select {
+  max-width: 220px;
+  height: 28px;
+  padding: 0 20px 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  outline: none;
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  background-size: 12px 12px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+}
+
+.dsh-inputbar-select:hover:not(:disabled) {
+  background-color: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-inputbar-select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Primary send (figma IconButton 34:10465): 34px circle, #3964FE light /
+   #679EFE dark — the info-fill pair (500→400), NOT button-primary (ink);
+   white glyph; empty text = 0.4 opacity. */
+.dsh-inputbar-primary {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-button-info-fill);
+  /* Static white, not the foreground token: the arrow stays white on the blue
+     fill in both themes (design 34:10465). */
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 100ms ease;
+  /* Opts out of the row's 2px downward shift (.row top pad): the send circle
+     keeps its original seat while the smaller chips sit lower. Transform, not
+     margin, so flex centering math is untouched. */
+  transform: translateY(-2px);
+}
+
+.dsh-inputbar-primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-info-hover);
+}
+
+.dsh-inputbar-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Clear the current conversation while keeping its images. */
+.dsh-inputbar-clear {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.dsh-inputbar-clear:hover {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-inputbar-clear:focus-visible {
+  outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+/**
+ * 不可用态**不用 `disabled` 属性**（禁用元素收不到鼠标事件，点它会"死" ——
+ * 见 `dsh-composer.js` 里主钮那段注释）。视觉照原版的禁用态：40% 透明、
+ * 换回默认光标；但按钮仍然可点、可聚焦，点击时把光标送进输入框。
+ */
+.dsh-inputbar-primary[data-inactive] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.dsh-inputbar-primary[data-inactive]:hover {
+  background: var(--dsw-alias-button-info-fill);
+}
+
+.dsh-inputbar-retry {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dsh-inputbar-standard-controls { display: flex; align-items: center; gap: 12px; min-width: 0; }
+/* ⚠️ 硬性约定 ①：`activity` 切换靠 `hidden` **属性**，不是卸载节点。 */
+.dsh-inputbar-tools[hidden], .dsh-inputbar-standard-controls[hidden] { display: none; }
+.dsh-inputbar-trailing-active { flex: 1; margin-left: 0; }
+.dsh-inputbar-activity { display: flex; align-items: center; flex: none; }
+.dsh-inputbar-activity:empty { display: none; }
+.dsh-inputbar-activity-expanded { flex: 1; min-width: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+ * ContextMeter.module.css（全量 154 行）
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* Context-occupancy pill below the composer plus its click-open breakdown
+   panel (menu surface: elevation-prominent). */
+
+.dsh-ctxmeter-root {
+  display: inline-flex;
+  flex: none;
+}
+
+.dsh-ctxmeter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 1px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: inherit;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-variant-numeric: tabular-nums;
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dsh-ctxmeter-trigger:hover,
+.dsh-ctxmeter-trigger[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-ctxmeter-track {
+  fill: none;
+  stroke: var(--dsw-alias-border-l3);
+  stroke-width: 2;
+}
+
+.dsh-ctxmeter-fill {
+  fill: none;
+  stroke: var(--dsw-alias-label-tertiary);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.dsh-ctxmeter-panel {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  width: min(264px, calc(100vw - 24px));
+  padding: 12px;
+  border: 0;
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: default;
+}
+
+.dsh-ctxmeter-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dsh-ctxmeter-figures {
+  margin-left: auto;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-ctxmeter-percent {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-ctxmeter-headline {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The headline brackets the reading, so the side a locale leaves empty must
+   drop out of the flex row rather than spend a gap. */
+.dsh-ctxmeter-headline:empty {
+  display: none;
+}
+
+.dsh-ctxmeter-bar {
+  display: flex;
+  gap: 1px;
+  margin: 10px 0 12px;
+  height: 4px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-hover);
+  overflow: hidden;
+}
+
+.dsh-ctxmeter-segment {
+  flex: none;
+  min-width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--meter-tint, var(--dsw-alias-label-tertiary));
+}
+
+.dsh-ctxmeter-swatch {
+  display: inline-block;
+  margin-right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--meter-tint);
+  vertical-align: baseline;
+}
+
+.dsh-ctxmeter-color-system {
+  --meter-tint: var(--dsw-static-neutral-bluish-400);
+}
+
+.dsh-ctxmeter-color-tools {
+  /* The design platform ships no purple static token; violet-400 literal. */
+  --meter-tint: rgb(167, 139, 250);
+}
+
+.dsh-ctxmeter-color-messages {
+  --meter-tint: var(--dsw-static-blue-450);
+}
+
+.dsh-ctxmeter-rows {
+  margin: 6px 0 0;
+}
+
+.dsh-ctxmeter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.dsh-ctxmeter-row dt {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-ctxmeter-row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * TodoPanel.module.css（全量 123 行）
+ * ═══════════════════════════════════════════════════════════════════ */
+
+.dsh-todopanel-root {
+  box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+  margin: 0 auto;
+  width: calc(
+    100% -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  max-width: calc(
+    var(--dsh-composer-card-max-width) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  box-shadow: var(--dsw-elevation-panel);
+  /* The menu surface and the scrolling `.list` use the l2 scrollbar colors.
+     Declared here because the custom properties inherit into `.list` (see
+     ui-theme styles/scrollbar.css for the rebinding contract). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.dsh-todopanel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.dsh-todopanel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dsh-todopanel-lead {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-todopanel-title {
+  flex: none;
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-todopanel-progress {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-todopanel-chevron {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-todopanel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.dsh-todopanel-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-todopanel-glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+/* Figma strip is single-line; long items ellipsize with no inline expand. */
+.dsh-todopanel-content {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * QueueDock.module.css（全量 253 行）
+ *
+ * 行内注入的 `display: contents / none`（链式 slot fallback）不在这张表里：
+ * 原版由 `scoped-slots.tsx:1258` 写成**行内样式**，这里由
+ * `dsh-composer.js` 的 `setSlotFallback()` 同样写行内样式。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* Figma .FileContainerText 1:791: the wrapper uses the shared dock inset
+   inside the composer card around the inset panel. */
+
+.dsh-queuedock-dock {
+  box-sizing: border-box;
+  flex: none;
+  width: calc(
+    100% -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  max-width: calc(
+    var(--dsh-composer-card-max-width) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  /* Cancel the stack gap after this item and tuck 3px under the input card
+     (square bottom), reading as one attached surface. */
+  margin: 0 auto calc(0px - var(--dsh-composer-stack-gap) - 3px);
+  /* Horizontal padding completes the shared dock inset (this wrapper only
+     subtracts two insets from its width); no vertical padding, so the visual
+     gap above the panel stays the uniform stack gap. */
+  padding: 0 var(--dsh-composer-dock-inset);
+}
+
+.dsh-queuedock-panel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: 100%;
+  padding: 2px 0;
+  border-radius: var(--dsw-radius-lg) var(--dsw-radius-lg) 0 0;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.dsh-queuedock-panel::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  content: '';
+  pointer-events: none;
+}
+
+.dsh-queuedock-panel::after {
+  position: absolute;
+  inset: 0;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  /* The input card's own top border closes the shape below. */
+  border-bottom: none;
+  border-radius: inherit;
+  content: '';
+  pointer-events: none;
+}
+
+.dsh-queuedock-header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  /* Right inset 12px puts the chevron on the same vertical line as the Todo
+     header's chevron (12px body padding there). */
+  padding: 4px 12px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dsh-queuedock-header:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+.dsh-queuedock-header:disabled {
+  cursor: default;
+}
+
+.dsh-queuedock-lead {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-queuedock-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: Inter, var(--dsw-font-family);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.dsh-queuedock-chevron {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-queuedock-list {
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dsh-queuedock-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  /* Grows with the inline editor's content; the other rows stay 36px. */
+  min-height: 36px;
+  padding: 4px 5px 4px 12px;
+  border-radius: var(--dsw-radius-md);
+}
+
+.dsh-queuedock-row + .dsh-queuedock-row {
+  box-shadow: inset 0 1px 0 var(--dsw-alias-border-l1);
+}
+
+.dsh-queuedock-attachments {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+}
+
+.dsh-queuedock-pending-row .dsh-queuedock-attachments {
+  flex-shrink: 1;
+}
+
+.dsh-queuedock-file {
+  display: inline-flex;
+  flex: 0 1 180px;
+  align-items: center;
+  gap: 4px;
+  min-width: 74px;
+  height: 24px;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-base);
+  box-sizing: border-box;
+}
+
+.dsh-queuedock-file-icon {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.dsh-queuedock-file-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary-dimmed);
+  font: var(--dsw-font-xs-13);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-queuedock-file-size {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.dsh-queuedock-thumb {
+  width: 24px;
+  height: 24px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-bg-base);
+  object-fit: cover;
+}
+
+.dsh-queuedock-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: var(--dsw-font-xs-13);
+  font-family: Inter, var(--dsw-font-family);
+}
+
+.dsh-queuedock-preview {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary-dimmed);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: break-word;
+}
+
+.dsh-queuedock-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.dsh-queuedock-status {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xs-13);
+  white-space: nowrap;
+}
+
+.dsh-queuedock-action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.dsh-queuedock-action:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-queuedock-action:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+.dsh-queuedock-action:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * input/editor/composer-editor.module.css（全量 24 行）
+ *
+ * 输入区里内联引用（`@文件` / `/指令` / 会话 chip）的观感。原版由 Lexical
+ * 装饰器渲染；这里的 `projectUserText()` 投影产出同样的 `.reference` 结构。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* Shared inline reference treatment; hover does not change text metrics. */
+.dsh-composerref-reference {
+  padding: 0 4px;
+  border-radius: var(--dsw-radius-sm);
+  line-height: inherit;
+  vertical-align: baseline;
+  color: var(--dsw-alias-state-business-primary);
+  background: transparent;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.dsh-composerref-reference:hover {
+  background: var(--dsw-alias-state-business-tertiary);
+}
+
+.dsh-composerref-openable {
+  cursor: pointer;
+}
+
+.dsh-composerref-text-ref {
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 桥接层 —— 上表**没有**对应规则、但原生 JS 少不得的那几条
+ *
+ * ⚠️ 这几条**不是**从上面任何一张 `.module.css` 抄来的，不能算"照抄"。
+ * 它们补的是 **React slot 层**在本文件里没有对应物所留下的缺口：
+ *
+ * 原版每个 `renderSlot('conversation.input.*')` 外面都套一层
+ * `div[data-slot]`，那层的 CSS 是 **`display: contents`**
+ * （`scoped-slots.tsx:1064,1088`）——**包裹层对排版完全透明**，栏目的 flex
+ * `gap` 与各 slot 的子项关系照旧成立。
+ *
+ * 原生 JS 里这些容器是普通 `<div>`，就会变成 `.row` / `.dock` 的**额外
+ * flex 子项**：多出一个 12px gap、把只有一点内容的控件挤开。所以这里用
+ * `data-composer-slot` 把它们恢复成 `display: contents` 的语义。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* 对应原版 `div[data-slot]` 的 `display: contents`：
+   包裹层自身不参与排版，子项直接成为上层的 flex 子项。 */
+[data-composer-slot] {
+  display: contents;
+}
+
+/* `conversation.input.attachments` 的容器是**块级**的（原版这里不是一个
+   flex 兄弟，而是卡片列里的独立一行）：空的容器必须不占高度，否则
+   `.dsh-inputbar-card` 的 12px gap 会在文案上方多留一段空白。
+   `:empty` 只有 CSS 能表达（行内样式做不到），所以这条必须留在表里。 */
+.dsh-inputbar-attachments-host:empty {
+  display: none;
+}
+
+/* `variant === 'composer' && input && sessionId` 为假时 composer dock 槽是空
+   的；原版 `.hero .dock:empty { display: none }` 只管 hero 一档，另一档在
+   原版靠"renderSlot 什么都不渲染 + `.dock:empty`"。这里同样补一条，
+   让停靠栏在没有任何胶囊时不留 4px 的 `padding-top`。 */
+.dsh-inputbar-dock:has(> .dsh-inputbar-composer-dock-slot:empty) {
+  padding-top: 0;
+}
+
+/* ContextMeter 是 `.dock` 的 flex 子项（`InputBar.tsx:503` 直接把它放进
+   `.dock`）。多包一层 div 会让它变成"零尺寸包裹层 + 里面的 inline-flex"，
+   居中与 12px gap 都会偏，所以这层必须 `display: contents`。 */
+.dsh-inputbar-meter-host {
+  display: contents;
+}
+
+/* toast 宿主：原版 `<Toast anchor={cardRef.current}>` 自己 `position: fixed`，
+   外面没有包裹层。原生版这层只放内容、自身不占位也不参与排版 —— 用
+   `display: contents` 而不是 `position: relative`，免得它变成新的包含块
+   把 toast 的定位基准改掉。 */
+.dsh-inputbar-toast-host {
+  display: contents;
+}
