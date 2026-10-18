@@ -53,11 +53,12 @@ test('旧工具快照只保留匹配业务名的工具偏好与模型配置', ()
 
   ai.存();
   const saved = port.readState().value.presets.ps1;
-  assert.deepEqual(Object.keys(saved).sort(), ['model', 'name', 'tools', 'toolsOrder'].sort());
+  assert.deepEqual(Object.keys(saved).sort(), ['model', 'name', 'runtime', 'tools', 'toolsOrder'].sort());
+  assert.deepEqual(saved.runtime, {});
   assert.deepEqual(saved.model, { 走: '自选链路', 模型: 'model-x' });
   assert.deepEqual(saved.tools, [
-    { 名字: 'draw_image', 说明: { prompt: '用户用词' } },
-    { 名字: 'query_tags', 启用: false, 说明: { text: '自定义检索说明' } },
+    { 名字: 'draw_image', 文本覆盖: { '/prompt': '用户用词' } },
+    { 名字: 'query_tags', 启用: false, 文本覆盖: { '/text': '自定义检索说明' } },
   ]);
 });
 

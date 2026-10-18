@@ -948,6 +948,61 @@ function 造取回(路由) {
   const 门面出 = await 门面跑.run('出图', { 正向: 'A', onEvent: (e) => 门面事件.push(e.类型) });
   判('门面能把 onEvent 递到核心', 门面出.ok && 门面事件.includes('完成'), 门面事件.join('/'));
 
+  const 批量端口 = createMemoryAdapter();
+  const 批量门面 = createComfyModule({ port: 批量端口, 存档: 造存档(), 等待: async () => {} });
+  const Flux2工作流 = 造图();
+  const Flux2节点 = Flux2工作流.nodes.find((n) => n.id === 5);
+  Flux2节点.type = 'EmptyFlux2LatentImage';
+  Flux2节点.properties['Node name for S&R'] = 'EmptyFlux2LatentImage';
+  const Flux2识别 = await 批量门面.run('认图', { 图: Flux2工作流 });
+  判('门面认图识别 EmptyFlux2LatentImage 的 batch_size', Flux2识别.ok
+    && Flux2识别.data.张数.some((x) => x.nodeId === '5' && x.input === 'batch_size'));
+  const Flux2接口图 = G.界面图转接口图(Flux2工作流);
+  const Flux2接口图识别 = await 批量门面.run('认图', { 图: Flux2接口图.data });
+  判('门面认图在 Flux2 界面图转接口图后仍识别批量输入', Flux2接口图.ok
+    && Flux2接口图识别.ok && Flux2接口图识别.data.张数[0].classType === 'EmptyFlux2LatentImage');
+  await 批量门面.run('存工作流', { 图: Flux2工作流 });
+  await 批量门面.run('绘图开关', { 启用: true });
+  const Flux2单张出图 = await 批量门面.run('出图', { 正向: 'flux2 single prompt', 张数: 1 });
+  判('门面出图提交 Flux2 请求单张数', Flux2单张出图.ok
+    && 批量端口.记.提交过的[0].接口图['5'].inputs.batch_size === 1);
+  const Flux2出图 = await 批量门面.run('出图', { 正向: 'flux2 prompt', 张数: 4 });
+  判('门面出图提交 Flux2 请求批量数', Flux2出图.ok
+    && 批量端口.记.提交过的[1].接口图['5'].inputs.batch_size === 4);
+
+  const Flux2重复工作流 = 造图();
+  const Flux2重复节点 = Flux2重复工作流.nodes.find((n) => n.id === 5);
+  Flux2重复节点.type = 'EmptyFlux2LatentImage';
+  Flux2重复节点.properties['Node name for S&R'] = 'EmptyFlux2LatentImage';
+  Flux2重复工作流.nodes.push(...输出槽([
+    节点(22, 'RepeatLatentBatch', [['amount', 2]], [['samples', 'LATENT', 16]]),
+  ], { 22: [['LATENT', [17]]] }));
+  Flux2重复工作流.links.push([16, 5, 0, 22, 0, 'LATENT'], [17, 22, 0, 3, 3, 'LATENT']);
+  Flux2重复工作流.nodes.find((n) => n.id === 3).inputs.find((i) => i.name === 'latent_image').link = 17;
+  const Flux2重复端口 = createMemoryAdapter();
+  const Flux2重复门面 = createComfyModule({ port: Flux2重复端口, 存档: 造存档(), 等待: async () => {} });
+  const Flux2重复识别 = await Flux2重复门面.run('认图', { 图: Flux2重复工作流 });
+  判('门面认图识别 RepeatLatentBatch 上游 Flux2 的两个输入', Flux2重复识别.ok
+    && Flux2重复识别.data.张数.length === 2);
+  await Flux2重复门面.run('存工作流', { 图: Flux2重复工作流 });
+  await Flux2重复门面.run('绘图开关', { 启用: true });
+  const Flux2重复出图 = await Flux2重复门面.run('出图', { 正向: 'flux2 repeat prompt', 张数: 5 });
+  const Flux2重复提交 = Flux2重复端口.记.提交过的[0];
+  判('门面出图将 Flux2 原批量归一为 1 并设置重复量', Flux2重复出图.ok && Flux2重复提交
+    && Flux2重复提交.接口图['5'].inputs.batch_size === 1
+    && Flux2重复提交.接口图['22'].inputs.amount === 5);
+
+  const 未知批量端口 = createMemoryAdapter();
+  const 未知批量门面 = createComfyModule({ port: 未知批量端口, 存档: 造存档(), 等待: async () => {} });
+  const 未知批量工作流 = 造图生图();
+  const 未知批量识别 = await 未知批量门面.run('认图', { 图: 未知批量工作流 });
+  判('门面认图不把图生图未知批量入口认成张数', 未知批量识别.ok && 未知批量识别.data.张数.length === 0);
+  await 未知批量门面.run('存工作流', { 图: 未知批量工作流 });
+  await 未知批量门面.run('绘图开关', { 启用: true });
+  const 未知批量出图 = await 未知批量门面.run('出图', { 正向: 'img2img', 张数: 1 });
+  判('门面出图对图生图未知批量入口仍失败且不提交', !未知批量出图.ok
+    && 未知批量出图.code === 'INVALID_ARGUMENT' && 未知批量端口.记.提交过的.length === 0);
+
   段('装配');
   {
     const 抛 = (() => {

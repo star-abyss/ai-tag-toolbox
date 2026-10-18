@@ -26,6 +26,7 @@ import { 投影会话 } from './会话投影.js';
 import { 读PNG元数据 } from '../识图模块/元数据.js';
 import { 造本地模型 } from './模型可选.js';
 import { 造存储 } from './位置.js';
+import { 造副请求 } from './副请求.js';
 import { 造翻译 } from './调度.js';
 import { 造看图 } from './模型引擎/看图.js';
 import { 造服务商面, 转消息 } from './界面/服务商.js';
@@ -104,7 +105,7 @@ function 一条动作(对照, 模块键, 一条) {
  *   配置      读配置() 交出来的那一份
  *   模型      造本地模型() 交出来的那一份（译 / 打标）
  *   模型调用  发一次模型请求：形状与 `对接层/调度.js` 的 `请求` 相同。
- *             给了它就造 `看图` 与 `AI翻译` 两个端口；不给就照旧递 null（模块如实报缺）
+ *             用于看图、AI 翻译和文生图提示词请求。
  * @returns {{ 门面: object, 动作表: Array, 装不上: Array, 清单: Array }}
  */
 export function 装模块({ 项目根, 配置, 模型, 模型调用 = null, 服务商 }) {
@@ -119,7 +120,7 @@ export function 装模块({ 项目根, 配置, 模型, 模型调用 = null, 服�
     本地翻译引擎: 模型.译,
     本地识图引擎: 模型.打标,
     看图: 模型调用 ? 造看图({ 调度: { 请求: 模型调用 } }) : null,
-    AI翻译: 模型调用 ? 造翻译({ 调度: { 请求: 模型调用 } }) : null,
+    AI翻译: 模型调用 ? 造翻译({ 调度: { 请求: 模型调用 }, 请求名: '翻译' }) : null,
     接收作用域: scope => {
       if (scope.存放地 !== 'session') return { ok: true };
       const list = 门面.session.run('列'); if (!list.ok) return list;
@@ -164,7 +165,7 @@ export function 装模块({ 项目根, 配置, 模型, 模型调用 = null, 服�
     门面.session = 出.createSessionModule({
       port: 出.createFileAdapter({ 根目录: path.resolve(项目根, 配置.会话目录) }),
       图片: 造会话图片({ 图片门面: 门面.image }),
-      执行: 造会话执行({ 门面, 清单, 服务商, onGenerationState(sessionId, state) {
+      执行: 造会话执行({ 门面, 清单, 服务商, 模型调用, onGenerationState(sessionId, state) {
         if (state) 运行生成状态.set(sessionId, state);
       } }),
     });
@@ -172,9 +173,10 @@ export function 装模块({ 项目根, 配置, 模型, 模型调用 = null, 服�
   } catch (错) { 装不上.push({ 模块: 'session', 理由: String(错.message || 错) }); }
 
   门面.drawing = Object.freeze({
-    actions: ['生成', '状态'],
+    actions: ['生成', '提示词', '状态'],
     describe: () => [
       { 动作: '生成', 摘要: '按当前每轮张数生成图片并取回当前会话，与模型生图使用同一绘画业务', 参数: ['会话', '正向', '负向?', '参考图?'], 说明: { 会话: '目标会话标识', 正向: '完整正向提示词', 负向: '完整负向提示词', 参考图: '目标会话中的图号' } },
+      { 动作: '提示词', 摘要: '按文生图请求启用的世界书整理提示词，与模型使用同一绘画业务', 参数: ['会话', '要求', '素材?', '参考图?'], 说明: { 会话: '目标会话标识', 要求: '用户绘画或修改要求', 素材: '已有提示词、标签和来源原文', 参考图: '目标会话中的图号' } },
       { 动作: '状态', 摘要: '读取当前会话最近一轮的生成设置快照及已用、剩余轮数', 参数: ['会话'], 说明: { 会话: '目标会话标识' } },
     ],
     async run(动作, 参数 = {}, 上下文 = {}) {
@@ -188,7 +190,7 @@ export function 装模块({ 项目根, 配置, 模型, 模型调用 = null, 服�
         if (!session.ok) return session;
         return { ok: true, data: { 运行中: session.data.运行状态 !== '空闲', 生成状态: 读生成状态(session.data.会话) } };
       }
-      return await 造绘画业务({ 门面, sessionId: 参数.会话, signal: 上下文.signal }).执行('drawing_generate', 参数);
+      return await 造绘画业务({ 门面, sessionId: 参数.会话, signal: 上下文.signal, 模型调用 }).执行(动作 === '提示词' ? 'drawing_prompt' : 'drawing_generate', 参数);
     },
   });
 
@@ -222,7 +224,7 @@ export function 装模块({ 项目根, 配置, 模型, 模型调用 = null, 服�
       const worldResult = await 门面.worldbook.run('执行', { 请求: '主AI', 文本: 输入文本 });
       if (!worldResult.ok) return worldResult;
       const hits = worldResult.data.命中;
-      const drawing = 造绘画业务({ 门面, sessionId });
+      const drawing = 造绘画业务({ 门面, sessionId, 模型调用 });
       const toolMaterials = 组工具素材(preset.工具表, drawing.工具表);
       if (!toolMaterials.ok) return toolMaterials;
       const imagePort = 造会话图片({ 图片门面: 门面.image });
@@ -291,17 +293,14 @@ export function 造宿主({ 项目根 = 默认项目根, 数据目录 = '' } = {
   // 请求名选预设与世界书；预设的模型字段给出链路标识和模型名。
   const 服务商 = 造服务商面({ 目录: 存储.读位置().API });
   let 已装门面;
-  const 模型调用 = async ({ 请求: 请求名 = '翻译', system = '', ...报文 }) => {
-    const 预设 = 已装门面.主AI.执行({ 请求: 请求名 });
-    if (!预设) throw new Error('PRESET_NO_SUCH_PRESET: 读不到模型预设');
-    const 文本 = (报文.messages || []).flatMap(row => typeof row.content === 'string' ? [row.content] : (row.content || []).filter(item => item.type === 'text').map(item => item.text)).join('\n');
-    const 世界书 = 已装门面.worldbook.run('执行', { 请求: 请求名, 文本 });
-    if (!世界书.ok) throw new Error(世界书.reason);
-    const 命中 = 世界书.data.命中;
-    const 系统 = [system, ...命中.filter(row => row.落点 === '前').map(row => row.文本), ...命中.filter(row => row.落点 === '后').map(row => row.文本)].filter(Boolean).join('\n\n');
-    const 深度 = 命中.filter(row => row.落点 === '按深度').map(row => row.文本).join('\n\n');
-    return 服务商.请求({ ...报文, messages: 深度 ? [{ role: 'user', content: 深度 }, ...报文.messages] : 报文.messages, system: 系统, 请求: 预设.模型?.走, 模型: 预设.模型?.模型 });
-  };
+  const 模型调用 = 造副请求({
+    取世界书: () => 已装门面.worldbook,
+    发送: async ({ 请求: 请求名, ...报文 }) => {
+      const preset = 已装门面.主AI.run('执行', { 请求: 请求名 });
+      if (!preset.ok) throw Object.assign(new Error(preset.reason), preset);
+      return await 服务商.请求({ ...报文, 请求: preset.data.模型?.走, 模型: preset.data.模型?.模型 });
+    },
+  });
   const { 门面, 动作表, 装不上, 清单, 反查 } = 装模块({
     项目根: 根, 配置, 模型, 模型调用, 服务商,
   });

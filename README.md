@@ -2,9 +2,11 @@
 
 面向个人使用的本地 AI 绘画工具，集中处理标签整理、ComfyUI 出图、本地识图与翻译，以及 AI 对话中的绘画工具调用。
 
-**当前版本：V1.5.19 · 模块化重写版。** 项目围绕独立能力模块、统一宿主和浏览器界面重新实现，程序、模型和个人数据分别存放。本次发布提供完整 Windows 下载包，包含运行依赖及本地识图、翻译模型。
+**当前版本：V1.5.20 · 模块化重写版。** 项目围绕独立能力模块、统一宿主和浏览器界面重新实现，程序、模型和个人数据分别存放。完整 Windows 下载包包含生产依赖及本地识图、翻译模型。
 
-[下载 V1.5.19 Windows 完整包](https://github.com/star-abyss/ai-tag-toolbox/releases/download/v1.5.19/ai-tag-toolbox-v1.5.19-windows-x64.zip) · [版本说明](https://github.com/star-abyss/ai-tag-toolbox/releases/tag/v1.5.19) · [全部版本](https://github.com/star-abyss/ai-tag-toolbox/releases)
+V1.5.20 支持 `EmptyFlux2LatentImage` 工作流的批量生成，并保留原有工作流的批量处理；补全文生图独立模型请求与图片元数据工具，统一翻译、识图和文生图的世界书执行。各请求可按顺序启用多本世界书。实现与验收入口见 [文生图请求与世界书执行](文档/文生图请求与世界书执行.md)。
+
+[下载 V1.5.20 Windows 完整包](https://github.com/star-abyss/ai-tag-toolbox/releases/download/v1.5.20/ai-tag-toolbox-v1.5.20-windows-x64.zip) · [版本说明](https://github.com/star-abyss/ai-tag-toolbox/releases/tag/v1.5.20) · [全部版本](https://github.com/star-abyss/ai-tag-toolbox/releases)
 
 ## 下载与启动
 
@@ -15,7 +17,7 @@
 
 完整包已经包含生产依赖、WD EVA02 识图模型和 opus-mt 双向翻译模型，解压后无需再安装这些依赖或下载模型。Node.js 需要单独安装。安装 Node.js 后若仍提示找不到 `node`，重新打开启动器。
 
-Release 中的 `ai-tag-toolbox-v1.5.19-windows-x64.zip` 是运行包。GitHub 自动生成的 **Source code (zip/tar.gz)** 是源码快照，运行依赖和模型需要另行准备。
+Release 中的 `ai-tag-toolbox-v1.5.20-windows-x64.zip` 是运行包。GitHub 自动生成的 **Source code (zip/tar.gz)** 是源码快照，运行依赖和模型需要另行准备。
 
 ## 可以做什么
 
@@ -98,6 +100,8 @@ pnpm --dir 程序/对接层 install --frozen-lockfile
 node 程序/tag模块/test/run.js
 node 程序/对接层/test/run.js
 node 程序/对接层/test/存储位置.js
+node 程序/对接层/test/世界书请求.js
+node 程序/对接层/test/复刻执行.js
 node scripts/test-package.mjs <桌面包根目录>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-run.ps1
 ```
@@ -111,4 +115,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/打包.ps1 -Incl
 
 默认只带模型说明；`-IncludeModels` 会复制根目录模型。打包脚本离线安装锁定生产依赖，保留正式说明，排除个人存档、测试、开发记录和临时文件。
 
-V1.5.19 下载包已验证解压完整性、桌面启动与退出、会话和设置保存重启、本地识图及双向翻译。当前发布验收未重新调用真实 API 服务商或真实 ComfyUI 出图。
+V1.5.20 下载包已验证解压完整性、桌面启动与退出、会话和设置保存重启、本地识图及双向翻译；世界书与完整复刻链路使用本地模拟 API、ComfyUI 服务验收。当前发布验收未执行真实 ComfyUI GPU 采样。
+
+已知问题：主 AI 可能在同一条回复中同时声明 `drawing_prompt` 和 `drawing_generate`，此时生成参数提前写定，不会采用尚未返回的文生图结果。需要使用文生图整理结果时，应在主 AI 世界书中明确先等待提示词返回，再在后续调用中生成。更新内置正文不会覆盖既有用户世界书副本。

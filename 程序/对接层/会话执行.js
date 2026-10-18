@@ -80,7 +80,7 @@ export function 造图片回执({ 图片门面, sessionId }) {
   };
 }
 
-export function 造会话执行({ 门面, 服务商, onGenerationState }) {
+export function 造会话执行({ 门面, 服务商, 模型调用, onGenerationState }) {
   const imagePort = 造会话图片({ 图片门面: 门面.image });
   const allNames = new Set(导出绘画工具表().map((tool) => tool.名字));
   async function executeTurn({ sessionId, inputMessageId, signal, read, commit, notify, 提问 }) {
@@ -103,6 +103,7 @@ export function 造会话执行({ 门面, 服务商, onGenerationState }) {
       sessionId,
       提问: (prompt, questionSignal) => 提问.ask(prompt, questionSignal),
       signal,
+      模型调用,
       onGenerationState: state => {
         onGenerationState?.(sessionId, state);
         notify?.();

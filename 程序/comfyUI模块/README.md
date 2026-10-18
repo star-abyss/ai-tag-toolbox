@@ -47,8 +47,8 @@ comfyUI模块/
 ├── port.js             端口契约（七个方法）+ 异常归类的词
 ├── adapter-http.js     HTTP 适配器。**本模块唯一发请求的地方**
 ├── adapter-memory.js   内存适配器。证明核心不依赖真网络
-├── test/run.js         功能自检（162 条）
-├── test/接口.js         接口校验（33 条，照 接口.md 查形状）
+├── test/run.js         功能自检（185 条）
+├── test/接口.js         接口校验（34 条，照 接口.md 查形状）
 ├── test/客户端隔离.js    真实 HTTP 提交的客户端标识与显式标识回归
 ├── test/自定义控件.js   自定义控件保存名称、连线与提交输入回归
 ├── tools/              探针与实测脚本（见 §九）
@@ -101,7 +101,7 @@ comfyUI模块/
 
 ---
 
-主采样器的 `latent_image` 上游若连到已知且能落实绝对张数的 latent 批量节点，`认` / `认图` 会在 `张数` 中报告其可填写输入。已识别 `EmptyLatentImage`、`EmptySD3LatentImage`、`EmptyFluxLatentImage` 的 `batch_size`，以及 `RepeatLatentBatch`：它只支持直接接上述空 latent（同时把原始批量设为 1），或接单图 `LoadImage → VAEEncode`。显式传 `张数` 时只写入这类已确认的入口；找不到时返回错误，不重复提交凑数。张数控制主采样器的批量；输出节点产出的附加文件照常保留，不按请求数字截断。
+主采样器的 `latent_image` 上游若连到已知且能落实绝对张数的 latent 批量节点，`认` / `认图` 会在 `张数` 中报告其可填写输入。已识别 `EmptyLatentImage`、`EmptySD3LatentImage`、`EmptyFluxLatentImage`、`EmptyFlux2LatentImage` 的 `batch_size`，以及 `RepeatLatentBatch`：它只支持直接接上述空 latent（同时把原始批量设为 1），或接单图 `LoadImage → VAEEncode`。显式传 `张数` 时只写入这类已确认的入口；找不到时返回错误，不重复提交凑数。张数控制主采样器的批量；输出节点产出的附加文件照常保留，不按请求数字截断。
 
 ## 五、十三个动作
 
@@ -191,8 +191,8 @@ const 图 = await comfy.取图(跑.产出[0]);          // { 字节, mime, … }
 ```bash
 cd 程序/comfyUI模块
 
-node test/run.js            # 162 条功能判据（含假取回跑的 HTTP 适配器那一套）
-node test/接口.js            # 33 条接口形状校验（照 接口.md 查）
+node test/run.js            # 185 条功能判据（含假取回跑的 HTTP 适配器那一套）
+node test/接口.js            # 34 条接口形状校验（照 接口.md 查）
 node test/run.js 出图        # 只跑名字里含"出图"的
 
 # 对真机（会真的出一张图）
@@ -222,7 +222,7 @@ node tools/联调.cjs 取图 '<文件名>'
 （标注 / 静音 / 旁路 / 中转 / 原型五类节点各有处置）、认口（采样器优先 + 全图兜底）、填口（正向多口同写）、
 图片上传与回填、事件与取消、单一在飞闸门、超时、节点定义缓存、界面图随 `extra_data` 一起提交（PNG 里留着工作流）。
 
-**验过**：162 条功能判据、33 条接口形状校验全绿；32 张真实工作流扫过（28 张认得出正向口）；
+**验过**：185 条功能判据、34 条接口形状校验全绿；32 张真实工作流扫过（28 张认得出正向口）；
 本机 ComfyUI 上真跑过文生图与图生图（两轮文生图由两个子代理各跑一轮，图生图三次的降噪是 0.35 / 0.5 / 0.55），
 明细与判据编号见 [comfyUI模块设计.md](comfyUI模块设计.md) §12。
 

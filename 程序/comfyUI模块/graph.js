@@ -554,7 +554,6 @@ function 读口(图, 选项 = {}) {
 
   const 张数 = [];
   if (主采样器) {
-    const 空latent类名 = /^(EmptyLatentImage|EmptySD3LatentImage|EmptyFluxLatentImage)$/;
     const 加口 = (节点id, 字段) => {
       const 节点 = 接口图[String(节点id)];
       const 值 = 节点 && (节点.inputs || {})[字段];
@@ -781,7 +780,7 @@ function 填口(图, 输入 = {}) {
       if (!节点 || !节点.inputs || 是连线(节点.inputs[地址.input])) {
         return fail(ERR.BAD_PARAM, `节点 ${地址.nodeId} 的 ${地址.input} 不是可填写的批量输入`);
       }
-      节点.inputs[地址.input] = 有重复节点 && /^(EmptyLatentImage|EmptySD3LatentImage|EmptyFluxLatentImage)$/.test(地址.classType)
+      节点.inputs[地址.input] = 有重复节点 && 空latent类名.test(地址.classType)
         ? 1
         : 输入.张数;
       填了的.张数.push(`${地址.nodeId}.${地址.input}`);
@@ -792,6 +791,7 @@ function 填口(图, 输入 = {}) {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const 空latent类名 = /^(EmptyLatentImage|EmptySD3LatentImage|EmptyFluxLatentImage|EmptyFlux2LatentImage)$/;
 
 /** 造一个 UUID v4 形状的 id。 */
 function 随机UUID() {

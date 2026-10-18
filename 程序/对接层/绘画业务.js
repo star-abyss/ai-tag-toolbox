@@ -1,7 +1,7 @@
 export const ERR = Object.freeze({
   NO_TOOL: 'BUSINESS_NO_TOOL', BAD_INPUT: 'BUSINESS_BAD_INPUT', NO_IMAGE: 'SESSION_IMAGE_MISSING',
   STOPPED: 'SESSION_STOPPED', NO_INTERACTION: 'BUSINESS_NO_INTERACTION', NO_OUTPUT: 'BUSINESS_NO_IMAGES',
-  LIMIT: 'BUSINESS_GENERATION_LIMIT', BUSY: 'BUSINESS_GENERATION_BUSY',
+  LIMIT: 'BUSINESS_GENERATION_LIMIT', BUSY: 'BUSINESS_GENERATION_BUSY', MODEL: 'BUSINESS_MODEL_FAILED',
 });
 const 文本 = (description, required = false) => ({ type: 'string', description, ...(required ? { required: true } : {}) });
 const 图号 = (description, required = true) => ({ type: 'integer', minimum: 1, description, ...(required ? { required: true } : {}) });
@@ -13,7 +13,13 @@ const 工具表 = [
   定义('tags_get', '读取搜索候选的标签或角色详情。标识来自 tags_search；角色详情包含作品与可选特征词。只读取内容，不改变选择或任何记录。', { 标识: 文本('搜索返回的记录标识；数字标识也填写字符串。', true) }),
   定义('images_list', '列出当前会话区的图片编号、名称与尺寸。用户说图1时使用图号1；已删图号不会改指其他图片。仅列信息，需要查看图像时用 images_view。'),
   定义('images_view', '查看当前会话区指定图号。返回当前图片引用，并将实际图片内容交给支持视觉的模型；图号不存在或已删除时返回明确失败。', { 图号: 图号('会话区显示的图片编号，例如图1填写1。') }),
+  定义('images_metadata', '读取当前会话图片文件中保存的原始生成信息，包括提示词、负向、工作流和参数；不会调用识图或视觉模型，没有内置信息时如实返回。', { 图号: 图号('要读取内置生成信息的当前会话图片编号。') }),
   定义('drawing_info', '查询生图是否启用、是否已配置，以及可接受的提示词、参考图和批量张数。'),
+  定义('drawing_prompt', '把用户要求、参考素材和图片交给独立文生图模型，按该请求启用的世界书整理提示词。只返回完整正文，不自动出图；可将返回的提示词用于 drawing_generate。', {
+    要求: 文本('用户本次绘画、复刻或修改要求。', true),
+    素材: 文本('原样提供已有提示词、标签、描述及其来源；省略时只提供要求。'),
+    参考图: 图号('需要交给文生图模型查看的当前会话图片编号。', false),
+  }),
   定义('drawing_generate', '按用户配置生成一批图片，可使用当前会话的参考图。完成后取回图片、加入会话区分配图号，并交给支持视觉的模型；无法继续时返回失败结果。', {
     正向: 文本('本次完整正向提示词。由你根据用户要求组织。', true),
     负向: 文本('本次负向提示词。省略时保留当前绘画配置的负向输入，空串表示清空；是否填写由你决定，支持情况见 drawing_info。'),
@@ -40,7 +46,7 @@ const 主名 = value => String(value ?? '').split(/[,，]/)[0].trim();
 export const 导出绘画工具表 = () => structuredClone(工具表);
 
 /** 当前会话中的绘画业务，工具定义与执行绑定在同一处。 */
-export function 造绘画业务({ 门面, sessionId, 提问, signal, 生成设置, onGenerationState } = {}) {
+export function 造绘画业务({ 门面, sessionId, 提问, signal, 模型调用, 生成设置, onGenerationState } = {}) {
   const 作用域 = { 存放地: 'session', 会话ID: sessionId };
   const 停止 = () => signal?.aborted ? fail(ERR.STOPPED, '用户已停止') : null;
   let state = null, preparing = null, generating = false;
@@ -111,12 +117,40 @@ export function 造绘画业务({ 门面, sessionId, 提问, signal, 生成设�
       const result = await 定位(args.图号);
       return result.ok ? ok({ 图号: result.data.图号, 图片: { type: 'session-image', imageId: result.data.标识 } }) : result;
     },
+    async images_metadata(args) {
+      const found = await 定位(args.图号);
+      if (!found.ok) return found;
+      const result = await 门面.vision.run('读元数据', { 存放地: 'session', 会话ID: sessionId, 条目ID: found.data.标识 });
+      if (!result.ok) return result;
+      const { 引用, ...data } = result.data;
+      return ok({ 图号: args.图号, ...data });
+    },
     async drawing_info() {
       const enabled = await 门面.comfy.run('绘图开关');
       if (!enabled.ok) return enabled;
       const inputs = await 门面.comfy.run('认');
       if (!inputs.ok) return { ...inputs, 当前绘图启用: enabled.data.启用 };
       return ok({ 启用: enabled.data.启用, 已配置: true, 正向提示词: Boolean(inputs.data.正向.length), 负向提示词: Boolean(inputs.data.负向.length), 参考图: Boolean(inputs.data.图片.length), 批量张数: Boolean(inputs.data.张数?.length) });
+    },
+    async drawing_prompt(args) {
+      if (typeof args.要求 !== 'string') return fail(ERR.BAD_INPUT, '要求须为文本');
+      if (args.素材 !== undefined && typeof args.素材 !== 'string') return fail(ERR.BAD_INPUT, '素材须为文本');
+      if (typeof 模型调用 !== 'function') return fail(ERR.MODEL, '当前未接入文生图模型请求');
+      const content = [{ type: 'text', text: JSON.stringify({ 要求: args.要求, ...(args.素材 === undefined ? {} : { 素材: args.素材 }) }) }];
+      if (args.参考图 !== undefined) {
+        const image = await 取图(args.参考图);
+        if (!image.ok) return image;
+        content.push({ type: 'image', data: Buffer.from(image.data.内容.字节).toString('base64'), mimeType: image.data.内容.mime });
+      }
+      try {
+        const result = await 模型调用({ 请求: '文生图', messages: [{ role: 'user', content }], 信号: signal });
+        if (停止()) return 停止();
+        if (result?.ok === false) return result;
+        return ok({ 提示词: result.正文, 模型: result.用的谁 || null, 用量: result.用量 || null });
+      } catch (error) {
+        if (停止()) return 停止();
+        return { ...fail(error.code || ERR.MODEL, error.message || String(error)), ...(error.reason ? { reason: error.reason } : {}) };
+      }
     },
     async drawing_generate(args) {
       if (typeof args.正向 !== 'string') return fail(ERR.BAD_INPUT, '正向提示词须为文本');

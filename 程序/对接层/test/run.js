@@ -221,7 +221,7 @@ function 监听们(ctx) {
 判('注册表只交绘画业务，不交底层模块管理动作', async () => {
   const { 出 } = await 装一次();
   const 名字 = 出.预设.工具表.map(row => row.名字).sort();
-  等(名字, ['drawing_generate', 'drawing_info', 'images_list', 'images_view', 'tags_get', 'tags_search', 'translate_text', 'vision_describe', 'vision_tag'].sort());
+  等(名字, ['drawing_generate', 'drawing_info', 'drawing_prompt', 'images_list', 'images_metadata', 'images_view', 'tags_get', 'tags_search', 'translate_text', 'vision_describe', 'vision_tag'].sort());
   真(!名字.includes('参数'), 'Comfy 用户参数动作不登记为 AI 业务工具');
 });
 
@@ -240,7 +240,7 @@ function 监听们(ctx) {
   const { 出 } = await 装一次();
   let 应有 = 0;
   for (const 门 of Object.values(出.门面)) 应有 += 门.actions.length;
-  等(出.预设.工具表.length, 9, '外部插件未传用户提问端口时的绘画业务数');
+  等(出.预设.工具表.length, 11, '外部插件未传用户提问端口时的绘画业务数');
   真(应有 > 出.预设.工具表.length, '管理动作不应逐项变成模型能力');
 });
 
